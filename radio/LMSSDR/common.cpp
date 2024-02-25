@@ -867,6 +867,12 @@ static int LimePlugin_Write(LimePluginContext* context, const T* const* samples,
     if (!samples) // Nothing to transmit
         return 0;
 
+    if (!context->ports[port].composite)
+    {
+        Log(LogLevel::ERROR, "LimePlugin_Write: invalid port");
+        return 0;
+    }
+
     int samplesConsumed =
         context->ports[port].composite->StreamTx(samples, count, &meta);
     if (logVerbosity == LogLevel::DEBUG && samplesConsumed != count)
@@ -895,6 +901,12 @@ int LimePlugin_Write_complex16(LimePluginContext* context, const lime::complex16
 template<class T>
 static int LimePlugin_Read(LimePluginContext* context, T** samples, int count, int port, SDRDevice::StreamMeta& meta)
 {
+    if (!context->ports[port].composite)
+{
+        Log(LogLevel::ERROR, "LimePlugin_Read: invalid port");
+        return 0;
+    }
+
     meta.useTimestamp = false;
     meta.flush = false;
     int samplesGot = context->ports[port].composite->StreamRx(samples, count, &meta);
