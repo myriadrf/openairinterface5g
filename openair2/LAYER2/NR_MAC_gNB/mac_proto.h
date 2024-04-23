@@ -36,6 +36,7 @@
 #include "common/ngran_types.h"
 
 void set_cset_offset(uint16_t);
+void get_K1_K2(int N1, int N2, int *K1, int *K2, int layers);
 
 void mac_top_init_gNB(ngran_node_t node_type,
                       NR_ServingCellConfigCommon_t *scc,
@@ -114,7 +115,7 @@ void nr_schedule_RA(module_id_t module_idP,
 void nr_initiate_ra_proc(module_id_t module_idP, int CC_id, frame_t frameP, sub_frame_t slotP,
                          uint16_t preamble_index, uint8_t freq_index, uint8_t symbol, int16_t timing_offset);
 
-void nr_clear_ra_proc(module_id_t module_idP, int CC_id, frame_t frameP, NR_RA_t *ra);
+void nr_clear_ra_proc(NR_RA_t *ra);
 
 int nr_allocate_CCEs(int module_idP, int CC_idP, frame_t frameP, sub_frame_t slotP, int test_only);
 
@@ -272,7 +273,7 @@ NR_pusch_dmrs_t get_ul_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
                                    const NR_tda_info_t *tda_info,
                                    const int Layers);
 
-uint8_t nr_get_tpc(int target, uint8_t cqi, int incr);
+uint8_t nr_get_tpc(int target, int snrx10, int incr);
 
 int get_spf(nfapi_nr_config_request_scf_t *cfg);
 
@@ -301,8 +302,6 @@ void remove_front_nr_list(NR_list_t *listP);
 
 NR_UE_info_t * find_nr_UE(NR_UEs_t* UEs, rnti_t rntiP);
 
-int find_nr_RA_id(module_id_t mod_idP, int CC_idP, rnti_t rntiP);
-
 void configure_UE_BWP(gNB_MAC_INST *nr_mac,
                       NR_ServingCellConfigCommon_t *scc,
                       NR_UE_sched_ctrl_t *sched_ctrl,
@@ -316,12 +315,6 @@ NR_UE_info_t* add_new_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rntiP, NR_CellGroupConf
 void mac_remove_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rnti);
 
 int nr_get_default_pucch_res(int pucch_ResourceCommon);
-
-int get_dlscs(nfapi_nr_config_request_t *cfg);
-
-int get_ulscs(nfapi_nr_config_request_t *cfg);
-
-int get_symbolsperslot(nfapi_nr_config_request_t *cfg);
 
 int nr_write_ce_dlsch_pdu(module_id_t module_idP,
                           const NR_UE_sched_ctrl_t *ue_sched_ctl,

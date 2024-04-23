@@ -466,7 +466,7 @@ void generateRegistrationRequest(as_nas_info_t *initialNasMsg, nr_ue_nas_t *nas)
   mm_msg->registration_request.presencemask |= REGISTRATION_REQUEST_UE_SECURITY_CAPABILITY_PRESENT;
   mm_msg->registration_request.nruesecuritycapability.iei = REGISTRATION_REQUEST_UE_SECURITY_CAPABILITY_IEI;
   mm_msg->registration_request.nruesecuritycapability.length = 8;
-  mm_msg->registration_request.nruesecuritycapability.fg_EA = 0x80;
+  mm_msg->registration_request.nruesecuritycapability.fg_EA = 0xa0;
   mm_msg->registration_request.nruesecuritycapability.fg_IA = 0x20;
   mm_msg->registration_request.nruesecuritycapability.EEA = 0;
   mm_msg->registration_request.nruesecuritycapability.EIA = 0;
@@ -1261,6 +1261,9 @@ void *nas_nrue(void *args_p)
               offset++;
             }
           } break;
+	case FGS_PDU_SESSION_ESTABLISHMENT_REJ:
+	  LOG_E(NAS, "Received PDU Session Establishment reject\n");
+	  break;
           default:
             LOG_W(NR_RRC, "unknown message type %d\n", msg_type);
             break;

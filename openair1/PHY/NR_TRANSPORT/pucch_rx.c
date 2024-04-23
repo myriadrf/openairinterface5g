@@ -162,10 +162,15 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
               pucch_pdu->bit_len_harq,
               pucch_pdu->sr_flag);
 
+  /* it might be that the stats list is full: In this case, we will simply
+   * write to some memory on the stack instead of the UE's UCI stats */
+  NR_gNB_UCI_STATS_t stack_uci_stats = {0};
+  NR_gNB_UCI_STATS_t *uci_stats = &stack_uci_stats;
   NR_gNB_PHY_STATS_t *phy_stats = get_phy_stats(gNB, pucch_pdu->rnti);
-  AssertFatal(phy_stats != NULL, "phy_stats shouldn't be NULL\n");
-  phy_stats->frame = frame;
-  NR_gNB_UCI_STATS_t *uci_stats = &phy_stats->uci_stats;
+  if (phy_stats != NULL) {
+    phy_stats->frame = frame;
+    uci_stats = &phy_stats->uci_stats;
+  }
 
   int nr_sequences;
   const uint8_t *mcs;
@@ -225,6 +230,8 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
   x_im[1] = table_5_2_2_2_2_Im[u[1]];
 
   c64_t xr[frame_parms->nb_antennas_rx][pucch_pdu->nr_of_symbols][12]  __attribute__((aligned(32)));
+  memset(xr, 0, frame_parms->nb_antennas_rx * pucch_pdu->nr_of_symbols * 12 * sizeof(c64_t));
+
   int64_t xrtmag=0,xrtmag_next=0;
   uint8_t maxpos=0;
   uint8_t index=0;
@@ -348,9 +355,14 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
 #endif
 
   index=maxpos;
-  uci_stats->pucch0_n00 = gNB->measurements.n0_subband_power_tot_dB[prb_offset[0]];
-  uci_stats->pucch0_n01 = gNB->measurements.n0_subband_power_tot_dB[prb_offset[1]];
-  LOG_D(PHY,"n00[%d] = %d, n01[%d] = %d\n",prb_offset[0],uci_stats->pucch0_n00,prb_offset[1],uci_stats->pucch0_n01);
+  int pucch0_n00 = gNB->measurements.n0_subband_power_tot_dB[prb_offset[0]];
+  int pucch0_n01 = gNB->measurements.n0_subband_power_tot_dB[prb_offset[1]];
+  LOG_D(PHY, "n00[%d] = %d, n01[%d] = %d\n", prb_offset[0], pucch0_n00, prb_offset[1], pucch0_n01);
+
+  uci_stats->pucch0_n00 = pucch0_n00;
+  uci_stats->pucch0_n01 = pucch0_n01;
+  uci_stats->pucch0_thres = gNB->pucch0_thres;
+
   // estimate CQI for MAC (from antenna port 0 only)
   int max_n0 =
       max(gNB->measurements.n0_subband_power_tot_dB[prb_offset[0]], gNB->measurements.n0_subband_power_tot_dB[prb_offset[1]]);
@@ -363,7 +375,6 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
   else
     cqi = (640 + SNRtimes10) / 5;
 
-  uci_stats->pucch0_thres = gNB->pucch0_thres; /* + (10*max_n0);*/
   bool no_conf=false;
   if (nr_sequences>1) {
     if (/*xrtmag_dBtimes10 < (30+xrtmag_next_dBtimes10) ||*/ SNRtimes10 < gNB->pucch0_thres) {
@@ -372,7 +383,7 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
             "%d.%d PUCCH bad confidence: %d threshold, %d, %d, %d\n",
             frame,
             slot,
-            uci_stats->pucch0_thres,
+            gNB->pucch0_thres,
             SNRtimes10,
             xrtmag_dBtimes10,
             xrtmag_next_dBtimes10);
@@ -388,7 +399,7 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
   uci_pdu->rssi = 1280 - (10 * dB_fixed(32767 * 32767)) - dB_fixed_times10(signal_energy_ant0);
 
   if (pucch_pdu->bit_len_harq==0) {
-    uci_pdu->sr.sr_confidence_level = SNRtimes10 < uci_stats->pucch0_thres;
+    uci_pdu->sr.sr_confidence_level = SNRtimes10 < gNB->pucch0_thres;
     uci_stats->pucch0_sr_trials++;
     if (xrtmag_dBtimes10>(10*max_n0+100)) {
       uci_pdu->sr.sr_indication = 1;
@@ -415,9 +426,9 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
           xrtmag_next_dBtimes10,
           pucch_power_dBtimes10,
           max_n0,
-          uci_stats->pucch0_n00,
-          uci_stats->pucch0_n01,
-          uci_stats->pucch0_thres,
+          pucch0_n00,
+          pucch0_n01,
+          gNB->pucch0_thres,
           cqi,
           SNRtimes10,
           10 * log10((double)signal_energy_ant0));
@@ -450,9 +461,9 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
           xrtmag_next_dBtimes10,
           pucch_power_dBtimes10,
           max_n0,
-          uci_stats->pucch0_n00,
-          uci_stats->pucch0_n01,
-          uci_stats->pucch0_thres,
+          pucch0_n00,
+          pucch0_n01,
+          gNB->pucch0_thres,
           cqi,
           SNRtimes10);
     if (pucch_pdu->sr_flag == 1) {
@@ -576,7 +587,7 @@ void nr_decode_pucch1(c16_t **rxdataF,
       printf(
           "\t [nr_generate_pucch1] mapping %s to RE \t amp=%d "
           "\tofdm_symbol_size=%d \tN_RB_DL=%d \tfirst_carrier_offset=%d "
-          "\tz_pucch[%d]=txptr(%u)=(x_n(l=%d,n=%d)=(%d,%d))\n",
+          "\tz_pucch[%d]=txptr(%d)=(x_n(l=%d,n=%d)=(%d,%d))\n",
           l % 2 ? "PUCCH" : "DM-RS",
           amp,
           frame_parms->ofdm_symbol_size,
@@ -1004,7 +1015,8 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
                       int frame,
                       int slot,
                       nfapi_nr_uci_pucch_pdu_format_2_3_4_t* uci_pdu,
-                      nfapi_nr_pucch_pdu_t* pucch_pdu) {
+                      nfapi_nr_pucch_pdu_t* pucch_pdu)
+{
 
   c16_t **rxdataF = gNB->common_vars.rxdataF;
   NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
@@ -1507,7 +1519,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
 
             corr_re = ( corr32_re[symb][half_prb>>2][aa]/(2*nc_group_size*4/2)+((int16_t*)(&prod_re[aa]))[0]);
             corr_im = ( corr32_im[symb][half_prb>>2][aa]/(2*nc_group_size*4/2)+((int16_t*)(&prod_im[aa]))[0]);
-            corr_tmp += corr_re*corr_re + corr_im*corr_im;
+            corr_tmp += (corr_re*corr_re + corr_im*corr_im)>>(Prx/2);
             /*
               LOG_D(PHY,"pucch2 half_prb %d cw %d (%d,%d) aa %d: (%d,%d,%d,%d,%d,%d,%d,%d)x(%d,%d,%d,%d,%d,%d,%d,%d) (%d,%d)+(%d,%d)
               = (%d,%d) => %d\n", half_prb,cw,cw&15,cw>>4,aa,
@@ -1596,14 +1608,15 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
 
   // estimate CQI for MAC (from antenna port 0 only)
   // TODO this computation is wrong -> to be ignored at MAC for now
-  int SNRtimes10 =
+  int cqi = 0xff;
+  /*int SNRtimes10 =
       dB_fixed_times10(signal_energy_nodc((int32_t *)&rxdataF[0][soffset + (l2 * frame_parms->ofdm_symbol_size) + re_offset[0]],
                                           12 * pucch_pdu->prb_size))
       - (10 * gNB->measurements.n0_power_tot_dB);
   int cqi,bit_left;
   if (SNRtimes10 < -640) cqi=0;
   else if (SNRtimes10 >  635) cqi=255;
-  else cqi=(640+SNRtimes10)/5;
+  else cqi=(640+SNRtimes10)/5;*/
 
   uci_pdu->harq.harq_bit_len = pucch_pdu->bit_len_harq;
   uci_pdu->pduBitmap=0;
@@ -1627,8 +1640,8 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
       LOG_D(PHY, "[DLSCH/PDSCH/PUCCH2] %d.%d HARQ payload (%d) = %d\n", frame, slot, i, uci_pdu->harq.harq_payload[i]);
       decodedPayload[0]>>=8;
     }
-    bit_left = pucch_pdu->bit_len_harq-((harq_bytes-1)<<3);
-    uci_pdu->harq.harq_payload[i] = decodedPayload[0] & ((1<<bit_left)-1);
+    int bit_left = pucch_pdu->bit_len_harq - ((harq_bytes - 1) << 3);
+    uci_pdu->harq.harq_payload[i] = decodedPayload[0] & ((1 << bit_left) - 1);
     LOG_D(PHY, "[DLSCH/PDSCH/PUCCH2] %d.%d HARQ payload (%d) = %d\n", frame, slot, i, uci_pdu->harq.harq_payload[i]);
     decodedPayload[0] >>= pucch_pdu->bit_len_harq;
   }
@@ -1653,8 +1666,8 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
       uci_pdu->csi_part1.csi_part1_payload[i] = decodedPayload[0] & 255;
       decodedPayload[0]>>=8;
     }
-    bit_left = pucch_pdu->bit_len_csi_part1-((csi_part1_bytes-1)<<3);
-    uci_pdu->csi_part1.csi_part1_payload[i] = decodedPayload[0] & ((1<<bit_left)-1);
+    int bit_left = pucch_pdu->bit_len_csi_part1-((csi_part1_bytes-1)<<3);
+    uci_pdu->csi_part1.csi_part1_payload[i] = decodedPayload[0] & ((1 << bit_left) - 1);
     decodedPayload[0] = pucch_pdu->bit_len_csi_part1 < 64 ? decodedPayload[0] >> bit_left : 0;
   }
   

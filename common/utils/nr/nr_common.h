@@ -34,6 +34,7 @@
 #define __COMMON_UTILS_NR_NR_COMMON__H__
 
 #include <stdint.h>
+#include <stdlib.h>
 #include "assertions.h"
 #include "PHY/defs_common.h"
 
@@ -158,16 +159,33 @@ bool nr_timer_expired(NR_timer_t timer);
  * @return Indication if the timer is active or not
  */
 bool is_nr_timer_active(NR_timer_t timer);
+/**
+ * @brief To return how much time has passed since start of timer
+ * @param timer Timer to be checked
+ * @return Time passed since start of timer
+ */
+uint32_t nr_timer_elapsed_time(NR_timer_t timer);
+
 
 extern const nr_bandentry_t nr_bandtable[];
 
-static inline int get_num_dmrs(uint16_t dmrs_mask ) {
+static inline int get_num_dmrs(uint16_t dmrs_mask )
+{
   int num_dmrs=0;
   for (int i=0;i<16;i++) num_dmrs+=((dmrs_mask>>i)&1);
   return(num_dmrs);
 }
 
+static __attribute__((always_inline)) inline int count_bits_set(uint64_t v)
+{
+  return __builtin_popcountll(v);
+}
+
 uint64_t reverse_bits(uint64_t in, int n_bits);
+void reverse_bits_u8(uint8_t const* in, size_t sz, uint8_t* out);
+
+uint64_t from_nrarfcn(int nr_bandP, uint8_t scs_index, uint32_t dl_nrarfcn);
+uint32_t to_nrarfcn(int nr_bandP, uint64_t dl_CarrierFreq, uint8_t scs_index, uint32_t bw);
 
 int get_first_ul_slot(int nrofDownlinkSlots, int nrofDownlinkSymbols, int nrofUplinkSymbols);
 int cce_to_reg_interleaving(const int R, int k, int n_shift, const int C, int L, const int N_regs);
@@ -186,11 +204,10 @@ void SLIV2SL(int SLIV,int *S,int *L);
 int get_dmrs_port(int nl, uint16_t dmrs_ports);
 uint16_t SL_to_bitmap(int startSymbolIndex, int nrOfSymbols);
 int get_nb_periods_per_frame(uint8_t tdd_period);
-int get_supported_band_index(int scs, int band, int n_rbs);
 long rrc_get_max_nr_csrs(const int max_rbs, long b_SRS);
-void get_K1_K2(int N1, int N2, int *K1, int *K2);
 bool compare_relative_ul_channel_bw(int nr_band, int scs, int nb_ul, frame_type_t frame_type);
 int get_supported_bw_mhz(frequency_range_t frequency_range, int bw_index);
+int get_supported_band_index(int scs, frequency_range_t freq_range, int n_rbs);
 void get_samplerate_and_bw(int mu,
                            int n_rb,
                            int8_t threequarter_fs,
@@ -213,10 +230,6 @@ void nr_est_delay(int ofdm_symbol_size, const c16_t *ls_est, c16_t *ch_estimates
 
 #define CEILIDIV(a,b) ((a+b-1)/b)
 #define ROUNDIDIV(a,b) (((a<<1)+b)/(b<<1))
-
-#define cmax(a,b)  ((a>b) ? (a) : (b))
-#define cmax3(a,b,c) ((cmax(a,b)>c) ? (cmax(a,b)) : (c))
-#define cmin(a,b)  ((a<b) ? (a) : (b))
 
 #ifdef __cplusplus
 #ifdef min

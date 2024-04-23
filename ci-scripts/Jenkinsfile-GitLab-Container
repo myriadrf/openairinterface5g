@@ -308,29 +308,6 @@ pipeline {
             }
           }
         }
-        stage ("L2-Sim-Test-5G") {
-          when { expression {do5Gtest} }
-          steps {
-            script {
-              triggerSlaveJob ('RAN-L2-Sim-Test-5G', 'L2-Sim-Test-5G')
-            }
-          }
-          post {
-            always {
-              script {
-                // Using a unique variable name for each test stage to avoid overwriting on a global variable
-                // due to parallel-time concurrency
-                l2Sim5GStatus = finalizeSlaveJob('RAN-L2-Sim-Test-5G')
-              }
-            }
-            failure {
-              script {
-                currentBuild.result = 'FAILURE'
-                failingStages += l2Sim5GStatus
-              }
-            }
-          }
-        }
         stage ("LTE-B200-FDD-LTEBOX-Container") {
           when { expression {do4Gtest} }
           steps {
@@ -558,6 +535,52 @@ pipeline {
               script {
                 currentBuild.result = 'FAILURE'
                 failingStages += cn5gCOTSUESanityCheck
+              }
+            }
+          }
+        }
+        stage ("SA-AERIAL-CN5G") {
+          when { expression {do5Gtest} }
+          steps {
+            script {
+              triggerSlaveJob ('RAN-SA-AERIAL-CN5G', 'SA-AERIAL-CN5G')
+            }
+          }
+          post {
+            always {
+              script {
+                // Using a unique variable name for each test stage to avoid overwriting on a global variable
+                // due to parallel-time concurrency
+                saAERIALStatus = finalizeSlaveJob('RAN-SA-AERIAL-CN5G')
+              }
+            }
+            failure {
+              script {
+                currentBuild.result = 'FAILURE'
+                failingStages += saAERIALStatus
+              }
+            }
+          }
+        }
+        stage ("SA-2x2-Module-CN5G") {
+          when { expression {do5Gtest} }
+          steps {
+            script {
+              triggerSlaveJob ('RAN-SA-2x2-Module-CN5G', 'SA-2x2-Module-CN5G')
+            }
+          }
+          post {
+            always {
+              script {
+                // Using a unique variable name for each test stage to avoid overwriting on a global variable
+                // due to parallel-time concurrency
+                saTDD2x2Status = finalizeSlaveJob('RAN-SA-2x2-Module-CN5G')
+              }
+            }
+            failure {
+              script {
+                currentBuild.result = 'FAILURE'
+                failingStages += saTDD2x2Status
               }
             }
           }

@@ -1,10 +1,11 @@
-version: '3.8'
 services:
     oai-gnb:
         image: oai-gnb-aw2s:latest
         privileged: true
         network_mode: "host"
         container_name: oai-gnb-aw2s
+        ulimits:
+          core: -1 # for core dumps
         environment:
             TZ: Europe/Paris
             USE_ADDITIONAL_OPTIONS: --sa

@@ -57,6 +57,7 @@
 #define DEBUG_gNB_SCHEDULER 1
 
 #include "common/ran_context.h"
+#include "nfapi/oai_integration/vendor_ext.h"
 
 //#define DEBUG_DCI
 
@@ -129,6 +130,46 @@ uint8_t get_dl_nrOfLayers(const NR_UE_sched_ctrl_t *sched_ctrl,
 
 }
 
+// Table 5.2.2.2.1-3 and Table 5.2.2.2.1-4 in 38.214
+void get_k1_k2_indices(const int layers, const int N1, const int N2, const int i13, int *k1, int *k2)
+{
+  AssertFatal(layers > 0 && layers < 5, "Number of layers %d not supported\n", layers);
+  *k1 = 0;
+  *k2 = 0;
+  if (layers == 2) {
+    if (N2 == 1)
+      *k1 = i13;
+    else if (N1 == N2) {
+      *k1 = i13 & 1;
+      *k2 = i13 >> 1;
+    }
+    else {
+      *k1 = (i13 & 1) + (i13 == 3);
+      *k2 = (i13 == 2);
+    }
+  }
+  if (layers == 3 || layers == 4) {
+    if (N2 == 1)
+      *k1 = i13 + 1;
+    else if (N1 == 2 && N2 == 2) {
+      *k1 = !(i13 & 1);
+      *k2 = (i13 > 0);
+    }
+    else {
+      if (i13 == 0)
+        *k1 = 1;
+      if (i13 == 1)
+        *k2 = 1;
+      if (i13 == 2) {
+        *k1 = 1;
+        *k2 = 1;
+      }
+      if (i13 == 3)
+        *k1 = 2;
+    }
+  }
+}
+
 uint16_t get_pm_index(const gNB_MAC_INST *nrmac,
                       const NR_UE_info_t *UE,
                       nr_dci_format_t dci_format,
@@ -137,14 +178,16 @@ uint16_t get_pm_index(const gNB_MAC_INST *nrmac,
 {
   if (dci_format == NR_DL_DCI_FORMAT_1_0 || nrmac->identity_pm || xp_pdsch_antenna_ports == 1)
     return 0; //identity matrix (basic 5G configuration handled by PMI report is with XP antennas)
-
   const NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   const int report_id = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.csi_report_id;
   const nr_csi_report_t *csi_report = &UE->csi_report_template[report_id];
   const int N1 = csi_report->N1;
   const int N2 = csi_report->N2;
   const int antenna_ports = (N1 * N2) << 1;
-  const int x1 = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1;
+  if (antenna_ports < 2)
+    return 0; // single antenna port
+
+  int x1 = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1;
   const int x2 = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2;
   LOG_D(NR_MAC,"PMI report: x1 %d x2 %d layers: %d\n", x1, x2, layers);
 
@@ -159,8 +202,37 @@ uint16_t get_pm_index(const gNB_MAC_INST *nrmac,
   // elements from n+1 to m for 2 layers etc.
   if (antenna_ports == 2)
     return 1 + prev_layers_size + x2;  // 0 for identity matrix
-  else
-    AssertFatal(1==0,"More than 2 antenna ports not yet supported\n");
+  else {
+    int idx = layers - 1;
+    // the order of i1x in X1 report needs to be verified
+    // the standard is not very clear (Table 6.3.1.1.2-7 in 38.212)
+    // it says: PMI wideband information fields X1 , from left to right
+    int bitlen = csi_report->csi_meas_bitlen.pmi_i13_bitlen[idx];
+    if (layers == 1 && bitlen != 0) {
+      LOG_E(NR_MAC, "Invalid i13 bit length %d for single layer! It should be 0\n", bitlen);
+      return 0;
+    }
+    const int i13 = x1 & ((1 << bitlen) - 1);
+    x1 >>= bitlen;
+    bitlen = csi_report->csi_meas_bitlen.pmi_i12_bitlen[idx];
+    const int i12 = x1 & ((1 << bitlen) - 1);
+    x1 >>= bitlen;
+    bitlen = csi_report->csi_meas_bitlen.pmi_i11_bitlen[idx];
+    const int i11 = x1 & ((1 << bitlen) - 1);
+    const int i2 = x2;
+    int k1, k2;
+    get_k1_k2_indices(layers, N1, N2, i13, &k1, &k2); // get indices k1 and k2 for PHY matrix (not actual k1 and k2 values)
+    const int O2 = N2 == 1 ? 1 : 4;
+    int O1 = 4; //Horizontal beam oversampling = 4 for more than 2 antenna ports
+    int max_i2 = 0;
+    int lay_index = 0;
+    max_i2 = layers == 1 ? 4 : 2;
+    int K1, K2;
+    get_K1_K2(N1, N2, &K1, &K2, layers);
+    // computing precoding matrix index according to rule set in allocation function init_codebook_gNB
+    lay_index = i2 + (i11 * max_i2) + (i12 * max_i2 * N1 * O1) + (k1 * max_i2 * N1 * O1 * N2 * O2) + (k2 * max_i2 * N1 * O1 * N2 * O2 * K1);
+    return 1 + prev_layers_size + lay_index;
+  }
 }
 
 uint8_t get_mcs_from_cqi(int mcs_table, int cqi_table, int cqi_idx)
@@ -227,13 +299,23 @@ NR_pdsch_dmrs_t get_dl_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
 
     switch (Layers) {
       case 1:
+#ifdef  ENABLE_AERIAL
+        dmrs.dmrs_ports_id = 3;
+        dmrs.numDmrsCdmGrpsNoData = 2;
+#else
         dmrs.dmrs_ports_id = 0;
         dmrs.numDmrsCdmGrpsNoData = 1;
+#endif
         frontloaded_symb = 1;
         break;
       case 2:
+#ifdef  ENABLE_AERIAL
+        dmrs.dmrs_ports_id = 7;
+        dmrs.numDmrsCdmGrpsNoData = 2;
+#else
         dmrs.dmrs_ports_id = 2;
         dmrs.numDmrsCdmGrpsNoData = 1;
+#endif
         frontloaded_symb = 1;
         break;
       case 3:
@@ -606,10 +688,14 @@ NR_pusch_dmrs_t get_ul_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
 
   NR_pusch_dmrs_t dmrs = {0};
   // TODO setting of cdm groups with no data to be redone for MIMO
-  if (ul_bwp->transform_precoding && Layers < 3)
-    dmrs.num_dmrs_cdm_grps_no_data = ul_bwp->dci_format == NR_UL_DCI_FORMAT_0_1 || tda_info->nrOfSymbols == 2 ? 1 : 2;
-  else
+  if(NFAPI_MODE == NFAPI_MODE_AERIAL) {
     dmrs.num_dmrs_cdm_grps_no_data = 2;
+  } else {
+    if (ul_bwp->transform_precoding && Layers < 3)
+      dmrs.num_dmrs_cdm_grps_no_data = ul_bwp->dci_format == NR_UL_DCI_FORMAT_0_1 || tda_info->nrOfSymbols == 2 ? 1 : 2;
+    else
+      dmrs.num_dmrs_cdm_grps_no_data = 2;
+  }
 
   NR_DMRS_UplinkConfig_t *NR_DMRS_UplinkConfig = ul_bwp->pusch_Config ?
                                                  (tda_info->mapping_type == typeA ?
@@ -663,24 +749,24 @@ int get_mcs_from_bler(const NR_bler_options_t *bler_options,
     return old_mcs; // no update
 
   // last update is longer than x frames ago
-  const int dtx = (int)(stats->rounds[0] - bler_stats->rounds[0]);
-  const int dretx = (int)(stats->rounds[1] - bler_stats->rounds[1]);
-  const float bler_window = dtx > 0 ? (float) dretx / dtx : bler_stats->bler;
+  const int num_dl_sched = (int)(stats->rounds[0] - bler_stats->rounds[0]);
+  const int num_dl_retx = (int)(stats->rounds[1] - bler_stats->rounds[1]);
+  const float bler_window = num_dl_sched > 0 ? (float) num_dl_retx / num_dl_sched : bler_stats->bler;
   bler_stats->bler = BLER_FILTER * bler_stats->bler + (1 - BLER_FILTER) * bler_window;
 
   int new_mcs = old_mcs;
-  if (bler_stats->bler < bler_options->lower && old_mcs < max_mcs && dtx > 9)
+  if (bler_stats->bler < bler_options->lower && old_mcs < max_mcs && num_dl_sched > 3)
     new_mcs += 1;
   else if ((bler_stats->bler > bler_options->upper && old_mcs > 6) // above threshold
-      || (dtx <= 3 && old_mcs > 9))                                // no activity
+      || (num_dl_sched <= 3 && old_mcs > 9))                                // no activity
     new_mcs -= 1;
   // else we are within threshold boundaries
 
   bler_stats->last_frame = frame;
   bler_stats->mcs = new_mcs;
   memcpy(bler_stats->rounds, stats->rounds, sizeof(stats->rounds));
-  LOG_D(MAC, "frame %4d MCS %d -> %d (dtx %d, dretx %d, BLER wnd %.3f avg %.6f)\n",
-        frame, old_mcs, new_mcs, dtx, dretx, bler_window, bler_stats->bler);
+  LOG_D(MAC, "frame %4d MCS %d -> %d (num_dl_sched %d, num_dl_retx %d, BLER wnd %.3f avg %.6f)\n",
+        frame, old_mcs, new_mcs, num_dl_sched, num_dl_retx, bler_window, bler_stats->bler);
   return new_mcs;
 }
 
@@ -738,7 +824,8 @@ void config_uldci(const NR_UE_ServingCell_Info_t *sc_info,
 
       // antenna_ports.val = 0 for transform precoder is disabled, dmrs-Type=1, maxLength=1, Rank=1/2/3/4
       // Antenna Ports
-      dci_pdu_rel15->antenna_ports.val = 0;
+
+      dci_pdu_rel15->antenna_ports.val = NFAPI_MODE == NFAPI_MODE_AERIAL ? 2 : 0;
 
       // DMRS sequence initialization
       dci_pdu_rel15->dmrs_sequence_initialization.val = pusch_pdu->scid;
@@ -1031,6 +1118,22 @@ void nr_configure_pucch(nfapi_nr_pucch_pdu_t *pucch_pdu,
     pucch_pdu->sr_flag = O_sr;
     pucch_pdu->prb_size=1;
   }
+  // Beamforming
+  pucch_pdu->beamforming.num_prgs = 0;
+  pucch_pdu->beamforming.prg_size = 0; // pucch_pdu->prb_size;
+  pucch_pdu->beamforming.dig_bf_interface = 0;
+  if (pucch_pdu->beamforming.num_prgs > 0) {
+    if (pucch_pdu->beamforming.prgs_list == NULL) {
+      pucch_pdu->beamforming.prgs_list = calloc(pucch_pdu->beamforming.num_prgs, sizeof(*pucch_pdu->beamforming.prgs_list));
+    }
+    if (pucch_pdu->beamforming.dig_bf_interface > 0) {
+      if (pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list == NULL) {
+        pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list =
+            calloc(pucch_pdu->beamforming.dig_bf_interface, sizeof(*pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list));
+      }
+    }
+    pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = 0;
+  }
 }
 
 void set_r_pucch_parms(int rsetindex,
@@ -1204,6 +1307,8 @@ void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
                              ss->searchSpaceType->present,
                              cset0_bwp_size,
                              alt_size);
+  if (dci_size == 0)
+    return;
   pdcch_dci_pdu->PayloadSizeBits = dci_size;
   AssertFatal(dci_size <= 64, "DCI sizes above 64 bits not yet supported");
   if (dci_format == NR_DL_DCI_FORMAT_1_1 || dci_format == NR_UL_DCI_FORMAT_0_1)
@@ -1966,24 +2071,6 @@ NR_UE_info_t *find_nr_UE(NR_UEs_t *UEs, rnti_t rntiP)
   return NULL;
 }
 
-int find_nr_RA_id(module_id_t mod_idP, int CC_idP, rnti_t rntiP) {
-//------------------------------------------------------------------------------
-  int RA_id;
-  RA_t *ra = (RA_t *) &RC.nrmac[mod_idP]->common_channels[CC_idP].ra[0];
-
-  for (RA_id = 0; RA_id < NB_RA_PROC_MAX; RA_id++) {
-    LOG_D(NR_MAC, "Checking RA_id %d for %x : state %d\n",
-          RA_id,
-          rntiP,
-          ra[RA_id].state);
-
-    if (ra[RA_id].state != IDLE && ra[RA_id].rnti == rntiP)
-      return RA_id;
-  }
-
-  return -1;
-}
-
 int get_nrofHARQ_ProcessesForPDSCH(e_NR_PDSCH_ServingCellConfig__nrofHARQ_ProcessesForPDSCH n)
 {
   switch (n) {
@@ -2580,9 +2667,9 @@ void mac_remove_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rnti)
   delete_nr_ue_data(UE, nr_mac->common_channels, &UE_info->uid_allocator);
 }
 
-uint8_t nr_get_tpc(int target, uint8_t cqi, int incr) {
-  // al values passed to this function are x10
-  int snrx10 = (cqi*5) - 640;
+uint8_t nr_get_tpc(int target, int snrx10, int incr)
+{
+  // all values passed to this function are in dB x10
   if (snrx10 > target + incr) return 0; // decrease 1dB
   if (snrx10 < target - (3*incr)) return 3; // increase 3dB
   if (snrx10 < target - incr) return 2; // increase 1dB
@@ -3047,7 +3134,7 @@ void prepare_initial_ul_rrc_message(gNB_MAC_INST *mac, NR_UE_info_t *UE)
   DevAssert(cellGroupConfig->rlc_BearerToAddModList->list.count == 1);
   const NR_RLC_BearerConfig_t *bearer = cellGroupConfig->rlc_BearerToAddModList->list.array[0];
   DevAssert(bearer->servedRadioBearer->choice.srb_Identity == 1);
-  nr_rlc_add_srb(UE->rnti, DCCH, bearer);
+  nr_rlc_add_srb(UE->rnti, bearer->servedRadioBearer->choice.srb_Identity, bearer);
 }
 
 void nr_mac_trigger_release_timer(NR_UE_sched_ctrl_t *sched_ctrl, NR_SubcarrierSpacing_t subcarrier_spacing)

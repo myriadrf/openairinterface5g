@@ -893,19 +893,7 @@ uint8_t do_RRCSetupComplete(uint8_t *buffer,
   NR_RRCSetupComplete_IEs_t *ies = RrcSetupComplete->criticalExtensions.choice.rrcSetupComplete;
   ies->selectedPLMN_Identity = sel_plmn_id;
   ies->registeredAMF = NULL;
-
-  ies->ng_5G_S_TMSI_Value = CALLOC(1, sizeof(struct NR_RRCSetupComplete_IEs__ng_5G_S_TMSI_Value));
-  ies->ng_5G_S_TMSI_Value->present = NR_RRCSetupComplete_IEs__ng_5G_S_TMSI_Value_PR_ng_5G_S_TMSI;
-  NR_NG_5G_S_TMSI_t *stmsi = &ies->ng_5G_S_TMSI_Value->choice.ng_5G_S_TMSI;
-  stmsi->size = 6;
-  stmsi->buf = calloc(stmsi->size, sizeof(*stmsi->buf));
-  AssertFatal(stmsi->buf != NULL, "out of memory\n");
-  stmsi->buf[0] = 0x12;
-  stmsi->buf[1] = 0x34;
-  stmsi->buf[2] = 0x56;
-  stmsi->buf[3] = 0x78;
-  stmsi->buf[4] = 0x9A;
-  stmsi->buf[5] = 0xBC;
+  ies->ng_5G_S_TMSI_Value = NULL;
 
   memset(&ies->dedicatedNAS_Message,0,sizeof(OCTET_STRING_t));
   OCTET_STRING_fromBuf(&ies->dedicatedNAS_Message, dedicatedInfoNAS, dedicatedInfoNASLength);
@@ -979,7 +967,10 @@ uint8_t do_NR_ULInformationTransfer(uint8_t **buffer, uint32_t pdu_length, uint8
     return encoded;
 }
 
-uint8_t do_RRCReestablishmentRequest(uint8_t *buffer, uint16_t c_rnti)
+uint8_t do_RRCReestablishmentRequest(uint8_t *buffer,
+                                     NR_ReestablishmentCause_t cause,
+                                     uint32_t cell_id,
+                                     uint16_t c_rnti)
 {
   asn_enc_rval_t enc_rval;
   NR_UL_CCCH_Message_t ul_ccch_msg;
@@ -994,16 +985,16 @@ uint8_t do_RRCReestablishmentRequest(uint8_t *buffer, uint16_t c_rnti)
 
   rrcReestablishmentRequest = ul_ccch_msg.message.choice.c1->choice.rrcReestablishmentRequest;
   // test
-  rrcReestablishmentRequest->rrcReestablishmentRequest.reestablishmentCause = NR_ReestablishmentCause_reconfigurationFailure;
+  rrcReestablishmentRequest->rrcReestablishmentRequest.reestablishmentCause = cause;
   rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.c_RNTI = c_rnti;
-  rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.physCellId = 0;
+  rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.physCellId = cell_id;
+  // TODO properly setting shortMAC-I (see 5.3.7.4 of 331)
   rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.shortMAC_I.buf = buf;
   rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.shortMAC_I.buf[0] = 0x08;
   rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.shortMAC_I.buf[1] = 0x32;
   rrcReestablishmentRequest->rrcReestablishmentRequest.ue_Identity.shortMAC_I.size = 2;
 
-
-  if ( LOG_DEBUGFLAG(DEBUG_ASN1) ) {
+  if (LOG_DEBUGFLAG(DEBUG_ASN1)) {
     xer_fprint(stdout, &asn_DEF_NR_UL_CCCH_Message, (void *)&ul_ccch_msg);
   }
 

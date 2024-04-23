@@ -32,6 +32,7 @@
 
 #include <stdint.h>
 #include "assertions.h"
+#include "common/utils/assertions.h"
 #include "nr_common.h"
 #include <complex.h>
 
@@ -51,6 +52,15 @@ static const uint8_t bit_reverse_table_256[] = {
     0x13, 0x93, 0x53, 0xD3, 0x33, 0xB3, 0x73, 0xF3, 0x0B, 0x8B, 0x4B, 0xCB, 0x2B, 0xAB, 0x6B, 0xEB, 0x1B, 0x9B, 0x5B, 0xDB,
     0x3B, 0xBB, 0x7B, 0xFB, 0x07, 0x87, 0x47, 0xC7, 0x27, 0xA7, 0x67, 0xE7, 0x17, 0x97, 0x57, 0xD7, 0x37, 0xB7, 0x77, 0xF7,
     0x0F, 0x8F, 0x4F, 0xCF, 0x2F, 0xAF, 0x6F, 0xEF, 0x1F, 0x9F, 0x5F, 0xDF, 0x3F, 0xBF, 0x7F, 0xFF};
+
+void reverse_bits_u8(uint8_t const* in, size_t sz, uint8_t* out)
+{
+  DevAssert(in != NULL);
+  DevAssert(out != NULL);
+
+  for(size_t i = 0; i < sz; ++i)
+    out[i] = bit_reverse_table_256[in[i]];
+}
 
 // Reverse bits implementation based on http://graphics.stanford.edu/~seander/bithacks.html
 uint64_t reverse_bits(uint64_t in, int n_bits)
@@ -85,11 +95,9 @@ static const int tables_5_3_2[5][12] = {
     {32, 66, 132, 264, -1, -1, -1, -1, -1, -1, -1, -1} // 120FR2
 };
 
-int get_supported_band_index(int scs, int band, int n_rbs)
+int get_supported_band_index(int scs, frequency_range_t freq_range, int n_rbs)
 {
-  int scs_index = scs;
-  if (band > 256)
-    scs_index++;
+  int scs_index = scs + freq_range;
   for (int i = 0; i < 12; i++) {
     if(n_rbs == tables_5_3_2[scs_index][i])
       return i;
@@ -224,7 +232,7 @@ bool compare_relative_ul_channel_bw(int nr_band, int scs, int nb_ul, frame_type_
   // 38.101-1 section 6.2.2
   // Relative channel bandwidth <= 4% for TDD bands and <= 3% for FDD bands
   int index = get_nr_table_idx(nr_band, scs);
-  int bw_index = get_supported_band_index(scs, nr_band, nb_ul);
+  int bw_index = get_supported_band_index(scs, nr_band > 256 ? FR2 : FR1, nb_ul);
   int band_size_khz = get_supported_bw_mhz(nr_band > 256 ? FR2 : FR1, bw_index) * 1000;
   float limit = frame_type == TDD ? 0.04 : 0.03;
   float rel_bw = (float) (2 * band_size_khz) / (float) (nr_bandtable[index].ul_max + nr_bandtable[index].ul_min);
@@ -376,6 +384,115 @@ int get_nb_periods_per_frame(uint8_t tdd_period)
   return nb_periods_per_frame;
 }
 
+void get_delta_arfcn(int i, uint32_t nrarfcn, uint64_t N_OFFs)
+{
+  uint32_t delta_arfcn = nrarfcn - N_OFFs;
+
+  if(delta_arfcn % (nr_bandtable[i].step_size) != 0)
+    LOG_E(NR_MAC, "nrarfcn %u is not on the channel raster for step size %lu\n", nrarfcn, nr_bandtable[i].step_size);
+}
+
+uint32_t to_nrarfcn(int nr_bandP, uint64_t dl_CarrierFreq, uint8_t scs_index, uint32_t bw)
+{
+  uint64_t dl_CarrierFreq_by_1k = dl_CarrierFreq / 1000;
+  int bw_kHz = bw / 1000;
+  uint32_t nrarfcn;
+  int i = get_nr_table_idx(nr_bandP, scs_index);
+
+  LOG_D(NR_MAC, "Searching for nr band %d DL Carrier frequency %llu bw %u\n", nr_bandP, (long long unsigned int)dl_CarrierFreq, bw);
+
+  AssertFatal(dl_CarrierFreq_by_1k >= nr_bandtable[i].dl_min,
+              "Band %d, bw %u : DL carrier frequency %llu kHz < %llu\n",
+	      nr_bandP, bw, (long long unsigned int)dl_CarrierFreq_by_1k,
+	      (long long unsigned int)nr_bandtable[i].dl_min);
+  AssertFatal(dl_CarrierFreq_by_1k <= (nr_bandtable[i].dl_max - bw_kHz/2),
+              "Band %d, dl_CarrierFreq %llu bw %u: DL carrier frequency %llu kHz > %llu\n",
+	      nr_bandP, (long long unsigned int)dl_CarrierFreq,bw, (long long unsigned int)dl_CarrierFreq_by_1k,
+	      (long long unsigned int)(nr_bandtable[i].dl_max - bw_kHz/2));
+
+  int deltaFglobal = 60;
+  uint32_t N_REF_Offs = 2016667;
+  uint64_t F_REF_Offs_khz = 24250080;
+
+  if (dl_CarrierFreq < 24.25e9) {
+    deltaFglobal = 15;
+    N_REF_Offs = 600000;
+    F_REF_Offs_khz = 3000000;
+  }
+  if (dl_CarrierFreq < 3e9) {
+    deltaFglobal = 5;
+    N_REF_Offs = 0;
+    F_REF_Offs_khz = 0;
+  }
+
+  // This is equation before Table 5.4.2.1-1 in 38101-1-f30
+  // F_REF=F_REF_Offs + deltaF_Global(N_REF-NREF_REF_Offs)
+  nrarfcn =  (((dl_CarrierFreq_by_1k - F_REF_Offs_khz) / deltaFglobal) + N_REF_Offs);
+  //get_delta_arfcn(i, nrarfcn, nr_bandtable[i].N_OFFs_DL);
+
+  return nrarfcn;
+}
+
+// This function computes the RF reference frequency from the NR-ARFCN according to 5.4.2.1 of 3GPP TS 38.104
+// this function applies to both DL and UL
+uint64_t from_nrarfcn(int nr_bandP, uint8_t scs_index, uint32_t nrarfcn)
+{
+  int deltaFglobal = 5;
+  uint32_t N_REF_Offs = 0;
+  uint64_t F_REF_Offs_khz = 0;
+  uint64_t N_OFFs, frequency, freq_min;
+  int i = get_nr_table_idx(nr_bandP, scs_index);
+
+  if (nrarfcn > 599999 && nrarfcn < 2016667) {
+    deltaFglobal = 15;
+    N_REF_Offs = 600000;
+    F_REF_Offs_khz = 3000000;
+  }
+  if (nrarfcn > 2016666 && nrarfcn < 3279166) {
+    deltaFglobal = 60;
+    N_REF_Offs = 2016667;
+    F_REF_Offs_khz = 24250080;
+  }
+
+  int32_t delta_duplex = get_delta_duplex(nr_bandP, scs_index);
+
+  if (delta_duplex <= 0){ // DL band >= UL band
+    if (nrarfcn >= nr_bandtable[i].N_OFFs_DL){ // is TDD of FDD DL
+      N_OFFs = nr_bandtable[i].N_OFFs_DL;
+      freq_min = nr_bandtable[i].dl_min;
+    } else {// is FDD UL
+      N_OFFs = nr_bandtable[i].N_OFFs_DL + delta_duplex/deltaFglobal;
+      freq_min = nr_bandtable[i].ul_min;
+    }
+  } else { // UL band > DL band
+    if (nrarfcn >= nr_bandtable[i].N_OFFs_DL + delta_duplex / deltaFglobal){ // is FDD UL
+      N_OFFs = nr_bandtable[i].N_OFFs_DL + delta_duplex / deltaFglobal;
+      freq_min = nr_bandtable[i].ul_min;
+    } else { // is FDD DL
+      N_OFFs = nr_bandtable[i].N_OFFs_DL;
+      freq_min = nr_bandtable[i].dl_min;
+    }
+  }
+
+  LOG_D(NR_MAC, "Frequency from NR-ARFCN for N_OFFs %lu, duplex spacing %d KHz, deltaFglobal %d KHz\n",
+        N_OFFs,
+        delta_duplex,
+        deltaFglobal);
+
+  AssertFatal(nrarfcn >= N_OFFs,"nrarfcn %u < N_OFFs[%d] %llu\n", nrarfcn, nr_bandtable[i].band, (long long unsigned int)N_OFFs);
+  get_delta_arfcn(i, nrarfcn, N_OFFs);
+
+  frequency = 1000 * (F_REF_Offs_khz + (nrarfcn - N_REF_Offs) * deltaFglobal);
+
+  LOG_D(NR_MAC, "Computing frequency (nrarfcn %llu => %llu KHz (freq_min %llu KHz, NR band %d N_OFFs %llu))\n",
+        (unsigned long long)nrarfcn,
+        (unsigned long long)frequency/1000,
+        (unsigned long long)freq_min,
+        nr_bandP,
+        (unsigned long long)N_OFFs);
+
+  return frequency;
+}
 
 int get_first_ul_slot(int nrofDownlinkSlots, int nrofDownlinkSymbols, int nrofUplinkSymbols)
 {
@@ -429,29 +546,36 @@ int32_t get_delta_duplex(int nr_bandP, uint8_t scs_index)
 }
 
 // Returns the corresponding row index of the NR table
-int get_nr_table_idx(int nr_bandP, uint8_t scs_index) {
+int get_nr_table_idx(int nr_bandP, uint8_t scs_index)
+{
   int scs_khz = 15 << scs_index;
-  int supplementary_bands[] = {29,75,76,80,81,82,83,84,86,89,95};
-  for(int j = 0; j < sizeofArray(supplementary_bands); j++){
-    if (nr_bandP == supplementary_bands[j])
-      AssertFatal(0 == 1, "Band %d is a supplementary band (%d). This is not supported yet.\n", nr_bandP, supplementary_bands[j]);
+  int supplementary_bands[] = {29, 75, 76, 80, 81, 82, 83, 84, 86, 89, 95};
+  for(int j = 0; j < sizeofArray(supplementary_bands); j++) {
+    AssertFatal(nr_bandP != supplementary_bands[j],
+                "Band %d is a supplementary band (%d). This is not supported yet.\n",
+                nr_bandP,
+                supplementary_bands[j]);
   }
-
   int i;
   for (i = 0; i < sizeofArray(nr_bandtable); i++) {
-    if ( nr_bandtable[i].band == nr_bandP && nr_bandtable[i].deltaf_raster == scs_khz )
+    if (nr_bandtable[i].band == nr_bandP && nr_bandtable[i].deltaf_raster == scs_khz)
       break;
   }
 
   if (i == sizeofArray(nr_bandtable)) {
-    LOG_I(PHY, "not found same deltaf_raster == scs_khz, use only band and last deltaf_raster \n");
-    for(i=sizeofArray(nr_bandtable)-1; i >=0; i--)
-       if ( nr_bandtable[i].band == nr_bandP )
+    LOG_D(PHY, "Not found same deltaf_raster == scs_khz, use only band and last deltaf_raster \n");
+    for(i = sizeofArray(nr_bandtable) - 1; i >= 0; i--)
+       if (nr_bandtable[i].band == nr_bandP)
          break;
   }
 
-  AssertFatal(i >= 0 && i < sizeofArray(nr_bandtable), "band is not existing: %d\n",nr_bandP);
-  LOG_D(PHY, "NR band table index %d (Band %d, dl_min %lu, ul_min %lu)\n", i, nr_bandtable[i].band, nr_bandtable[i].dl_min,nr_bandtable[i].ul_min);
+  AssertFatal(i >= 0 && i < sizeofArray(nr_bandtable), "band is not existing: %d\n", nr_bandP);
+  LOG_D(PHY,
+        "NR band table index %d (Band %d, dl_min %lu, ul_min %lu)\n",
+         i,
+         nr_bandtable[i].band,
+         nr_bandtable[i].dl_min,
+         nr_bandtable[i].ul_min);
 
   return i;
 }
@@ -720,18 +844,6 @@ void get_samplerate_and_bw(int mu,
   }
 }
 
-void get_K1_K2(int N1, int N2, int *K1, int *K2)
-{
-  // num of allowed k1 and k2 according to 5.2.2.2.1-3 and -4 in 38.214
-  if(N2 == N1 || N1 == 2)
-    *K1 = 2;
-  else if (N2 == 1)
-    *K1 = 5;
-  else
-    *K1 = 3;
-  *K2 = N2 > 1 ? 2 : 1;
-}
-
 // from start symbol index and nb or symbols to symbol occupation bitmap in a slot
 uint16_t SL_to_bitmap(int startSymbolIndex, int nrOfSymbols) {
  return ((1<<nrOfSymbols)-1)<<startSymbolIndex;
@@ -822,38 +934,8 @@ void freq2time(uint16_t ofdm_symbol_size,
                int16_t *freq_signal,
                int16_t *time_signal)
 {
-  switch (ofdm_symbol_size) {
-    case 128:
-      idft(IDFT_128, freq_signal, time_signal, 1);
-      break;
-    case 256:
-      idft(IDFT_256, freq_signal, time_signal, 1);
-      break;
-    case 512:
-      idft(IDFT_512, freq_signal, time_signal, 1);
-      break;
-    case 1024:
-      idft(IDFT_1024, freq_signal, time_signal, 1);
-      break;
-    case 1536:
-      idft(IDFT_1536, freq_signal, time_signal, 1);
-      break;
-    case 2048:
-      idft(IDFT_2048, freq_signal, time_signal, 1);
-      break;
-    case 4096:
-      idft(IDFT_4096, freq_signal, time_signal, 1);
-      break;
-    case 6144:
-      idft(IDFT_6144, freq_signal, time_signal, 1);
-      break;
-    case 8192:
-      idft(IDFT_8192, freq_signal, time_signal, 1);
-      break;
-    default:
-      AssertFatal (1 == 0, "Invalid ofdm_symbol_size %i\n", ofdm_symbol_size);
-      break;
-  }
+  const idft_size_idx_t idft_size = get_idft(ofdm_symbol_size);
+  idft(idft_size, freq_signal, time_signal, 1);
 }
 
 void nr_est_delay(int ofdm_symbol_size, const c16_t *ls_est, c16_t *ch_estimates_time, delay_t *delay)
@@ -902,6 +984,8 @@ bool nr_timer_tick(NR_timer_t *timer)
   bool expired = false;
   if (timer->active) {
     timer->counter += timer->step;
+    if (timer->target == UINT_MAX) // infinite target, never expires
+      return false;
     expired = nr_timer_expired(*timer);
     if (expired)
       timer->active = false;
@@ -911,7 +995,14 @@ bool nr_timer_tick(NR_timer_t *timer)
 
 bool nr_timer_expired(NR_timer_t timer)
 {
+  if (timer.target == UINT_MAX) // infinite target, never expires
+    return false;
   return (timer.counter >= timer.target);
+}
+
+uint32_t nr_timer_elapsed_time(NR_timer_t timer)
+{
+  return timer.counter;
 }
 
 void nr_timer_setup(NR_timer_t *timer, const uint32_t target, const uint32_t step)

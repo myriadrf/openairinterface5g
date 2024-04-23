@@ -96,6 +96,8 @@
 
 #define MAX_DELAY_COMP 20
 
+#define PBCH_MAX_RE_PER_SYMBOL (20 * 12)
+
 typedef enum {
   NR_MU_0=0,
   NR_MU_1,
@@ -115,7 +117,7 @@ typedef enum{
 typedef struct {
   uint8_t k_0_p[MAX_NUM_NR_SRS_AP][MAX_NUM_NR_SRS_SYMBOLS];
   uint8_t srs_generated_signal_bits;
-  int32_t **srs_generated_signal;
+  c16_t **srs_generated_signal;
   nfapi_nr_srs_pdu_t srs_pdu;
 } nr_srs_info_t;
 
@@ -168,14 +170,12 @@ struct NR_DL_FRAME_PARMS {
   /// Frame type (0 FDD, 1 TDD)
   frame_type_t frame_type;
   uint8_t tdd_config;
-  /// Sidelink Cell ID
-  uint16_t Nid_SL;
   /// Cell ID
   uint16_t Nid_cell;
   /// subcarrier spacing (15,30,60,120)
   uint32_t subcarrier_spacing;
   /// 3/4 sampling
-  uint8_t threequarter_fs;
+  int threequarter_fs;
   /// Size of FFT
   uint16_t ofdm_symbol_size;
   /// Number of prefix samples in all but first symbol of slot
@@ -261,6 +261,7 @@ struct NR_DL_FRAME_PARMS {
   uint32_t ofdm_offset_divisor;
   uint16_t tdd_slot_config;
   uint8_t tdd_period;
+  bool print_ue_help_cmdline_log;
 };
 
 // PRS config structures

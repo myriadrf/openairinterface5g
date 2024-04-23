@@ -40,7 +40,6 @@
 #include "nr_rrc_common.h"
 #include "ds/byte_array.h"
 
-#include "common/ngran_types.h"
 #include "common/platform_constants.h"
 #include "common/platform_types.h"
 #include "mac_rrc_dl.h"
@@ -189,6 +188,16 @@ typedef struct pdu_session_param_s {
   uint8_t cause_value;
 } rrc_pdu_session_param_t;
 
+/**
+ * @brief F1-U tunnel configuration
+*/
+typedef struct f1u_tunnel_s {
+  /* Downlink F1-U Tunnel Endpoint Identifier (CU-UP/DU) */
+  uint32_t cuup_teid_f1u;
+  /* DL F1-U Transport Layer */
+  transport_layer_addr_t cuup_addr_f1u;
+} f1u_tunnel_t;
+
 typedef struct drb_s {
   int status;
   int defaultDRBid;
@@ -221,6 +230,8 @@ typedef struct drb_s {
       int cipheringDisabled;
     } ext1;
   } pdcp_config;
+  // F1-U
+  f1u_tunnel_t f1u_tunnel_config;
 } drb_t;
 
 typedef enum {
@@ -238,10 +249,12 @@ typedef enum {
 } rrc_action_t;
 
 typedef struct gNB_RRC_UE_s {
+  time_t last_seen; // last time this UE has been accessed
+
   drb_t                              established_drbs[MAX_DRBS_PER_UE];
   NR_DRB_ToReleaseList_t            *DRB_ReleaseList;
 
-  NR_SRB_INFO_TABLE_ENTRY Srb[maxSRBs]; // 3gpp max is 3 SRBs, number 1..3, we waste the entry 0 for code simplicity
+  NR_SRB_INFO_TABLE_ENTRY Srb[NR_NUM_SRB];
   NR_MeasConfig_t                   *measConfig;
   NR_HANDOVER_INFO                  *handover_info;
   NR_MeasResults_t                  *measResults;

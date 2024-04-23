@@ -19,7 +19,7 @@
 #include <cmath>
 #include <time.h>
 #include <limits>
-#include "common/utils/LOG/log_extern.h"
+#include "common/utils/LOG/log.h"
 #include "common_lib.h"
 #include <chrono>
 
@@ -133,11 +133,12 @@ static void trx_iris_end(openair0_device *device) {
 
 
 static int
-trx_iris_write(openair0_device *device, openair0_timestamp timestamp, void **buff, int nsamps, int cc, int flags) {
+trx_iris_write(openair0_device *device, openair0_timestamp timestamp, void **buff, int nsamps, int cc, int flags)
+{
     using namespace std::chrono;
 
     int flag = 0;
-
+    timestamp -= device->openair0_cfg->command_line_sample_advance - device->openair0_cfg->tx_sample_advance;
     iris_state_t *s = (iris_state_t *) device->priv;
     int nsamps2; // aligned to upper 32 or 16 byte boundary
     nsamps2 = (nsamps+7)>>3;
@@ -158,14 +159,13 @@ trx_iris_write(openair0_device *device, openair0_timestamp timestamp, void **buf
         return nsamps;
     }
 
-    if (flags == TX_BURST_START || flags == TX_BURST_MIDDLE)
+    if (flags == TX_BURST_START || flags == TX_BURST_MIDDLE) {
 
     } else if (flags == TX_BURST_END || flags == TX_BURST_START_AND_END) {
         flag |= SOAPY_SDR_END_BURST;
     }
 
-
-    long long timeNs = SoapySDR::ticksToTimeNs(timestamp, s->sample_rate / SAMPLE_RATE_DOWN);
+    long long timeNs = SoapySDR::ticksToTimeNs(timestamp - device.command_line_sample_advance, s->sample_rate / SAMPLE_RATE_DOWN);
     uint32_t *samps[2]; //= (uint32_t **)buff;
     int r;
     int m = s->tx_num_channels;

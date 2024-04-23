@@ -519,7 +519,7 @@ typedef struct {
   //! estimated avg subband noise power (dB)
   unsigned int n0_subband_power_avg_dB;
   //! estimated avg subband noise power per antenna (dB)
-  unsigned int n0_subband_power_avg_perANT_dB[NB_ANTENNAS_RX];
+  unsigned int n0_subband_power_avg_perANT_dB[MAX_ANT];
   //! estimated avg noise power per RB (dB)
   int n0_subband_power_tot_dB[275];
   //! estimated avg noise power per RB (dBm)
@@ -531,7 +531,6 @@ typedef struct {
 
 
 #define MAX_NUM_NR_RX_RACH_PDUS 4
-#define MAX_NUM_NR_RX_PRACH_PREAMBLES 4
 #define MAX_UL_PDUS_PER_SLOT 8
 #define MAX_NUM_NR_SRS_PDUS 8
 // the current RRC resource allocation is that each UE gets its
@@ -573,8 +572,6 @@ typedef struct PHY_VARS_gNB_s {
   nfapi_nr_uci_t uci_pdu_list[MAX_NUM_NR_UCI_PDUS];
   /// NFAPI PRACH information
   nfapi_nr_prach_indication_pdu_t prach_pdu_indication_list[MAX_NUM_NR_RX_RACH_PDUS];
-  /// NFAPI PRACH information
-  nfapi_nr_prach_indication_preamble_t preamble_list[MAX_NUM_NR_RX_PRACH_PREAMBLES];
 
   nfapi_nr_ul_tti_request_t     UL_tti_req;
   nfapi_nr_uci_indication_t uci_indication;
@@ -676,7 +673,6 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t dlsch_modulation_stats;
   time_stats_t dlsch_scrambling_stats;
   time_stats_t dlsch_resource_mapping_stats;
-  time_stats_t dlsch_layer_mapping_stats;
   time_stats_t dlsch_precoding_stats;
   time_stats_t tinput;
   time_stats_t tprep;
@@ -693,6 +689,7 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t ul_indication_stats;
   time_stats_t slot_indication_stats;
   time_stats_t schedule_response_stats;
+  time_stats_t ulsch_decoding_stats;
   time_stats_t ulsch_ldpc_decoding_stats;
   time_stats_t ulsch_deinterleaving_stats;
   time_stats_t ulsch_channel_estimation_stats;

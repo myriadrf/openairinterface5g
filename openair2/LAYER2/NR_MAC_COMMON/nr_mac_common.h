@@ -55,10 +55,6 @@ uint32_t get_Y(const NR_SearchSpace_t *ss, int slot, rnti_t rnti);
 
 uint8_t get_BG(uint32_t A, uint16_t R);
 
-uint64_t from_nrarfcn(int nr_bandP, uint8_t scs_index, uint32_t dl_nrarfcn);
-
-uint32_t to_nrarfcn(int nr_bandP, uint64_t dl_CarrierFreq, uint8_t scs_index, uint32_t bw);
-
 int16_t fill_dmrs_mask(const NR_PDSCH_Config_t *pdsch_Config,
                        int dci_format,
                        int dmrs_TypeA_Position,
@@ -136,10 +132,6 @@ void find_aggregation_candidates(uint8_t *aggregation_level,
                                  uint8_t *nr_of_candidates,
                                  const NR_SearchSpace_t *ss,
                                  int maxL);
-
-void find_monitoring_periodicity_offset_common(NR_SearchSpace_t *ss,
-                                               uint16_t *slot_period,
-                                               uint16_t *offset);
 
 int get_nr_prach_info_from_index(uint8_t index,
                                  int frame,
@@ -321,5 +313,7 @@ void compute_csi_bitlen(NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *cs
 uint16_t nr_get_csi_bitlen(nr_csi_report_t *csi_report_template, uint8_t csi_report_id);
 
 uint16_t compute_PDU_length(uint32_t num_TLV, uint16_t total_length);
+
+rnti_t nr_get_ra_rnti(uint8_t s_id, uint8_t t_id, uint8_t f_id, uint8_t ul_carrier_id);
 
 #endif

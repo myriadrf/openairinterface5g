@@ -97,7 +97,6 @@ static void free_uci_inds(nfapi_nr_uci_indication_t *uci_ind)
     free(uci_ind->uci_list);
     uci_ind->uci_list = NULL;
     free(uci_ind);
-    uci_ind = NULL;
 }
 
 int8_t nr_ue_scheduled_response_stub(nr_scheduled_response_t *scheduled_response) {
@@ -125,16 +124,14 @@ int8_t nr_ue_scheduled_response_stub(nr_scheduled_response_t *scheduled_response
           rach_ind->pdu_list[pdu_index].freq_index = prach_pdu->num_ra;
           rach_ind->pdu_list[pdu_index].avg_rssi = 128;
           rach_ind->pdu_list[pdu_index].avg_snr = 0xff; // invalid for now
-          rach_ind->pdu_list[pdu_index].num_preamble = 1;
           const int num_p = rach_ind->pdu_list[pdu_index].num_preamble;
-          rach_ind->pdu_list[pdu_index].preamble_list = calloc(num_p, sizeof(nfapi_nr_prach_indication_preamble_t));
+          AssertFatal(num_p == 1, "can handle only one preamble in preamble_list\n");
+          rach_ind->pdu_list[pdu_index].num_preamble = 1;
           rach_ind->pdu_list[pdu_index].preamble_list[0].preamble_index = prach_pdu->ra_PreambleIndex;
           rach_ind->pdu_list[pdu_index].preamble_list[0].timing_advance = 0;
           rach_ind->pdu_list[pdu_index].preamble_list[0].preamble_pwr = 0xffffffff;
 
           if (!put_queue(&nr_rach_ind_queue, rach_ind)) {
-            for (int pdu_index = 0; pdu_index < rach_ind->number_of_pdus; pdu_index++)
-              free(rach_ind->pdu_list[pdu_index].preamble_list);
             free(rach_ind->pdu_list);
             free(rach_ind);
           }
@@ -320,7 +317,7 @@ static void configure_dlsch(NR_UE_DLSCH_t *dlsch0,
   }
 }
 
-void configure_ta_command(PHY_VARS_NR_UE *ue, fapi_nr_ta_command_pdu *ta_command_pdu)
+static void configure_ta_command(PHY_VARS_NR_UE *ue, fapi_nr_ta_command_pdu *ta_command_pdu)
 {
 
   /* Time Alignment procedure
@@ -365,13 +362,19 @@ void configure_ta_command(PHY_VARS_NR_UE *ue, fapi_nr_ta_command_pdu *ta_command
   const double t_subframe = 1.0; // subframe duration of 1 msec
   const int ul_tx_timing_adjustment = 1 + (int)ceil(slots_per_subframe*(N_t_1 + N_t_2 + N_TA_max + 0.5)/t_subframe);
 
-  ue->ta_slot = (ta_command_pdu->ta_slot + ul_tx_timing_adjustment) % slots_per_frame;
-  if (ta_command_pdu->ta_slot + ul_tx_timing_adjustment > slots_per_frame)
-    ue->ta_frame = (ta_command_pdu->ta_frame + 1) % 1024;
-  else
+  if (ta_command_pdu->is_rar) {
+    ue->ta_slot = ta_command_pdu->ta_slot;
     ue->ta_frame = ta_command_pdu->ta_frame;
-
-  ue->ta_command = ta_command_pdu->ta_command;
+    ue->timing_advance = 0;
+    ue->ta_command = ta_command_pdu->ta_command + 31; // To use TA adjustment algo in ue_ta_procedures()
+  } else {
+    ue->ta_slot = (ta_command_pdu->ta_slot + ul_tx_timing_adjustment) % slots_per_frame;
+    if (ta_command_pdu->ta_slot + ul_tx_timing_adjustment > slots_per_frame)
+      ue->ta_frame = (ta_command_pdu->ta_frame + 1) % 1024;
+    else
+      ue->ta_frame = ta_command_pdu->ta_frame;
+    ue->ta_command = ta_command_pdu->ta_command;
+  }
   LOG_D(PHY,"TA command received in Frame.Slot %d.%d -- Starting UL time alignment procedures. TA update will be applied at frame %d slot %d\n",
         ta_command_pdu->ta_frame, ta_command_pdu->ta_slot, ue->ta_frame, ue->ta_slot);
 }
@@ -465,7 +468,7 @@ static void nr_ue_scheduled_response_ul(PHY_VARS_NR_UE *phy, fapi_nr_ul_config_r
                 ul_config->slot,
                 pdu->pusch_config_pdu.tx_request_body.pdu_length,
                 current_harq_pid);
-          memcpy(harq_process_ul_ue->a,
+          memcpy(harq_process_ul_ue->payload_AB,
                  pdu->pusch_config_pdu.tx_request_body.pdu,
                  pdu->pusch_config_pdu.tx_request_body.pdu_length);
         }
@@ -538,7 +541,6 @@ int8_t nr_ue_phy_config_request(nr_phy_config_t *phy_config)
   fapi_nr_config_request_t *nrUE_config = &PHY_vars_UE_g[phy_config->Mod_id][phy_config->CC_id]->nrUE_config;
   if(phy_config != NULL) {
     memcpy(nrUE_config, &phy_config->config_req, sizeof(fapi_nr_config_request_t));
-    pushNotifiedFIFO(&PHY_vars_UE_g[phy_config->Mod_id][phy_config->CC_id]->phy_config_ind, newNotifiedFIFO_elt(1,0,NULL,NULL));
   }
   return 0;
 }

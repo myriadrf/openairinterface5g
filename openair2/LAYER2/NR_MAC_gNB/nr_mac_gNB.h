@@ -78,13 +78,13 @@
 
 /* Interface */
 #include "nfapi_nr_interface_scf.h"
+#include "nfapi_nr_interface.h"
 #include "NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "mac_rrc_ul.h"
 
 /* MAC */
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
 #include "LAYER2/NR_MAC_COMMON/nr_mac_common.h"
-#include "LAYER2/MAC/mac.h"
 #include "NR_TAG.h"
 
 #include <openair3/UICC/usim_interface.h>
@@ -112,15 +112,15 @@ typedef struct {
 } NR_list_t;
 
 typedef enum {
-  RA_IDLE = 0,
-  Msg2 = 1,
-  WAIT_Msg3 = 2,
-  Msg3_retransmission = 3,
-  Msg3_dcch_dtch = 4,
-  Msg4 = 5,
-  WAIT_Msg4_ACK = 6
+  nrRA_gNB_IDLE = 0,
+  nrRA_Msg2 = 1,
+  nrRA_WAIT_Msg3 = 2,
+  nrRA_Msg3_retransmission = 3,
+  nrRA_Msg4 = 4,
+  nrRA_WAIT_Msg4_ACK = 5,
 } RA_gNB_state_t;
-
+static const char *const nrra_text[] =
+    {"IDLE", "Msg2", "WAIT_Msg3", "Msg3_retransmission", "Msg3_dcch_dtch", "Msg4", "WAIT_Msg4_ACK"};
 typedef struct nr_pdsch_AntennaPorts_t {
   int N1;
   int N2;
@@ -161,11 +161,17 @@ typedef struct NR_sched_pdcch {
 /*! \brief gNB template for the Random access information */
 typedef struct {
   /// Flag to indicate this process is active
-  RA_gNB_state_t state;
+  RA_gNB_state_t ra_state;
   /// CORESET0 configured flag
   int coreset0_configured;
+  /// Frame where preamble was received
+  int preamble_frame;
   /// Slot where preamble was received
   uint8_t preamble_slot;
+  /// Received preamble_index
+  uint8_t preamble_index;
+  /// Timing offset indicated by PHY
+  int16_t timing_offset;
   /// Subframe where Msg2 is to be sent
   uint8_t Msg2_slot;
   /// Frame where Msg2 is to be sent
@@ -175,41 +181,27 @@ typedef struct {
   /// Frame where Msg3 is to be sent
   frame_t Msg3_frame;
   /// Msg3 time domain allocation index
-  uint8_t Msg3_tda_id;
+  int Msg3_tda_id;
   /// harq_pid used for Msg4 transmission
   uint8_t harq_pid;
   /// UE RNTI allocated during RAR
   rnti_t rnti;
   /// RA RNTI allocated from received PRACH
   uint16_t RA_rnti;
-  /// Received preamble_index
-  uint8_t preamble_index;
   /// Received UE Contention Resolution Identifier
   uint8_t cont_res_id[6];
-  /// Timing offset indicated by PHY
-  int16_t timing_offset;
-  /// Timeout for RRC connection
-  int16_t RRC_timer;
   /// Msg3 first RB
-  uint8_t msg3_first_rb;
+  int msg3_first_rb;
   /// Msg3 number of RB
-  uint8_t msg3_nb_rb;
+  int msg3_nb_rb;
   /// Msg3 BWP start
-  uint8_t msg3_bwp_start;
+  int msg3_bwp_start;
   /// Msg3 TPC command
   uint8_t msg3_TPC;
-  /// Msg3 ULdelay command
-  uint8_t msg3_ULdelay;
-  /// Msg3 cqireq command
-  uint8_t msg3_cqireq;
   /// Round of Msg3 HARQ
   uint8_t msg3_round;
   int msg3_startsymb;
-  int msg3_nrsymb;
-  /// TBS used for Msg4
-  int msg4_TBsize;
-  /// MCS used for Msg4
-  int msg4_mcs;
+  int msg3_nbSymb;
   /// MAC PDU length for Msg4
   int mac_pdu_length;
   /// RA search space
@@ -234,30 +226,17 @@ typedef struct {
 
 /*! \brief gNB common channels */
 typedef struct {
-  int Ncp;
-  int nr_band;
   frame_type_t frame_type;
-  uint64_t dl_CarrierFreq;
   NR_BCCH_BCH_Message_t *mib;
   NR_BCCH_DL_SCH_Message_t *sib1;
   NR_ServingCellConfigCommon_t *ServingCellConfigCommon;
   /// pre-configured ServingCellConfig that is default for every UE
   NR_ServingCellConfig_t *pre_ServingCellConfig;
-  NR_ARFCN_ValueEUTRA_t ul_CarrierFreq;
-  long ul_Bandwidth;
   /// Outgoing MIB PDU for PHY
   uint8_t MIB_pdu[3];
   /// Outgoing BCCH pdu for PHY
   uint8_t sib1_bcch_pdu[NR_MAX_SIB_LENGTH / 8];
   int sib1_bcch_length;
-  /// Outgoing BCCH DCI allocation
-  uint32_t BCCH_alloc_pdu;
-  /// Outgoing CCCH pdu for PHY
-  CCCH_PDU CCCH_pdu;
-  /// Outgoing PCCH DCI allocation
-  uint32_t PCCH_alloc_pdu;
-  /// Outgoing PCCH pdu for PHY
-  PCCH_PDU PCCH_pdu;
   /// Template for RA computations
   NR_RA_t ra[NR_NB_RA_PROC_MAX];
   /// VRB map for common channels
@@ -265,22 +244,19 @@ typedef struct {
   /// VRB map for common channels and PUSCH, dynamically allocated because
   /// length depends on number of slots and RBs
   uint16_t *vrb_map_UL;
-  /// number of subframe allocation pattern available for MBSFN sync area
-  uint8_t num_sf_allocation_pattern;
   ///Number of active SSBs
-  uint8_t num_active_ssb;
+  int num_active_ssb;
   //Total available prach occasions per configuration period
-  uint32_t total_prach_occasions_per_config_period;
+  int total_prach_occasions_per_config_period;
   //Total available prach occasions
-  uint32_t total_prach_occasions;
+  int total_prach_occasions;
   //Max Association period
-  uint8_t max_association_period;
+  int max_association_period;
   //SSB index
   uint8_t ssb_index[MAX_NUM_OF_SSB];
   //CB preambles for each SSB
-  uint8_t cb_preambles_per_ssb;
+  int cb_preambles_per_ssb;
 } NR_COMMON_channels_t;
-
 
 // SP ZP CSI-RS Resource Set Activation/Deactivation MAC CE
 typedef struct sp_zp_csirs {
@@ -747,6 +723,8 @@ typedef struct f1_config_t {
 typedef struct gNB_MAC_INST_s {
   /// Ethernet parameters for northbound midhaul interface
   eth_params_t                    eth_params_n;
+  /// address for F1U to bind, ports in eth_params_n
+  char *f1u_addr;
   /// Ethernet parameters for fronthaul interface
   eth_params_t                    eth_params_s;
   /// Module

@@ -39,6 +39,7 @@
 
 #include "defs_nr_common.h"
 #include "CODING/nrPolar_tools/nr_polar_pbch_defs.h"
+#include "PHY/defs_nr_sl_UE.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,9 +87,6 @@
 #define openair_sched_exit() exit(-1)
 
 #define bzero(s,n) (memset((s),0,(n)))
-#define cmax(a,b)  ((a>b) ? (a) : (b))
-#define cmin(a,b)  ((a<b) ? (a) : (b))
-#define cmax3(a,b,c) ((cmax(a,b)>c) ? (cmax(a,b)) : (c))
 /// suppress compiler warning for unused arguments
 #define UNUSED(x) (void)x;
 
@@ -310,16 +308,6 @@ typedef struct {
   fapi_nr_ul_config_srs_pdu srs_config_pdu;
 } NR_UE_SRS;
 
-// structure used for multiple SSB detection
-typedef struct NR_UE_SSB {
-  uint8_t i_ssb;   // i_ssb between 0 and 7 (it corresponds to ssb_index only for Lmax=4,8)
-  uint8_t n_hf;    // n_hf = 0,1 for Lmax =4 or n_hf = 0 for Lmax =8,64
-  uint32_t metric; // metric to order SSB hypothesis
-  uint32_t c_re;
-  uint32_t c_im;
-  struct NR_UE_SSB *next_ssb;
-} NR_UE_SSB;
-
 typedef struct UE_NR_SCAN_INFO_s {
   /// 10 best amplitudes (linear) for each pss signals
   int32_t amp[3][10];
@@ -485,12 +473,8 @@ typedef struct PHY_VARS_NR_UE_s {
   uint8_t               init_sync_frame;
   /// temporary offset during cell search prior to MIB decoding
   int              ssb_offset;
-  uint16_t         symbol_offset;  /// offset in terms of symbols for detected ssb in sync
-  int              rx_offset;      /// Timing offset
-  int              rx_offset_diff; /// Timing adjustment for ofdm symbol0 on HW USRP
-  int64_t          max_pos_fil;    /// Timing offset IIR filter
-  bool             apply_timing_offset;     /// Do time sync for current frame
-  int              time_sync_cell;
+  uint16_t symbol_offset; /// offset in terms of symbols for detected ssb in sync
+  int64_t max_pos_avg; /// Timing offset IIR filter
 
   /// Timing Advance updates variables
   /// Timing advance update computed from the TA command signalled from gNB
@@ -511,10 +495,6 @@ typedef struct PHY_VARS_NR_UE_s {
 
   /// Flag to initialize averaging of PHY measurements
   int init_averaging;
-
-  /// \brief sinr for all subcarriers of the current link (used only for abstraction).
-  /// - first index: ? [0..12*N_RB_DL[
-  double *sinr_dB;
 
   /// sinr_effective used for CQI calulcation
   double sinr_eff;
@@ -610,8 +590,12 @@ typedef struct PHY_VARS_NR_UE_s {
   void *phy_sim_pdsch_dl_ch_estimates;
   void *phy_sim_pdsch_dl_ch_estimates_ext;
   uint8_t *phy_sim_dlsch_b;
-  notifiedFIFO_t phy_config_ind;
+
   notifiedFIFO_t tx_resume_ind_fifo[NR_MAX_SLOTS_PER_FRAME];
+
+  // Sidelink parameters
+  sl_nr_sidelink_mode_t sl_mode;
+  sl_nr_ue_phy_params_t SL_UE_PHY_PARAMS;
 } PHY_VARS_NR_UE;
 
 typedef struct {
@@ -633,11 +617,20 @@ typedef struct {
 typedef struct nr_phy_data_tx_s {
   NR_UE_ULSCH_t ulsch;
   NR_UE_PUCCH pucch_vars;
+
+  // Sidelink Rx action decided by MAC
+  sl_nr_tx_config_type_enum_t sl_tx_action;
+  sl_nr_tx_config_psbch_pdu_t psbch_vars;
+
 } nr_phy_data_tx_t;
 
 typedef struct nr_phy_data_s {
   NR_UE_PDCCH_CONFIG phy_pdcch_config;
   NR_UE_DLSCH_t dlsch[2];
+
+  // Sidelink Rx action decided by MAC
+  sl_nr_rx_config_type_enum_t sl_rx_action;
+
 } nr_phy_data_t;
 /* this structure is used to pass both UE phy vars and
  * proc to the function UE_thread_rxn_txnp4
@@ -648,6 +641,7 @@ typedef struct nr_rxtx_thread_data_s {
   int writeBlockSize;
   nr_phy_data_t phy_data;
   int tx_wait_for_dlsch;
+  int rx_offset;
 } nr_rxtx_thread_data_t;
 
 typedef struct LDPCDecode_ue_s {

@@ -141,7 +141,7 @@ static void  sl_prepare_phy_config(int module_id,
   AssertFatal(carriercfg, "SCS_SpecificCarrier cannot be NULL");
 
   int bw_index = get_supported_band_index(carriercfg->subcarrierSpacing,
-                                          sl_band,
+                                          sl_band > 256 ? FR2 : FR1,
                                           carriercfg->carrierBandwidth);
   phycfg->sl_carrier_config.sl_bandwidth = get_supported_bw_mhz(FR1, bw_index);
 
@@ -181,7 +181,7 @@ static void  sl_prepare_phy_config(int module_id,
   phycfg->sl_bwp_config.sl_ssb_offset_point_a = diff/scs_scaling;
 
 #ifdef SL_DEBUG
-  printf("diff:%d, scaling:%d, pointa:%d, ssb:%d\n", diff, scs_scaling, pointA_ARFCN, SSB_ARFCN);
+  printf("diff:%u, scaling:%d, pointa:%u, ssb:%u\n", diff, scs_scaling, pointA_ARFCN, SSB_ARFCN);
 #endif
 
   phycfg->sl_bwp_config.sl_dc_location = (bwp_generic->sl_TxDirectCurrentLocation_r16) ?

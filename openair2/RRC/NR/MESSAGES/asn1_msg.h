@@ -41,9 +41,7 @@
 
 #include <asn_application.h>
 
-#include "RRC/NR/nr_rrc_defs.h"
 #include "RRC/NR/nr_rrc_config.h"
-
 
 /*
  * The variant of the above function which dumps the BASIC-XER (XER_F_BASIC)
@@ -131,7 +129,10 @@ uint8_t do_NR_ULInformationTransfer(uint8_t **buffer,
                         uint32_t pdu_length,
                         uint8_t *pdu_buffer);
 
-uint8_t do_RRCReestablishmentRequest(uint8_t *buffer, uint16_t c_rnti);
+uint8_t do_RRCReestablishmentRequest(uint8_t *buffer,
+                                     NR_ReestablishmentCause_t cause,
+                                     uint32_t cell_id,
+                                     uint16_t c_rnti);
 
 int do_RRCReestablishment(rrc_gNB_ue_context_t *const ue_context_pP,
                           uint8_t *const buffer,

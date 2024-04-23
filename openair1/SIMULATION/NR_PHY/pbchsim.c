@@ -117,7 +117,7 @@ void nr_fill_rx_indication(fapi_nr_rx_indication_t *rx_ind,
 int nr_ue_pdcch_procedures(PHY_VARS_NR_UE *ue,
                            const UE_nr_rxtx_proc_t *proc,
                            int32_t pdcch_est_size,
-                           int32_t pdcch_dl_ch_estimates[][pdcch_est_size],
+                           c16_t pdcch_dl_ch_estimates[][pdcch_est_size],
                            nr_phy_data_t *phy_data,
                            int n_ss,
                            c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP])
@@ -162,7 +162,7 @@ void nr_phy_config_request_sim_pbchsim(PHY_VARS_gNB *gNB,
   else fp->nr_band = 78;
   fp->threequarter_fs= 0;
 
-  int bw_index = get_supported_band_index(mu, fp->nr_band, N_RB_DL);
+  int bw_index = get_supported_band_index(mu, fp->nr_band > 256 ? FR2 : FR1, N_RB_DL);
   gNB_config->carrier_config.dl_bandwidth.value = get_supported_bw_mhz(fp->nr_band > 256 ? FR2 : FR1, bw_index);
 
   fp->ofdm_offset_divisor = UINT_MAX;
@@ -766,63 +766,65 @@ int main(int argc, char **argv)
       }
       if (UE->is_synchronized == 0) {
 	UE_nr_rxtx_proc_t proc={0};
-	ret = nr_initial_sync(&proc, UE, 1, 0);
-	printf("nr_initial_sync1 returns %d\n",ret);
-	if (ret<0) n_errors++;
+        nr_initial_sync_t ret = nr_initial_sync(&proc, UE, 1, 0);
+        printf("nr_initial_sync1 returns %s\n", ret.cell_detected ? "cell detected" : "cell not detected");
+        if (!ret.cell_detected)
+          n_errors++;
       }
       else {
         UE_nr_rxtx_proc_t proc={0};
 
-	UE->rx_offset=0;
-	uint8_t ssb_index = 0;
-  const int estimateSz = frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
-  __attribute__((aligned(32))) struct complex16 dl_ch_estimates[frame_parms->nb_antennas_rx][estimateSz];
-  __attribute__((aligned(32))) struct complex16 dl_ch_estimates_time[frame_parms->nb_antennas_rx][frame_parms->ofdm_symbol_size];
-  while (!((SSB_positions >> ssb_index) & 0x01))
-    ssb_index++; // to select the first transmitted ssb
-  UE->symbol_offset = nr_get_ssb_start_symbol(frame_parms, ssb_index);
+        uint8_t ssb_index = 0;
+        const int estimateSz = frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
+        __attribute__((aligned(32))) struct complex16 dl_ch_estimates[frame_parms->nb_antennas_rx][estimateSz];
+        __attribute__((
+            aligned(32))) struct complex16 dl_ch_estimates_time[frame_parms->nb_antennas_rx][frame_parms->ofdm_symbol_size];
+        while (!((SSB_positions >> ssb_index) & 0x01))
+          ssb_index++; // to select the first transmitted ssb
+        UE->symbol_offset = nr_get_ssb_start_symbol(frame_parms, ssb_index);
 
         int ssb_slot = (UE->symbol_offset/14)+(n_hf*(frame_parms->slots_per_frame>>1));
         proc.nr_slot_rx = ssb_slot;
         proc.gNB_id = 0;
-	for (int i=UE->symbol_offset+1; i<UE->symbol_offset+4; i++) {
-          nr_slot_fep(UE,
-                      &proc,
-                      i%frame_parms->symbols_per_slot,
-                      rxdataF);
+        for (int i = UE->symbol_offset + 1; i < UE->symbol_offset + 4; i++) {
+          nr_slot_fep(UE, frame_parms, &proc, i % frame_parms->symbols_per_slot, rxdataF, link_type_dl);
 
-          nr_pbch_channel_estimation(UE,estimateSz, dl_ch_estimates, dl_ch_estimates_time, &proc, 
-				     i%frame_parms->symbols_per_slot,i-(UE->symbol_offset+1),ssb_index%8,n_hf,rxdataF);
-
+          nr_pbch_channel_estimation(UE,
+                                     &UE->frame_parms,
+                                     estimateSz,
+                                     dl_ch_estimates,
+                                     dl_ch_estimates_time,
+                                     &proc,
+                                     i % frame_parms->symbols_per_slot,
+                                     i - (UE->symbol_offset + 1),
+                                     ssb_index % 8,
+                                     n_hf,
+                                     rxdataF,
+                                     false,
+                                     frame_parms->Nid_cell);
         }
-	fapiPbch_t result;
-        ret = nr_rx_pbch(UE,
-                         &proc,
-                         estimateSz,
-                         dl_ch_estimates,
-                         frame_parms,
-                         ssb_index%8,
-                         SISO,
-                         &result,
-                         rxdataF);
+        fapiPbch_t result;
+        ret = nr_rx_pbch(UE, &proc, estimateSz, dl_ch_estimates, frame_parms, ssb_index % 8, &result, rxdataF);
 
-	if (ret==0) {
-	  //UE->rx_ind.rx_indication_body->mib_pdu.ssb_index;  //not yet detected automatically
-	  //UE->rx_ind.rx_indication_body->mib_pdu.ssb_length; //Lmax, not yet detected automatically
-	  uint8_t gNB_xtra_byte=0;
-	  for (int i=0; i<8; i++)
-	    gNB_xtra_byte |= ((gNB->pbch.pbch_a>>(31-i))&1)<<(7-i);
- 
-	  payload_ret = (result.xtra_byte == gNB_xtra_byte);
-	  for (i=0;i<3;i++){
-	    payload_ret += (result.decoded_output[i] == ((msgDataTx.ssb[ssb_index].ssb_pdu.ssb_pdu_rel15.bchPayload>>(8*i)) & 0xff));
-	  } 
-	  //printf("ret %d\n", payload_ret);
-	  if (payload_ret!=4) 
-	    n_errors_payload++;
-	}
+        if (ret == 0) {
+          // UE->rx_ind.rx_indication_body->mib_pdu.ssb_index;  //not yet detected automatically
+          // UE->rx_ind.rx_indication_body->mib_pdu.ssb_length; //Lmax, not yet detected automatically
+          uint8_t gNB_xtra_byte = 0;
+          for (int i = 0; i < 8; i++)
+            gNB_xtra_byte |= ((gNB->pbch.pbch_a >> (31 - i)) & 1) << (7 - i);
 
-	if (ret!=0) n_errors++;
+          payload_ret = (result.xtra_byte == gNB_xtra_byte);
+          for (i = 0; i < 3; i++) {
+            payload_ret +=
+                (result.decoded_output[i] == ((msgDataTx.ssb[ssb_index].ssb_pdu.ssb_pdu_rel15.bchPayload >> (8 * i)) & 0xff));
+          }
+          // printf("ret %d\n", payload_ret);
+          if (payload_ret != 4)
+            n_errors_payload++;
+        }
+
+        if (ret != 0)
+          n_errors++;
       }
     } //noise trials
     printf("SNR %f: trials %d, n_errors_crc = %d, n_errors_payload %d\n", SNR,n_trials,n_errors,n_errors_payload);

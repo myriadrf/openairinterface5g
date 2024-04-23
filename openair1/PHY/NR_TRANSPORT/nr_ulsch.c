@@ -34,7 +34,7 @@
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include "PHY/NR_TRANSPORT/nr_ulsch.h"
 
-NR_gNB_ULSCH_t *find_nr_ulsch(PHY_VARS_gNB *gNB, uint16_t rnti, int pid)
+static NR_gNB_ULSCH_t *find_nr_ulsch(PHY_VARS_gNB *gNB, uint16_t rnti, int pid)
 {
   int16_t first_free_index = -1;
   AssertFatal(gNB != NULL, "gNB is null\n");
@@ -42,7 +42,7 @@ NR_gNB_ULSCH_t *find_nr_ulsch(PHY_VARS_gNB *gNB, uint16_t rnti, int pid)
 
   for (int i = 0; i < gNB->max_nb_pusch; i++) {
     ulsch = &gNB->ulsch[i];
-    AssertFatal(ulsch != NULL, "gNB->ulsch[%d] is null\n", i);
+    AssertFatal(ulsch, "gNB->ulsch[%d] is null\n", i);
     if (!ulsch->active) {
       if (first_free_index == -1)
         first_free_index = i;
@@ -62,7 +62,10 @@ void nr_fill_ulsch(PHY_VARS_gNB *gNB, int frame, int slot, nfapi_nr_pusch_pdu_t 
 {
   int harq_pid = ulsch_pdu->pusch_data.harq_process_id;
   NR_gNB_ULSCH_t *ulsch = find_nr_ulsch(gNB, ulsch_pdu->rnti, harq_pid);
-  AssertFatal(ulsch, "No ulsch_id found for rnti %04x\n", ulsch_pdu->rnti);
+  if (ulsch == NULL) {
+    LOG_E(NR_PHY, "No ulsch_id found for rnti %04x\n", ulsch_pdu->rnti);
+    return;
+  }
 
   ulsch->rnti = ulsch_pdu->rnti;
   ulsch->harq_pid = harq_pid;

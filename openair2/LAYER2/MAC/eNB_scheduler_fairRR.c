@@ -1583,11 +1583,11 @@ schedule_ue_spec_fairRR(module_id_t module_idP,
             RA_t *ra = &eNB->common_channels[CC_id].ra[0];
 
             for (uint8_t ra_ii = 0; ra_ii < NB_RA_PROC_MAX; ra_ii++) {
-              if((ra[ra_ii].rnti == rnti) && (ra[ra_ii].state == MSGCRNTI)) {
+              if ((ra[ra_ii].rnti == rnti) && (ra[ra_ii].eRA_state == MSGCRNTI)) {
                 for(uint16_t mui_num = 0; mui_num < rlc_am_mui.rrc_mui_num; mui_num++) {
                   if(ra[ra_ii].crnti_rrc_mui == rlc_am_mui.rrc_mui[mui_num]) {
                     ra[ra_ii].crnti_harq_pid = harq_pid;
-                    ra[ra_ii].state = MSGCRNTI_ACK;
+                    ra[ra_ii].eRA_state = MSGCRNTI_ACK;
                     break;
                   }
                 }
@@ -1648,7 +1648,6 @@ schedule_ue_spec_fairRR(module_id_t module_idP,
             header_len_dcch += 2;
             UE_info->eNB_UE_stats[CC_id][UE_id].num_pdu_tx[DCCH1] += 1;
             UE_info->eNB_UE_stats[CC_id][UE_id].num_bytes_tx[DCCH1] += sdu_lengths[num_sdus];
-            num_sdus++;
 #ifdef DEBUG_eNB_SCHEDULER
             LOG_T(MAC,
                   "[eNB %d][DCCH1] CC_id %d Got %d bytes :",
@@ -1660,6 +1659,7 @@ schedule_ue_spec_fairRR(module_id_t module_idP,
 
             LOG_T(MAC, "\n");
 #endif
+            num_sdus++;
           }
         }
 
@@ -2869,7 +2869,7 @@ schedule_ulsch_fairRR(module_id_t module_idP, frame_t frameP,
     // Msg3 is using 1 PRB so we need to increase first_rb accordingly
     // not sure about the break (can there be more than 1 active RA procedure?)
     for (i=0; i<NB_RA_PROC_MAX; i++) {
-      if ((cc->ra[i].state == WAITMSG3) &&(cc->ra[i].Msg3_subframe == sched_subframe)) {
+      if ((cc->ra[i].eRA_state == WAITMSG3) && (cc->ra[i].Msg3_subframe == sched_subframe)) {
         ulsch_ue_select[CC_id].list[ulsch_ue_select[CC_id].ue_num].ue_priority = SCH_UL_MSG3;
 
         if (cc->tdd_Config == NULL) {

@@ -69,7 +69,7 @@
 #include "common/ran_context.h"
 #include "RRC/LTE/rrc_extern.h"
 #include "PHY_INTERFACE/phy_interface.h"
-#include "common/utils/LOG/log_extern.h"
+#include "common/utils/LOG/log.h"
 #include "UTIL/OTG/otg_tx.h"
 #include "UTIL/OTG/otg_externs.h"
 #include "UTIL/MATH/oml.h"
@@ -90,12 +90,8 @@
 #include <openair1/PHY/NR_TRANSPORT/nr_dlsch.h>
 #include <PHY/NR_ESTIMATION/nr_ul_estimation.h>
 
-//#define USRP_DEBUG 1
-// Fix per CC openair rf/if device update
-// extern openair0_device openair0;
-
-
-//pthread_t                       main_gNB_thread;
+// #define USRP_DEBUG 1
+//  Fix per CC openair rf/if device update
 
 time_stats_t softmodem_stats_mt; // main thread
 time_stats_t softmodem_stats_hw; //  hw acquisition
@@ -121,7 +117,10 @@ static void tx_func(void *param)
   int slot_rx = info->slot_rx;
   int absslot_tx = info->timestamp_tx / info->gNB->frame_parms.get_samples_per_slot(slot_tx, &info->gNB->frame_parms);
   int absslot_rx = absslot_tx - info->gNB->RU_list[0]->sl_ahead;
-
+  if (absslot_rx < 0) {
+    LOG_W(NR_PHY, "Slot ahead %d is larger than absslot_tx %d. Cannot start TX yet.\n", info->gNB->RU_list[0]->sl_ahead, absslot_tx);
+    return;
+  }
   LOG_D(NR_PHY, "%d.%d running tx_func\n", frame_tx, slot_tx);
   PHY_VARS_gNB *gNB = info->gNB;
   module_id_t module_id = gNB->Mod_id;
@@ -294,8 +293,7 @@ static size_t dump_L1_meas_stats(PHY_VARS_gNB *gNB, RU_t *ru, char *output, size
   output += print_meas_log(&gNB->phy_proc_tx, "L1 Tx processing", NULL, NULL, output, end - output);
   output += print_meas_log(&gNB->dlsch_encoding_stats, "DLSCH encoding", NULL, NULL, output, end - output);
   output += print_meas_log(&gNB->dlsch_scrambling_stats, "DLSCH scrambling", NULL, NULL, output, end-output);
-  output += print_meas_log(&gNB->dlsch_modulation_stats, "DLSCH modulation", NULL, NULL, output, end-output);
-  output += print_meas_log(&gNB->dlsch_layer_mapping_stats, "DLSCH layer mapping", NULL, NULL, output,end-output);
+  output += print_meas_log(&gNB->dlsch_modulation_stats, "DLSCH modulation", NULL, NULL, output, end - output);
   output += print_meas_log(&gNB->dlsch_resource_mapping_stats, "DLSCH resource mapping", NULL, NULL, output,end-output);
   output += print_meas_log(&gNB->dlsch_precoding_stats, "DLSCH precoding", NULL, NULL, output,end-output);
   output += print_meas_log(&gNB->phy_proc_rx, "L1 Rx processing", NULL, NULL, output, end - output);
@@ -348,7 +346,6 @@ void *nrL1_stats_thread(void *param) {
   reset_meas(&gNB->schedule_response_stats);
   reset_meas(&gNB->dlsch_scrambling_stats);
   reset_meas(&gNB->dlsch_modulation_stats);
-  reset_meas(&gNB->dlsch_layer_mapping_stats);
   reset_meas(&gNB->dlsch_resource_mapping_stats);
   reset_meas(&gNB->dlsch_precoding_stats);
   while (!oai_exit) {
@@ -398,7 +395,7 @@ void init_gNB_Tpool(int inst) {
   // this will be removed when the msgDataTx is not necessary anymore
   gNB->msgDataTx = msgDataTx;
 
-  if ((!get_softmodem_params()->emulate_l1) && (!IS_SOFTMODEM_NOSTATS_BIT) && (NFAPI_MODE!=NFAPI_MODE_VNF))
+  if ((!get_softmodem_params()->emulate_l1) && (!IS_SOFTMODEM_NOSTATS_BIT) && (NFAPI_MODE!=NFAPI_MODE_VNF) && (NFAPI_MODE != NFAPI_MODE_AERIAL))
      threadCreate(&proc->L1_stats_thread,nrL1_stats_thread,(void*)gNB,"L1_stats",-1,OAI_PRIORITY_RT_LOW);
 
 }

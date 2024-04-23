@@ -29,6 +29,18 @@
 #include "nr_pdcp_sdu.h"
 #include "openair2/RRC/NR/rrc_gNB_radio_bearers.h"
 
+/* PDCP Formats according to clause 6.2 of 3GPP TS 38.323 */
+/* SN Size applicable to SRBs, UM DRBs and AM DRBs */
+#define SHORT_SN_SIZE 12
+/* SN Size applicable to UM DRBs and AM DRBs */
+#define LONG_SN_SIZE 18
+/* Data PDU for SRBs and DRBs with 12 bits PDCP SN (unit: byte) */
+#define SHORT_PDCP_HEADER_SIZE 2
+/* Data PDU for DRBs with 18 bits PDCP SN (unit: byte) */
+#define LONG_PDCP_HEADER_SIZE 3
+/* MAC-I size (unit: byte) */
+#define PDCP_INTEGRITY_SIZE 4
+
 typedef enum {
   NR_PDCP_DRB_AM,
   NR_PDCP_DRB_UM,
@@ -92,11 +104,17 @@ typedef struct nr_pdcp_entity_t {
                        int ciphering_algorithm,
                        char *ciphering_key);
 
+  /* check_integrity is used by RRC */
+  bool (*check_integrity)(struct nr_pdcp_entity_t *entity,
+                          const uint8_t *buffer, int buffer_length,
+                          const nr_pdcp_integrity_data_t *msg_integrity);
+
   void (*set_time)(struct nr_pdcp_entity_t *entity, uint64_t now);
 
   /* callbacks provided to the PDCP module */
   void (*deliver_sdu)(void *deliver_sdu_data, struct nr_pdcp_entity_t *entity,
-                      char *buf, int size);
+                      char *buf, int size,
+                      const nr_pdcp_integrity_data_t *msg_integrity);
   void *deliver_sdu_data;
   void (*deliver_pdu)(void *deliver_pdu_data, ue_id_t ue_id, int rb_id,
                       char *buf, int size, int sdu_id);
@@ -155,18 +173,8 @@ typedef struct nr_pdcp_entity_t {
   int           rx_maxsize;
   nr_pdcp_statistics_t stats;
 
-  // WARNING: This is a hack!
-  // 3GPP TS 38.331 (RRC) version 15.3 
-  // Section 5.3.4.3 Reception of the SecurityModeCommand by the UE 
-  // The UE needs to send the Security Mode Complete message. However, the message 
-  // needs to be sent without being ciphered. 
-  // However:
-  // 1- The Security Mode Command arrives to the UE with the cipher algo (e.g., nea2).
-  // 2- The UE is configured with the cipher algo.
-  // 3- The Security Mode Complete message is sent to the itti task queue.
-  // 4- The ITTI task, forwards the message ciphering (e.g., nea2) it. 
-  // 5- The gNB cannot understand the ciphered Security Mode Complete message.
-  bool security_mode_completed;
+  /* Keep tracks of whether the PDCP entity was suspended or not */
+  bool entity_suspended;
 } nr_pdcp_entity_t;
 
 nr_pdcp_entity_t *new_nr_pdcp_entity(
@@ -177,7 +185,8 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
     bool has_sdap_rx,
     bool has_sdap_tx,
     void (*deliver_sdu)(void *deliver_sdu_data, struct nr_pdcp_entity_t *entity,
-                        char *buf, int size),
+                        char *buf, int size,
+                        const nr_pdcp_integrity_data_t *msg_integrity),
     void *deliver_sdu_data,
     void (*deliver_pdu)(void *deliver_pdu_data, ue_id_t ue_id, int rb_id,
                         char *buf, int size, int sdu_id),
@@ -189,5 +198,8 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
     int integrity_algorithm,
     unsigned char *ciphering_key,
     unsigned char *integrity_key);
+
+/* Get maximum PDCP PDU size */
+int nr_max_pdcp_pdu_size(sdu_size_t sdu_size);
 
 #endif /* _NR_PDCP_ENTITY_H_ */

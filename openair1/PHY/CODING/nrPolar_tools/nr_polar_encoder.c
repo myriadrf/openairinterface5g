@@ -391,8 +391,8 @@ void build_polar_tables(t_nrPolar_params *polarParams) {
   // this code packs the one bit per byte of G_N into a packed bits G_N_tab
   for (int i = 0; i < polarParams->N; i++) {
     for (int j = 0; j < polarParams->N; j += 64) {
-      const simde__m256i tmp1 = simde_mm256_cmpgt_epi8(*(simde__m256i *)&polarParams->G_N[i][j], zeros);
-      const simde__m256i tmp2 = simde_mm256_cmpgt_epi8(*(simde__m256i *)&polarParams->G_N[i][j + 32], zeros);
+      const simde__m256i tmp1 = simde_mm256_cmpgt_epi8(simde_mm256_loadu_si256((simde__m256i *)&polarParams->G_N[i][j]), zeros);
+      const simde__m256i tmp2 = simde_mm256_cmpgt_epi8(simde_mm256_loadu_si256((simde__m256i *)&polarParams->G_N[i][j + 32]), zeros);
       // cast directly to uint64_t from int32_t propagates the sign bit (in gcc)
       const uint32_t part1 = simde_mm256_movemask_epi8(tmp1);
       const uint32_t part2 = simde_mm256_movemask_epi8(tmp2);
@@ -485,12 +485,13 @@ void build_polar_tables(t_nrPolar_params *polarParams) {
     polarParams->rm_tab[tcnt] = polarParams->rate_matching_pattern[outpos] >> shift;
 }
 
+
 void polar_encoder_fast(uint64_t *A,
                         void *out,
-                        int32_t crcmask,
-                        uint8_t ones_flag,
-                        int8_t messageType,
-                        uint16_t messageLength,
+                        int32_t crcmask, 
+                        uint8_t ones_flag,  
+                        int8_t messageType, 
+                        uint16_t messageLength, 
                         uint8_t aggregation_level) {
                         
   t_nrPolar_params *polarParams=nr_polar_params(messageType, messageLength, aggregation_level, false);
@@ -687,8 +688,8 @@ void polar_encoder_fast(uint64_t *A,
   printf("\n");
 #endif
 
-  uint64_t D[8] = {0};
-  nr_polar_uxG(D, u, polarParams->G_N_tab, polarParams->N);
+  uint64_t D[8];
+  nr_polar_uxG((uint8_t *)u, polarParams->N, (uint8_t *)D);
 
 #ifdef POLAR_CODING_DEBUG
   printf("d: ");
@@ -701,6 +702,7 @@ void polar_encoder_fast(uint64_t *A,
     printf("%lu", (D[n1] >> n2) & 1);
   }
   printf("\n");
+  fflush(stdout);
 #endif
 
   memset((void*)out,0,polarParams->encoderLength>>3);

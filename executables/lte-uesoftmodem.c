@@ -76,9 +76,6 @@
 #include "lte-softmodem.h"
 #include "executables/softmodem-common.h"
 
-/* temporary compilation wokaround (UE/eNB split */
-
-
 pthread_cond_t nfapi_sync_cond;
 pthread_mutex_t nfapi_sync_mutex;
 int nfapi_sync_var=-1; //!< protected by mutex \ref nfapi_sync_mutex
@@ -274,8 +271,7 @@ static void get_options(configmodule_interface_t *cfg)
 {
   int CC_id=0;
   int tddflag=0;
-  int dumpframe=0;
-  int timingadv=0;
+  int dumpframe = 0;
   uint8_t nfapi_mode = NFAPI_MONOLITHIC;
 
   set_default_frame_parms(frame_parms);
@@ -288,8 +284,6 @@ static void get_options(configmodule_interface_t *cfg)
   config_process_cmdline(cfg, cmdline_uemodeparams, sizeofArray(cmdline_uemodeparams), NULL);
   config_process_cmdline(cfg, cmdline_ueparams, sizeofArray(cmdline_ueparams), NULL);
   nfapi_setmode(nfapi_mode);
-
-  get_softmodem_params()->hw_timing_advance = timingadv;
 
   if ( (cmdline_uemodeparams[CMDLINE_CALIBUERX_IDX].paramflags &  PARAMFLAG_PARAMSET) != 0) mode = rx_calib_ue;
 
@@ -582,9 +576,10 @@ int main( int argc, char **argv ) {
   // to make a graceful exit when ctrl-c is pressed
   set_softmodem_sighandler();
 #ifndef PACKAGE_VERSION
-#  define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
+#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
 #endif
-  LOG_I(HW, "Version: %s\n", PACKAGE_VERSION);
+  // strdup to put the sring in the core file for post mortem identification
+  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
 
   // init the parameters
   for (CC_id=0; CC_id<MAX_NUM_CCs; CC_id++) {

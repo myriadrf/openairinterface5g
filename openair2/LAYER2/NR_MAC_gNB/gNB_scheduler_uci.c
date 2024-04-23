@@ -761,12 +761,12 @@ static int evaluate_ri_report(uint8_t *payload,
                               NR_UE_sched_ctrl_t *sched_ctrl)
 {
   uint8_t ri_index = pickandreverse_bits(payload, ri_bitlen, cumul_bits);
-  int count=0;
-  for (int i=0; i<8; i++) {
-     if ((ri_restriction>>i)&0x01) {
+  int count = 0;
+  for (int i = 0; i < 8; i++) {
+     if ((ri_restriction >> i) & 0x01) {
        if(count == ri_index) {
          sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.ri = i;
-         LOG_D(MAC,"CSI Reported Rank %d\n", i+1);
+         LOG_D(MAC,"CSI Reported Rank %d\n", i + 1);
          return i;
        }
        count++;
@@ -821,8 +821,8 @@ static uint8_t evaluate_pmi_report(uint8_t *payload,
   //in case of 2 port CSI configuration x1 is empty and the information bits are in x2
   int temp_pmi = pickandreverse_bits(payload, tot_bitlen, cumul_bits);
 
-  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1 = temp_pmi&((1<<x1_bitlen)-1);
-  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2 = (temp_pmi>>x1_bitlen)&((1<<x2_bitlen)-1);
+  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1 = temp_pmi & ((1 << x1_bitlen) - 1);
+  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2 = (temp_pmi >> x1_bitlen) & ((1 << x2_bitlen) - 1);
   LOG_D(MAC,"PMI Report: X1 %d X2 %d\n",
         sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1,
         sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2);
@@ -1042,11 +1042,11 @@ void handle_nr_uci_pucch_0_1(module_id_t mod_id,
     }
 
     // tpc (power control) only if we received AckNack
-    if (uci_01->harq.harq_confidence_level==0)
-      sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, uci_01->ul_cqi, 30);
-    else
-      sched_ctrl->tpc1 = 3;
-    sched_ctrl->pucch_snrx10 = uci_01->ul_cqi * 5 - 640;
+    if (uci_01->harq.harq_confidence_level == 0 && uci_01->ul_cqi != 0xff) {
+      sched_ctrl->pucch_snrx10 = uci_01->ul_cqi * 5 - 640;
+      sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, sched_ctrl->pucch_snrx10, 30);
+    } else
+      sched_ctrl->tpc1 = 1;
   }
 
   // check scheduling request result, confidence_level == 0 is good
@@ -1085,10 +1085,10 @@ void handle_nr_uci_pucch_2_3_4(module_id_t mod_id,
 
   // tpc (power control)
   // TODO PUCCH2 SNR computation is not correct -> ignore the following
-  //sched_ctrl->tpc1 = nr_get_tpc(RC.nrmac[mod_id]->pucch_target_snrx10,
-  //                              uci_234->ul_cqi,
-  //                              30);
-  //sched_ctrl->pucch_snrx10 = uci_234->ul_cqi * 5 - 640;
+  if (uci_234->ul_cqi != 0xff) {
+    sched_ctrl->pucch_snrx10 = uci_234->ul_cqi * 5 - 640;
+    sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, sched_ctrl->pucch_snrx10, 30);
+  }
 
   // TODO: handle SR
   if (uci_234->pduBitmap & 0x1) {
@@ -1109,7 +1109,8 @@ void handle_nr_uci_pucch_2_3_4(module_id_t mod_id,
     }
     free(uci_234->harq.harq_payload);
   }
-  if ((uci_234->pduBitmap >> 2) & 0x01) {
+  /* phy-test has hardcoded allocation, so no use to handle CSI reports */
+  if ((uci_234->pduBitmap >> 2) & 0x01 && !get_softmodem_params()->phy_test) {
     //API to parse the csi report and store it into sched_ctrl
     extract_pucch_csi_report(csi_MeasConfig, uci_234, frame, slot, UE, nrmac->common_channels->ServingCellConfigCommon);
     //TCI handling function

@@ -31,7 +31,6 @@
 #include <inttypes.h>
 
 #include "log.h"
-#include "log_extern.h"
 #include "assertions.h"
 #include "intertask_interface.h"
 #include "s1ap_eNB.h"
@@ -156,11 +155,11 @@ int RCconfig_NbIoTRRC(MessageDef *msg_p, int nbiotrrc_id,eNB_RRC_INST_NB_IoT *nb
     NBIoTParams[i].chkPptr = &(NBIoTCheckParams[i]);
   }
 
-  for (int i=0; (i<sizeofArray(NBIoTParams) && i<sizeofArray(NBIoTCheckParamsB); i++ ) {
-    NBIoTParams[i+15].chkPptr = &(NBIoTCheckParamsB[i]);
+  for (int i = 0; i < sizeofArray(NBIoTParams) && i < sizeofArray(NBIoTCheckParamsB); i++) {
+    NBIoTParams[i + 15].chkPptr = &(NBIoTCheckParamsB[i]);
   }
 
-  for (int i=0; i<sizeofArray(NBIoTPrachParams && i<sizeofArray(NBIoTPrachCheckParams); i++ ) {
+  for (int i = 0; i < sizeofArray(NBIoTPrachParams) && i < sizeofArray(NBIoTPrachCheckParams); i++) {
     NBIoTPrachParams[i].chkPptr = &(NBIoTPrachCheckParams[i]);
   }
 
