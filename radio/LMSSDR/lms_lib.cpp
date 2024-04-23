@@ -1,8 +1,7 @@
 // Work in progress
 
-#include <limesuite/SDRDevice.h>
-#include <limesuite/DeviceRegistry.h>
-#include "common.h"
+#include <limesuiteng/LimePlugin.h>
+#include <limesuiteng/StreamConfig.h>
 
 #include <math.h>
 
@@ -32,18 +31,18 @@ static const int DEFAULT_PORT = 0;
 
 static LimeRuntimeParameters params;
 
-static void LogCallback(SDRDevice::LogLevel lvl, const char* msg)
+static void LogCallback(LogLevel lvl, const std::string& msg)
 {
   switch(lvl)
   {
-    case SDRDevice::LogLevel::INFO: LOG_I(HW, "%s\n", msg); break;
-    case SDRDevice::LogLevel::WARNING: LOG_W(HW, "%s\n", msg); break;
-    case SDRDevice::LogLevel::ERROR: LOG_E(HW, "%s\n", msg); break;
-    case SDRDevice::LogLevel::VERBOSE: LOG_I(HW, "%s\n", msg); break;
-    //case SDRDevice::LogLevel::DEBUG: LOG_D(HW, "%s\n", msg); break;
-    case SDRDevice::LogLevel::DEBUG: LOG_I(HW, "%s\n", msg); break;
+    case LogLevel::Info: LOG_I(HW, "%s\n", msg.c_str()); break;
+    case LogLevel::Warning: LOG_W(HW, "%s\n", msg.c_str()); break;
+    case LogLevel::Error: LOG_E(HW, "%s\n", msg.c_str()); break;
+    case LogLevel::Verbose: LOG_I(HW, "%s\n", msg.c_str()); break;
+    //case LogLevel::Debug: LOG_D(HW, "%s\n", msg.c_str()); break;
+    case LogLevel::Debug: LOG_I(HW, "%s\n", msg.c_str()); break;
     default:
-      LOG_I(HW, "%s\n", msg); break;
+      LOG_I(HW, "%s\n", msg.c_str()); break;
   }
 }
 
@@ -161,10 +160,10 @@ static int trx_lms7002m_write(openair0_device *device, openair0_timestamp timest
     }
   }
 
-  SDRDevice::StreamMeta meta;
+  StreamMeta meta;
   meta.timestamp = timestamp;
-  meta.useTimestamp = true;
-  meta.flush = (flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END);
+  meta.waitForTimestamp = true;
+  meta.flushPartialPacket = (flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END);
 
   // samples format conversion is done internally
   LimePluginContext* context = static_cast<LimePluginContext*>(device->priv);
@@ -202,9 +201,9 @@ static int trx_lms7002m_read(openair0_device *device, openair0_timestamp *ptimes
   for (int i=0; i<channelCount; ++i)
     samples[i] = reinterpret_cast<lime::complex16_t*>(readBuff[i]);
 
-  SDRDevice::StreamMeta meta;
-  meta.useTimestamp = false;
-  meta.flush = false;
+  StreamMeta meta;
+  meta.waitForTimestamp = false;
+  meta.flushPartialPacket = false;
 
   int samplesGot = LimePlugin_Read_complex16(context, samples, nsamps, DEFAULT_PORT, meta);
   if (samplesGot <= 0)
@@ -279,7 +278,7 @@ int device_init(openair0_device *device,
 
   LimePluginContext* context = new LimePluginContext();
   context->currentWorkingDirectory = cwd;
-  context->samplesFormat = SDRDevice::StreamConfig::DataFormat::I16;
+  context->samplesFormat = DataFormat::I16;
 
   int status = LimePlugin_Init(context, LogCallback, &configProvider);
   if (status != 0)
