@@ -266,9 +266,10 @@ void schedule_nr_prach(module_id_t module_idP, frame_t frameP, sub_frame_t slotP
 
   NR_COMMON_channels_t *cc = gNB->common_channels;
   NR_ServingCellConfigCommon_t *scc = cc->ServingCellConfigCommon;
+  NR_RACH_ConfigCommon_t *rach_ConfigCommon = scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup;
   int mu;
-  if (scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->msg1_SubcarrierSpacing)
-    mu = *scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->msg1_SubcarrierSpacing;
+  if (rach_ConfigCommon->msg1_SubcarrierSpacing)
+    mu = *rach_ConfigCommon->msg1_SubcarrierSpacing;
   else
     mu = scc->downlinkConfigCommon->frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
   int index = ul_buffer_index(frameP, slotP, mu, gNB->UL_tti_req_ahead_size);
@@ -276,8 +277,8 @@ void schedule_nr_prach(module_id_t module_idP, frame_t frameP, sub_frame_t slotP
   nfapi_nr_config_request_scf_t *cfg = &RC.nrmac[module_idP]->config[0];
 
   if (is_nr_UL_slot(scc->tdd_UL_DL_ConfigurationCommon, slotP, cc->frame_type)) {
-
-    uint8_t config_index = scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->rach_ConfigGeneric.prach_ConfigurationIndex;
+    const NR_RACH_ConfigGeneric_t *rach_ConfigGeneric = &rach_ConfigCommon->rach_ConfigGeneric;
+    uint8_t config_index = rach_ConfigGeneric->prach_ConfigurationIndex;
     uint8_t N_dur, N_t_slot, start_symbol = 0, N_RA_slot;
     uint16_t RA_sfn_index = -1;
     uint8_t config_period = 1;
@@ -289,22 +290,22 @@ void schedule_nr_prach(module_id_t module_idP, frame_t frameP, sub_frame_t slotP
 
     uint8_t fdm = cfg->prach_config.num_prach_fd_occasions.value;
     // prach is scheduled according to configuration index and tables 6.3.3.2.2 to 6.3.3.2.4
-    if ( get_nr_prach_info_from_index(config_index,
-                                      (int)frameP,
-                                      (int)slotP,
-                                      scc->downlinkConfigCommon->frequencyInfoDL->absoluteFrequencyPointA,
-                                      mu,
-                                      cc->frame_type,
-                                      &format,
-                                      &start_symbol,
-                                      &N_t_slot,
-                                      &N_dur,
-                                      &RA_sfn_index,
-                                      &N_RA_slot,
-                                      &config_period) ) {
+    if (get_nr_prach_info_from_index(config_index,
+                                     (int)frameP,
+                                     (int)slotP,
+                                     scc->downlinkConfigCommon->frequencyInfoDL->absoluteFrequencyPointA,
+                                     mu,
+                                     cc->frame_type,
+                                     &format,
+                                     &start_symbol,
+                                     &N_t_slot,
+                                     &N_dur,
+                                     &RA_sfn_index,
+                                     &N_RA_slot,
+                                     &config_period)) {
 
-      uint16_t format0 = format&0xff;      // first column of format from table
-      uint16_t format1 = (format>>8)&0xff; // second column of format from table
+      uint16_t format0 = format & 0xff;      // first column of format from table
+      uint16_t format1 = (format >> 8) & 0xff; // second column of format from table
 
       if (N_RA_slot > 1) { //more than 1 PRACH slot in a subframe
         if (slotP%2 == 1)
@@ -339,15 +340,19 @@ void schedule_nr_prach(module_id_t module_idP, frame_t frameP, sub_frame_t slotP
             prach_pdu->num_prach_ocas = N_t_slot;
             prach_pdu->prach_start_symbol = start_symbol;
             prach_pdu->num_ra = fdm_index;
-            prach_pdu->num_cs = get_NCS(scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->rach_ConfigGeneric.zeroCorrelationZoneConfig,
+            prach_pdu->num_cs = get_NCS(rach_ConfigGeneric->zeroCorrelationZoneConfig,
                                         format0,
-                                        scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->restrictedSetConfig);
+                                        rach_ConfigCommon->restrictedSetConfig);
 
-            LOG_D(NR_MAC, "Frame %d, Slot %d: Prach Occasion id = %u  fdm index = %u start symbol = %u slot index = %u subframe index = %u \n",
-                  frameP, slotP,
-                  prach_occasion_id, prach_pdu->num_ra,
+            LOG_D(NR_MAC,
+                  "Frame %d, Slot %d: Prach Occasion id = %u  fdm index = %u start symbol = %u slot index = %u subframe index = %u \n",
+                  frameP,
+                  slotP,
+                  prach_occasion_id,
+                  prach_pdu->num_ra,
                   prach_pdu->prach_start_symbol,
-                  slot_index, RA_sfn_index);
+                  slot_index,
+                  RA_sfn_index);
             // SCF PRACH PDU format field does not consider A1/B1 etc. possibilities
             // We added 9 = A1/B1 10 = A2/B2 11 A3/B3
             if (format1!=0xff) {
@@ -409,15 +414,13 @@ void schedule_nr_prach(module_id_t module_idP, frame_t frameP, sub_frame_t slotP
       }
 
       // block resources in vrb_map_UL
-      const NR_RACH_ConfigGeneric_t *rach_ConfigGeneric =
-          &scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->rach_ConfigGeneric;
       const uint8_t mu_pusch =
           scc->uplinkConfigCommon->frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
-      const int16_t N_RA_RB = get_N_RA_RB(cfg->prach_config.prach_sub_c_spacing.value, mu_pusch);
+      const int16_t n_ra_rb = get_N_RA_RB(cfg->prach_config.prach_sub_c_spacing.value, mu_pusch);
       index = ul_buffer_index(frameP, slotP, mu, gNB->vrb_map_UL_size);
       uint16_t *vrb_map_UL = &cc->vrb_map_UL[index * MAX_BWP_SIZE];
-      for (int i = 0; i < N_RA_RB * fdm; ++i)
-        vrb_map_UL[bwp_start + rach_ConfigGeneric->msg1_FrequencyStart + i] |= SL_to_bitmap(start_symbol, N_t_slot*N_dur);
+      for (int i = 0; i < n_ra_rb * fdm; ++i)
+        vrb_map_UL[bwp_start + rach_ConfigGeneric->msg1_FrequencyStart + i] |= SL_to_bitmap(start_symbol, N_t_slot * N_dur);
     }
   }
 }
@@ -539,10 +542,10 @@ static void start_ra_contention_resolution_timer(NR_RA_t *ra, const long ra_Cont
   // ra-ContentionResolutionTimer ENUMERATED {sf8, sf16, sf24, sf32, sf40, sf48, sf56, sf64}
   // The initial value for the contention resolution timer.
   // Value sf8 corresponds to 8 subframes, value sf16 corresponds to 16 subframes, and so on.
-  // We add K2 because we start the timer in the DL slot that schedules Msg3/Msg3 retransmission
-  ra->contention_resolution_timer = ((((int)ra_ContentionResolutionTimer + 1) * 8) << scs) + K2;
-  LOG_D(NR_MAC,
-        "Starting RA Contention Resolution timer with %d ms + %d K2 (%d slots) duration\n",
+  // We add 2 * K2 because the timer runs from Msg2 transmission till Msg4 ACK reception
+  ra->contention_resolution_timer = ((((int)ra_ContentionResolutionTimer + 1) * 8) << scs) + 2 * K2;
+  LOG_I(NR_MAC,
+        "Starting RA Contention Resolution timer with %d ms + 2 * %d K2 (%d slots) duration\n",
         ((int)ra_ContentionResolutionTimer + 1) * 8,
         K2,
         ra->contention_resolution_timer);
@@ -577,8 +580,8 @@ static void nr_generate_Msg3_retransmission(module_id_t module_idP,
 
   NR_PUSCH_TimeDomainResourceAllocationList_t *pusch_TimeDomainAllocationList = ul_bwp->tdaList_Common;
   int mu = ul_bwp->scs;
-  uint8_t K2 = *pusch_TimeDomainAllocationList->list.array[ra->Msg3_tda_id]->k2;
-  const int sched_frame = (frame + (slot + K2 >= nr_slots_per_frame[mu])) % 1024;
+  uint16_t K2 = *pusch_TimeDomainAllocationList->list.array[ra->Msg3_tda_id]->k2 + get_NTN_Koffset(scc);
+  const int sched_frame = (frame + (slot + K2) / nr_slots_per_frame[mu]) % MAX_FRAME_NUMBER;
   const int sched_slot = (slot + K2) % nr_slots_per_frame[mu];
 
   if (is_xlsch_in_slot(nr_mac->ulsch_slot_bitmap[sched_slot / 64], sched_slot)) {
@@ -744,6 +747,7 @@ static void nr_generate_Msg3_retransmission(module_id_t module_idP,
 }
 
 static int get_feasible_msg3_tda(frame_type_t frame_type,
+                                 const NR_ServingCellConfigCommon_t *scc,
                                  int mu_delta,
                                  uint64_t ulsch_slot_bitmap[3],
                                  const NR_PUSCH_TimeDomainResourceAllocationList_t *tda_list,
@@ -758,12 +762,14 @@ static int get_feasible_msg3_tda(frame_type_t frame_type,
     return tda;
   }
 
+  const int NTN_gNB_Koffset = get_NTN_Koffset(scc);
+
   // TDD
   DevAssert(tdd != NULL);
   uint8_t tdd_period_slot = slots_per_frame / get_nb_periods_per_frame(tdd->dl_UL_TransmissionPeriodicity);
   for (int i = 0; i < tda_list->list.count; i++) {
     // check if it is UL
-    long k2 = *tda_list->list.array[i]->k2;
+    long k2 = *tda_list->list.array[i]->k2 + NTN_gNB_Koffset;
     int temp_slot = (slot + k2 + mu_delta) % slots_per_frame; // msg3 slot according to 8.3 in 38.213
     if (!is_xlsch_in_slot(ulsch_slot_bitmap[temp_slot / 64], temp_slot))
       continue;
@@ -817,10 +823,10 @@ static void nr_get_Msg3alloc(module_id_t module_id,
   int startSymbolAndLength = pusch_TimeDomainAllocationList->list.array[ra->Msg3_tda_id]->startSymbolAndLength;
   SLIV2SL(startSymbolAndLength, &ra->msg3_startsymb, &ra->msg3_nbSymb);
 
-  long k2 = *pusch_TimeDomainAllocationList->list.array[ra->Msg3_tda_id]->k2;
+  long k2 = *pusch_TimeDomainAllocationList->list.array[ra->Msg3_tda_id]->k2 + get_NTN_Koffset(scc);
   int abs_slot = current_slot + k2 + DELTA[mu];
   ra->Msg3_slot = abs_slot % n_slots_frame;
-  ra->Msg3_frame = (current_frame + (abs_slot / n_slots_frame)) % 1024;
+  ra->Msg3_frame = (current_frame + (abs_slot / n_slots_frame)) % MAX_FRAME_NUMBER;
 
   LOG_I(NR_MAC,
         "UE %04x: Msg3 scheduled at %d.%d (%d.%d k2 %ld TDA %u)\n",
@@ -1221,6 +1227,7 @@ static void nr_generate_Msg2(module_id_t module_idP,
   }
 
   ra->Msg3_tda_id = get_feasible_msg3_tda(cc->frame_type,
+                                          scc,
                                           DELTA[ul_bwp->scs],
                                           nr_mac->ulsch_slot_bitmap,
                                           ul_bwp->tdaList_Common,
@@ -1228,7 +1235,7 @@ static void nr_generate_Msg2(module_id_t module_idP,
                                           slotP,
                                           tdd);
   if (ra->Msg3_tda_id < 0 || ra->Msg3_tda_id > 15) {
-    LOG_W(NR_MAC, "UE RNTI %04x %d.%d: infeasible Msg3 TDA\n", ra->rnti, frameP, slotP);
+    LOG_D(NR_MAC, "UE RNTI %04x %d.%d: infeasible Msg3 TDA\n", ra->rnti, frameP, slotP);
     return;
   }
 
@@ -1461,7 +1468,7 @@ static void nr_generate_Msg2(module_id_t module_idP,
   start_ra_contention_resolution_timer(
       ra,
       scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->ra_ContentionResolutionTimer,
-      *ra->UL_BWP.tdaList_Common->list.array[ra->Msg3_tda_id]->k2,
+      *ra->UL_BWP.tdaList_Common->list.array[ra->Msg3_tda_id]->k2 + get_NTN_Koffset(scc),
       ra->UL_BWP.scs);
 
   if (ra->cfra) {

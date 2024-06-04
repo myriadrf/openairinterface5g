@@ -164,7 +164,14 @@ int main(int argc, char **argv){
 
   randominit(0);
 
-  while ((c = getopt (argc, argv, "hHaA:Cc:l:r:p:g:m:n:s:S:t:x:y:v:V:z:N:F:d:Z:L:R:E")) != -1) {
+  while ((c = getopt (argc, argv, "--:hHaA:Cc:l:r:p:g:m:n:s:S:t:x:y:v:V:z:N:F:d:Z:L:R:E")) != -1) {
+
+    /* ignore long options starting with '--' and their arguments that are handled by configmodule */
+    /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
+    if (c == 1 || c == '-')
+      continue;
+
+    printf("handling optarg %c\n",c);
     switch (c) {
     case 'a':
       printf("Running AWGN simulation\n");
@@ -422,7 +429,7 @@ int main(int argc, char **argv){
   frame_parms->N_RB_UL          = N_RB_UL;
   frame_parms->threequarter_fs  = threequarter_fs;
   frame_parms->frame_type       = TDD;
-  frame_parms->freq_range       = (mu != 3 ? nr_FR1 : nr_FR2);
+  frame_parms->freq_range       = (mu != 3 ? FR1 : FR2);
   frame_parms->numerology_index = mu;
 
   nr_phy_config_request_sim(gNB, N_RB_UL, N_RB_UL, mu, Nid_cell, SSB_positions);
@@ -447,7 +454,7 @@ int main(int argc, char **argv){
          frame_parms->Ncp,
          frame_parms->samples_per_subframe,
          frame_parms->frame_type == FDD ? "FDD" : "TDD",
-         frame_parms->freq_range == nr_FR1 ? "FR1" : "FR2");
+         frame_parms->freq_range == FR1 ? "FR1" : "FR2");
 
   ru->nr_frame_parms = frame_parms;
   ru->if_south       = LOCAL_RF;

@@ -567,11 +567,10 @@ struct openair0_device_t {
    * \param idx RU index
    * \param arg pointer to capabilities or configuration
    */
-  void (*configure_rru)(int idx, void *arg);
+  void (*configure_rru)(void *, void *arg);
 
-/*! \brief Pointer to generic RRU private information
+  /*! \brief Pointer to generic RRU private information
    */
-
 
   void *thirdparty_priv;
 
@@ -672,7 +671,7 @@ extern int read_recplayconfig(recplay_conf_t **recplay_conf, recplay_state_t **r
 extern void iqrecorder_end(openair0_device *device);
 
 int openair0_write_reorder(openair0_device *device, openair0_timestamp timestamp, void **txp, int nsamps, int nbAnt, int flags);
-
+void openair0_write_reorder_clear_context(openair0_device *device);
 #include <unistd.h>
 #ifndef gettid
 #define gettid() syscall(__NR_gettid)

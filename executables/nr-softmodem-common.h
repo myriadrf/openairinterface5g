@@ -30,7 +30,6 @@
 #include "PHY/types.h"
 #include <threadPool/thread-pool.h>
 
-#include "s1ap_eNB.h"
 #include "SIMULATION/ETH_TRANSPORT/proto.h"
 
 /* help strings definition for command line options, used in CMDLINE_XXX_DESC macros and printed when -h option is used */
@@ -47,7 +46,7 @@
 #define CONFIG_HLP_UETXG         "set UE TX gain\n"
 #define CONFIG_HLP_UENANTR       "set UE number of rx antennas\n"
 #define CONFIG_HLP_UENANTT       "set UE number of tx antennas\n"
-#define CONFIG_HLP_UESCAN        "set UE to scan around carrier\n"
+#define CONFIG_HLP_UESCAN "set UE to scan all possible GSCN in current bandwidth\n"
 #define CONFIG_HLP_UEFO          "set UE to enable estimation and compensation of frequency offset\n"
 #define CONFIG_HLP_DUMPFRAME     "dump UE received frame to rxsig_frame0.dat and exit\n"
 #define CONFIG_HLP_DLSHIFT       "dynamic shift for LLR compuation for TM3/4 (default 0)\n"
@@ -151,5 +150,5 @@ extern double cpuf;
 extern int emulate_rf;
 extern int numerology;
 extern int usrp_tx_thread;
-
+void wait_gNBs(void);
 #endif

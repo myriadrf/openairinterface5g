@@ -223,7 +223,13 @@ int main(int argc, char *argv[])
   /* initialize the sin-cos table */
   InitSinLUT();
 
-  while ((c = getopt(argc, argv, "a:b:c:d:ef:g:h:i:k:m:n:op:q:r:s:t:u:v:w:y:z:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
+  while ((c = getopt(argc, argv, "--:a:b:c:d:ef:g:h:i:k:m:n:op:q:r:s:t:u:v:w:y:z:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
+
+    /* ignore long options starting with '--' and their arguments that are handled by configmodule */
+    /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
+    if (c == 1 || c == '-')
+      continue;
+
     printf("handling optarg %c\n",c);
     switch (c) {
 
@@ -601,7 +607,17 @@ int main(int argc, char *argv[])
                                 .minRXTXTIME = 0,
                                 .do_CSIRS = 0,
                                 .do_SRS = 0,
-                                .force_256qam_off = false};
+                                .force_256qam_off = false,
+                                .timer_config.sr_ProhibitTimer = 0,
+                                .timer_config.sr_TransMax = 64,
+                                .timer_config.sr_ProhibitTimer_v1700 = 0,
+                                .timer_config.t300 = 400,
+                                .timer_config.t301 = 400,
+                                .timer_config.t310 = 2000,
+                                .timer_config.n310 = 10,
+                                .timer_config.t311 = 3000,
+                                .timer_config.n311 = 1,
+                                .timer_config.t319 = 400};
 
   RC.nb_nr_macrlc_inst = 1;
   RC.nb_nr_mac_CC = (int*)malloc(RC.nb_nr_macrlc_inst*sizeof(int));
@@ -1087,7 +1103,7 @@ int main(int argc, char *argv[])
         ul_config0->pdu_type = FAPI_NR_UL_CONFIG_TYPE_PUSCH;
         nfapi_nr_ue_pusch_pdu_t *pusch_config_pdu = &ul_config0->pusch_config_pdu;
         // Config UL TX PDU
-        pusch_config_pdu->tx_request_body.pdu = ulsch_input_buffer;
+        pusch_config_pdu->tx_request_body.fapiTxPdu = ulsch_input_buffer;
         pusch_config_pdu->tx_request_body.pdu_length = TBS / 8;
         pusch_config_pdu->rnti = n_rnti;
         pusch_config_pdu->pdu_bit_map = pdu_bit_map;

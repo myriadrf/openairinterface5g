@@ -1038,6 +1038,7 @@ static int handle_bcch_bch(NR_UE_MAC_INST_t *mac,
   mac->mib_ssb = ssb_index;
   mac->physCellId = cell_id;
   mac->mib_additional_bits = additional_bits;
+  mac->ssb_start_subcarrier = ssb_start_subcarrier;
   if(ssb_length == 64)
     mac->frequency_range = FR2;
   else
@@ -1059,8 +1060,18 @@ static int handle_bcch_dlsch(NR_UE_MAC_INST_t *mac,
 }
 
 //  L2 Abstraction Layer
-static nr_dci_format_t handle_dci(NR_UE_MAC_INST_t *mac, frame_t frame, int slot, fapi_nr_dci_indication_pdu_t *dci)
+static nr_dci_format_t handle_dci(NR_UE_MAC_INST_t *mac,
+                                  unsigned int gNB_index,
+                                  frame_t frame,
+                                  int slot,
+                                  fapi_nr_dci_indication_pdu_t *dci)
 {
+  // if notification of a reception of a PDCCH transmission of the SpCell is received from lower layers
+  // if the C-RNTI MAC CE was included in Msg3
+  // consider this Contention Resolution successful
+  if (mac->ra.msg3_C_RNTI && mac->ra.ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)
+    nr_ra_succeeded(mac, gNB_index, frame, slot);
+
   return nr_ue_process_dci_indication_pdu(mac, frame, slot, dci);
 }
 
@@ -1156,7 +1167,11 @@ static uint32_t nr_ue_dl_processing(nr_downlink_indication_t *dl_info)
     LOG_T(MAC, "[L2][IF MODULE][DL INDICATION][DCI_IND]\n");
     for (int i = 0; i < dl_info->dci_ind->number_of_dcis; i++) {
       LOG_T(MAC, ">>>NR_IF_Module i=%d, dl_info->dci_ind->number_of_dcis=%d\n", i, dl_info->dci_ind->number_of_dcis);
-      nr_dci_format_t dci_format = handle_dci(mac, dl_info->frame, dl_info->slot, dl_info->dci_ind->dci_list + i);
+      nr_dci_format_t dci_format = handle_dci(mac,
+                                              dl_info->gNB_index,
+                                              dl_info->frame,
+                                              dl_info->slot,
+                                              dl_info->dci_ind->dci_list + i);
 
       /* The check below filters out UL_DCIs which are being processed as DL_DCIs. */
       if (dci_format != NR_DL_DCI_FORMAT_1_0 && dci_format != NR_DL_DCI_FORMAT_1_1) {

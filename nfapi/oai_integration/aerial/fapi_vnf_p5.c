@@ -54,7 +54,6 @@ void *aerial_vnf_nr_aerial_p7_start_thread(void *ptr)
 
 void *aerial_vnf_nr_p7_thread_start(void *ptr)
 {
-  // set_thread_priority(79);
   int s;
   cpu_set_t cpuset;
 
@@ -62,8 +61,6 @@ void *aerial_vnf_nr_p7_thread_start(void *ptr)
   s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
   if (s != 0)
     printf("failed to set afinity\n");
-
-  set_priority(79);
 
   pthread_attr_t ptAttr;
   if (pthread_attr_setschedpolicy(&ptAttr, SCHED_RR) != 0) {
@@ -115,7 +112,7 @@ void *aerial_vnf_nr_p7_thread_start(void *ptr)
   p7_vnf->config->allocate_p7_vendor_ext = &aerial_phy_allocate_p7_vendor_ext;
   p7_vnf->config->deallocate_p7_vendor_ext = &aerial_phy_deallocate_p7_vendor_ext;
   NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] Creating VNF NFAPI P7 start thread %s\n", __FUNCTION__);
-  pthread_create(&vnf_aerial_p7_start_pthread, NULL, &aerial_vnf_nr_aerial_p7_start_thread, p7_vnf->config);
+  threadCreate(&vnf_aerial_p7_start_pthread, &aerial_vnf_nr_aerial_p7_start_thread, p7_vnf->config, "aerial_p7_start", -1, OAI_PRIORITY_RT);
   return 0;
 }
 
@@ -227,7 +224,7 @@ int aerial_pnf_nr_start_resp_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_nr
 
   if (p7_vnf->thread_started == 0) {
     pthread_t vnf_p7_thread;
-    pthread_create(&vnf_p7_thread, NULL, &aerial_vnf_nr_p7_thread_start, p7_vnf);
+    threadCreate(&vnf_p7_thread, &aerial_vnf_nr_p7_thread_start, p7_vnf, "aerial_p7_thread", -1, OAI_PRIORITY_RT);
     p7_vnf->thread_started = 1;
   } else {
     // P7 thread already running.
@@ -351,12 +348,10 @@ int aerial_nr_send_config_request(nfapi_vnf_config_t *config, int p5_idx)
 
   nfapi_p4_p5_message_header_t *msg = &req->header;
   uint16_t msg_len = sizeof(nfapi_nr_config_request_scf_t);
-  nfapi_p4_p5_message_header_t *msgFAPI = calloc(1, msg_len);
-  memcpy(msgFAPI, &req->header, msg_len);
   uint8_t tx_messagebufferFAPI[sizeof(_this->tx_message_buffer)];
   int packedMessageLengthFAPI = -1;
   packedMessageLengthFAPI =
-      fapi_nr_p5_message_pack(msgFAPI, msg_len, tx_messagebufferFAPI, sizeof(tx_messagebufferFAPI), &_this->_public.codec_config);
+      fapi_nr_p5_message_pack(msg, msg_len, tx_messagebufferFAPI, sizeof(tx_messagebufferFAPI), &_this->_public.codec_config);
 
   aerial_send_P5_msg(tx_messagebufferFAPI, packedMessageLengthFAPI, msg);
 
@@ -572,7 +567,7 @@ void aerial_configure_nr_fapi_vnf()
 
   if (p7_vnf->thread_started == 0) {
     pthread_t vnf_p7_thread;
-    pthread_create(&vnf_p7_thread, NULL, &aerial_vnf_nr_p7_thread_start, p7_vnf);
+    threadCreate(&vnf_p7_thread, &aerial_vnf_nr_p7_thread_start, p7_vnf, "aerial_p7_thread", -1, OAI_PRIORITY_RT);
     p7_vnf->thread_started = 1;
   } else {
     // P7 thread already running.
@@ -752,11 +747,8 @@ int oai_fapi_dl_tti_req(nfapi_nr_dl_tti_request_t *dl_config_req)
 
 int oai_fapi_send_end_request(int cell, uint32_t frame, uint32_t slot){
   nfapi_vnf_p7_config_t *p7_config = aerial_vnf.p7_vnfs[0].config;
-  nfapi_nr_slot_indication_scf_t *nr_slot_resp = CALLOC(1, sizeof(*nr_slot_resp));
-  nr_slot_resp->header.message_id = 0x8F;
-  nr_slot_resp->sfn = frame;
-  nr_slot_resp->slot = slot;
-  int retval = fapi_nr_pack_and_send_p7_message((vnf_p7_t *)p7_config, &nr_slot_resp->header);
+  nfapi_nr_slot_indication_scf_t nr_slot_resp = {.header.message_id = 0x8F, .sfn = frame, .slot = slot};
+  int retval = fapi_nr_pack_and_send_p7_message((vnf_p7_t *)p7_config, &nr_slot_resp.header);
   if (retval != 0) {
     LOG_E(PHY, "%s() Problem sending retval:%d\n", __FUNCTION__, retval);
   }

@@ -132,9 +132,14 @@ int nr_write_ce_dlsch_pdu(module_id_t module_idP,
     // contention resolution identity MAC ce has a fixed 48 bit size
     // this contains the UL CCCH SDU. If UL CCCH SDU is longer than 48 bits,
     // it contains the first 48 bits of the UL CCCH SDU
-    LOG_T(NR_MAC, "[gNB ][RAPROC] Generate contention resolution msg: %x.%x.%x.%x.%x.%x\n",
-          ue_cont_res_id[0], ue_cont_res_id[1], ue_cont_res_id[2],
-          ue_cont_res_id[3], ue_cont_res_id[4], ue_cont_res_id[5]);
+    LOG_D(NR_MAC,
+          "[gNB ][RAPROC] Generate contention resolution msg: %x.%x.%x.%x.%x.%x\n",
+          ue_cont_res_id[0],
+          ue_cont_res_id[1],
+          ue_cont_res_id[2],
+          ue_cont_res_id[3],
+          ue_cont_res_id[4],
+          ue_cont_res_id[5]);
     // Copying bytes (6 octects) to CEs pointer
     mac_ce_size = 6;
     memcpy(ce_ptr, ue_cont_res_id, mac_ce_size);
@@ -324,8 +329,9 @@ static void nr_store_dlsch_buffer(module_id_t module_id, frame_t frame, sub_fram
 
     /* loop over all activated logical channels */
     // Note: DL_SCH_LCID_DCCH, DL_SCH_LCID_DCCH1, DL_SCH_LCID_DTCH
-    for (int i = 0; i < sched_ctrl->dl_lc_num; ++i) {
-      const int lcid = sched_ctrl->dl_lc_ids[i];
+    for (int i = 0; i < seq_arr_size(&sched_ctrl->lc_config); ++i) {
+      const nr_lc_config_t *c = seq_arr_at(&sched_ctrl->lc_config, i);
+      const int lcid = c->lcid;
       const uint16_t rnti = UE->rnti;
       LOG_D(NR_MAC, "In %s: UE %x: LCID %d\n", __FUNCTION__, rnti, lcid);
       if (lcid == DL_SCH_LCID_DTCH && sched_ctrl->rrc_processing_timer > 0) {
@@ -654,7 +660,7 @@ static void pf_dl(module_id_t module_id,
       }
 
       /* Check DL buffer and skip this UE if no bytes and no TA necessary */
-      if (sched_ctrl->num_total_bytes == 0 && frame != (sched_ctrl->ta_frame + 10) % 1024)
+      if (sched_ctrl->num_total_bytes == 0 && frame != (sched_ctrl->ta_frame + 100) % 1024)
         continue;
 
       /* Calculate coeff */
@@ -799,8 +805,8 @@ static void pf_dl(module_id_t module_id,
     // awaiting. Therefore, for the time being, we put a fixed overhead of 12
     // (for 4 PDUs) and optionally + 2 for TA. Once RLC gives the number of
     // PDUs, we replace with 3 * numPDUs
-    const int oh = 3 * 4 + 2 * (frame == (sched_ctrl->ta_frame + 10) % 1024);
-    //const int oh = 3 * sched_ctrl->dl_pdus_total + 2 * (frame == (sched_ctrl->ta_frame + 10) % 1024);
+    const int oh = 3 * 4 + 2 * (frame == (sched_ctrl->ta_frame + 100) % 1024);
+    //const int oh = 3 * sched_ctrl->dl_pdus_total + 2 * (frame == (sched_ctrl->ta_frame + 100) % 1024);
     nr_find_nb_rb(sched_pdsch->Qm,
                   sched_pdsch->R,
                   1, // no transform precoding for DL
@@ -952,7 +958,7 @@ void nr_schedule_ue_spec(module_id_t module_id,
      * Possible improvement: take the periodicity from input file.
      * If such UE is not scheduled now, it will be by the preprocessor later.
      * If we add the CE, ta_apply will be reset */
-    if (frame == (sched_ctrl->ta_frame + 10) % 1024) {
+    if (frame == (sched_ctrl->ta_frame + 100) % 1024) {
       sched_ctrl->ta_apply = true; /* the timer is reset once TA CE is scheduled */
       LOG_D(NR_MAC, "[UE %04x][%d.%d] UL timing alignment procedures: setting flag for Timing Advance command\n", UE->rnti, frame, slot);
     }
@@ -1270,8 +1276,9 @@ void nr_schedule_ue_spec(module_id_t module_id,
 
       if (sched_ctrl->num_total_bytes > 0) {
         /* loop over all activated logical channels */
-        for (int i = 0; i < sched_ctrl->dl_lc_num; ++i) {
-          const int lcid = sched_ctrl->dl_lc_ids[i];
+        for (int i = 0; i < seq_arr_size(&sched_ctrl->lc_config); ++i) {
+          const nr_lc_config_t *c = seq_arr_at(&sched_ctrl->lc_config, i);
+          const int lcid = c->lcid;
 
           if (sched_ctrl->rlc_status[lcid].bytes_in_buffer == 0)
             continue; // no data for this LC        tbs_size_t len = 0;

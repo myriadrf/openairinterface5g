@@ -645,7 +645,7 @@ void clean_UE_harq(PHY_VARS_NR_UE *UE)
   for (int harq_pid = 0; harq_pid < NR_MAX_ULSCH_HARQ_PROCESSES; harq_pid++) {
     NR_UL_UE_HARQ_t *ul_harq_process = &UE->ul_harq_processes[harq_pid];
     ul_harq_process->tx_status = NEW_TRANSMISSION_HARQ;
-    ul_harq_process->status = SCH_IDLE;
+    ul_harq_process->ULstatus = SCH_IDLE;
     ul_harq_process->round = 0;
   }
 }
@@ -706,7 +706,6 @@ void phy_init_nr_top(PHY_VARS_NR_UE *ue) {
 void phy_term_nr_top(void)
 {
   free_ul_reference_signal_sequences();
-  free_context_synchro_nr();
 }
 
 static void sl_generate_psbch_dmrs_qpsk_sequences(PHY_VARS_NR_UE *UE, struct complex16 *modulated_dmrs_sym, uint16_t slss_id)

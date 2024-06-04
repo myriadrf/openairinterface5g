@@ -29,17 +29,61 @@ static const uint32_t nr_subcarrier_spacing[MAX_NUM_SUBCARRIER_SPACING] = {15e3,
 static const uint16_t nr_slots_per_subframe[MAX_NUM_SUBCARRIER_SPACING] = {1, 2, 4, 8, 16};
 
 // Table 5.4.3.3-1 38-101
-static const int nr_ssb_table[48][3] = {
-    {1, 15, nr_ssb_type_A},  {2, 15, nr_ssb_type_A},  {3, 15, nr_ssb_type_A},  {5, 15, nr_ssb_type_A},  {5, 30, nr_ssb_type_B},
-    {7, 15, nr_ssb_type_A},  {8, 15, nr_ssb_type_A},  {12, 15, nr_ssb_type_A}, {14, 15, nr_ssb_type_A}, {18, 15, nr_ssb_type_A},
-    {20, 15, nr_ssb_type_A}, {25, 15, nr_ssb_type_A}, {26, 15, nr_ssb_type_A}, {28, 15, nr_ssb_type_A}, {29, 15, nr_ssb_type_A},
-    {30, 15, nr_ssb_type_A}, {34, 15, nr_ssb_type_A}, {34, 30, nr_ssb_type_C}, {38, 15, nr_ssb_type_A}, {38, 30, nr_ssb_type_C},
-    {39, 15, nr_ssb_type_A}, {39, 30, nr_ssb_type_C}, {40, 30, nr_ssb_type_C}, {41, 15, nr_ssb_type_A}, {41, 30, nr_ssb_type_C},
-    {46, 30, nr_ssb_type_C}, {48, 30, nr_ssb_type_C}, {50, 30, nr_ssb_type_C}, {51, 15, nr_ssb_type_A}, {53, 15, nr_ssb_type_A},
-    {65, 15, nr_ssb_type_A}, {66, 15, nr_ssb_type_A}, {66, 30, nr_ssb_type_B}, {70, 15, nr_ssb_type_A}, {71, 15, nr_ssb_type_A},
-    {74, 15, nr_ssb_type_A}, {75, 15, nr_ssb_type_A}, {76, 15, nr_ssb_type_A}, {77, 30, nr_ssb_type_C}, {78, 30, nr_ssb_type_C},
-    {79, 30, nr_ssb_type_C}, {90, 15, nr_ssb_type_A}, {90, 30, nr_ssb_type_C}, {91, 15, nr_ssb_type_A}, {92, 15, nr_ssb_type_A},
-    {93, 15, nr_ssb_type_A}, {94, 15, nr_ssb_type_A}, {96, 30, nr_ssb_type_C}};
+static const int nr_ssb_table[54][3] = {
+    {1, 15, nr_ssb_type_A},
+    {2, 15, nr_ssb_type_A},
+    {3, 15, nr_ssb_type_A},
+    {5, 15, nr_ssb_type_A},
+    {5, 30, nr_ssb_type_B},
+    {7, 15, nr_ssb_type_A},
+    {8, 15, nr_ssb_type_A},
+    {12, 15, nr_ssb_type_A},
+    {13, 15, nr_ssb_type_A},
+    {14, 15, nr_ssb_type_A},
+    {18, 15, nr_ssb_type_A},
+    {20, 15, nr_ssb_type_A},
+    {24, 15, nr_ssb_type_A},
+    {24, 30, nr_ssb_type_B},
+    {25, 15, nr_ssb_type_A},
+    {26, 15, nr_ssb_type_A},
+    {28, 15, nr_ssb_type_A},
+    {29, 15, nr_ssb_type_A},
+    {30, 15, nr_ssb_type_A},
+    {34, 15, nr_ssb_type_A},
+    {34, 30, nr_ssb_type_C},
+    {38, 15, nr_ssb_type_A},
+    {38, 30, nr_ssb_type_C},
+    {39, 15, nr_ssb_type_A},
+    {39, 30, nr_ssb_type_C},
+    {40, 30, nr_ssb_type_C},
+    {41, 15, nr_ssb_type_A},
+    {41, 30, nr_ssb_type_C},
+    {46, 30, nr_ssb_type_C},
+    {48, 30, nr_ssb_type_C},
+    {50, 30, nr_ssb_type_C},
+    {51, 15, nr_ssb_type_A},
+    {53, 15, nr_ssb_type_A},
+    {53, 30, nr_ssb_type_C},
+    {65, 15, nr_ssb_type_A},
+    {66, 15, nr_ssb_type_A},
+    {66, 30, nr_ssb_type_B},
+    {67, 15, nr_ssb_type_A},
+    {70, 15, nr_ssb_type_A},
+    {71, 15, nr_ssb_type_A},
+    {74, 15, nr_ssb_type_A},
+    {75, 15, nr_ssb_type_A},
+    {76, 15, nr_ssb_type_A},
+    {77, 30, nr_ssb_type_C},
+    {78, 30, nr_ssb_type_C},
+    {79, 30, nr_ssb_type_C},
+    {85, 15, nr_ssb_type_A},
+    {90, 15, nr_ssb_type_A},
+    {90, 30, nr_ssb_type_C},
+    {91, 15, nr_ssb_type_A},
+    {92, 15, nr_ssb_type_A},
+    {93, 15, nr_ssb_type_A},
+    {94, 15, nr_ssb_type_A},
+    {96, 30, nr_ssb_type_C}};
 
 void set_Lmax(NR_DL_FRAME_PARMS *fp) {
   if (get_softmodem_params()->sl_mode == 2) {
@@ -65,9 +109,8 @@ void set_Lmax(NR_DL_FRAME_PARMS *fp) {
   }
 }
 
-
-int nr_get_ssb_start_symbol(NR_DL_FRAME_PARMS *fp,uint8_t i_ssb) {
-
+int nr_get_ssb_start_symbol(const NR_DL_FRAME_PARMS *fp, uint8_t i_ssb)
+{
   int mu = fp->numerology_index;
   int symbol = 0;
   uint8_t n, n_temp;
@@ -169,8 +212,13 @@ void set_scs_parameters (NR_DL_FRAME_PARMS *fp, int mu, int N_RB_DL)
     fp->first_carrier_offset = 0;
   fp->nb_prefix_samples    = fp->ofdm_symbol_size / 128 * 9;
   fp->nb_prefix_samples0   = fp->ofdm_symbol_size / 128 * (9 + (1 << mu));
-  LOG_W(PHY,"Init: N_RB_DL %d, first_carrier_offset %d, nb_prefix_samples %d,nb_prefix_samples0 %d, ofdm_symbol_size %d\n",
-        N_RB_DL,fp->first_carrier_offset,fp->nb_prefix_samples,fp->nb_prefix_samples0, fp->ofdm_symbol_size);
+  LOG_I(PHY,
+        "Init: N_RB_DL %d, first_carrier_offset %d, nb_prefix_samples %d,nb_prefix_samples0 %d, ofdm_symbol_size %d\n",
+        N_RB_DL,
+        fp->first_carrier_offset,
+        fp->nb_prefix_samples,
+        fp->nb_prefix_samples0,
+        fp->ofdm_symbol_size);
 }
 
 uint32_t get_samples_per_slot(int slot, const NR_DL_FRAME_PARMS *fp)
@@ -252,7 +300,7 @@ void nr_init_frame_parms(nfapi_nr_config_request_scf_t* cfg, NR_DL_FRAME_PARMS *
   fp->get_samples_slot_timestamp = &get_samples_slot_timestamp;
   fp->get_slot_from_timestamp = &get_slot_from_timestamp;
   fp->samples_per_frame = 10 * fp->samples_per_subframe;
-  fp->freq_range = (fp->dl_CarrierFreq < 6e9)? nr_FR1 : nr_FR2;
+  fp->freq_range = (fp->dl_CarrierFreq < 6e9)? FR1 : FR2;
 
   fp->Ncp = Ncp;
 
@@ -341,12 +389,12 @@ int nr_init_frame_parms_ue(NR_DL_FRAME_PARMS *fp,
   fp->get_samples_per_slot = &get_samples_per_slot;
   fp->get_samples_slot_timestamp = &get_samples_slot_timestamp;
   fp->samples_per_frame = 10 * fp->samples_per_subframe;
-  fp->freq_range = (fp->dl_CarrierFreq < 6e9)? nr_FR1 : nr_FR2;
+  fp->freq_range = (fp->dl_CarrierFreq < 6e9)? FR1 : FR2;
 
   uint8_t sco = 0;
-  if (((fp->freq_range == nr_FR1) && (config->ssb_table.ssb_subcarrier_offset < 24)) ||
-      ((fp->freq_range == nr_FR2) && (config->ssb_table.ssb_subcarrier_offset < 12))) {
-    if (fp->freq_range == nr_FR1)
+  if (((fp->freq_range == FR1) && (config->ssb_table.ssb_subcarrier_offset < 24)) ||
+      ((fp->freq_range == FR2) && (config->ssb_table.ssb_subcarrier_offset < 12))) {
+    if (fp->freq_range == FR1)
       sco = config->ssb_table.ssb_subcarrier_offset>>config->ssb_config.scs_common;
     else
       sco = config->ssb_table.ssb_subcarrier_offset;
@@ -379,7 +427,7 @@ void nr_init_frame_parms_ue_sa(NR_DL_FRAME_PARMS *frame_parms, uint64_t downlink
   frame_parms->numerology_index = mu;
   frame_parms->dl_CarrierFreq = downlink_frequency;
   frame_parms->ul_CarrierFreq = downlink_frequency + delta_duplex;
-  frame_parms->freq_range = (frame_parms->dl_CarrierFreq < 6e9)? nr_FR1 : nr_FR2;
+  frame_parms->freq_range = (frame_parms->dl_CarrierFreq < 6e9)? FR1 : FR2;
   frame_parms->N_RB_UL = frame_parms->N_RB_DL;
 
   frame_parms->nr_band = nr_band;

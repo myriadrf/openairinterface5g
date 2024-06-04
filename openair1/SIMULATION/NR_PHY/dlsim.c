@@ -336,7 +336,14 @@ int main(int argc, char **argv)
 
   FILE *scg_fd=NULL;
 
-  while ((c = getopt(argc, argv, "f:hA:p:f:g:i:n:s:S:t:v:x:y:z:o:M:N:F:GR:d:PI:L:a:b:e:m:w:T:U:q:X:Y:Z:c")) != -1) {
+  while ((c = getopt(argc, argv, "--:f:hA:p:f:g:i:n:s:S:t:v:x:y:z:o:M:N:F:GR:d:PI:L:a:b:e:m:w:T:U:q:X:Y:Z:c")) != -1) {
+
+    /* ignore long options starting with '--' and their arguments that are handled by configmodule */
+    /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
+    if (c == 1 || c == '-')
+      continue;
+
+    printf("handling optarg %c\n",c);
     switch (c) {
     case 'f':
       scg_fd = fopen(optarg,"r");
@@ -636,7 +643,17 @@ int main(int argc, char **argv)
                                 .minRXTXTIME = 6,
                                 .do_CSIRS = 0,
                                 .do_SRS = 0,
-                                .force_256qam_off = false};
+                                .force_256qam_off = false,
+                                .timer_config.sr_ProhibitTimer = 0,
+                                .timer_config.sr_TransMax = 64,
+                                .timer_config.sr_ProhibitTimer_v1700 = 0,
+                                .timer_config.t300 = 400,
+                                .timer_config.t301 = 400,
+                                .timer_config.t310 = 2000,
+                                .timer_config.n310 = 10,
+                                .timer_config.t311 = 3000,
+                                .timer_config.n311 = 1,
+                                .timer_config.t319 = 400};
 
   RC.nb_nr_macrlc_inst = 1;
   RC.nb_nr_mac_CC = (int*)malloc(RC.nb_nr_macrlc_inst*sizeof(int));
@@ -823,7 +840,7 @@ int main(int argc, char **argv)
 
   init_nr_ue_transport(UE);
 
-  nr_gold_pbch(UE);
+  nr_gold_pbch(UE->nr_gold_pbch, frame_parms->Nid_cell, frame_parms->Lmax);
 
   // compute the scramblingID_pdcch and the gold pdcch
   UE->scramblingID_pdcch = frame_parms->Nid_cell;
