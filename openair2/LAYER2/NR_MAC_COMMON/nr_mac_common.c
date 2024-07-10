@@ -467,7 +467,11 @@ NR_tda_info_t get_ul_tda_info(const NR_UE_UL_BWP_t *ul_bwp,
   AssertFatal(scs >= 0 &&  scs < 5, "Subcarrier spacing indicatior %d invalid value\n", scs);
   int j = scs == 0 ? 1 : scs;
   if (tdalist) {
-    AssertFatal(tda_index < tdalist->list.count, "TDA index from DCI %d exceeds TDA list array size %d\n", tda_index, tdalist->list.count);
+    tda_info.valid_tda = tda_index < tdalist->list.count;
+    if (!tda_info.valid_tda) {
+      LOG_E(NR_MAC, "TDA index from DCI %d exceeds TDA list array size %d\n", tda_index, tdalist->list.count);
+      return tda_info;
+    }
     NR_PUSCH_TimeDomainResourceAllocation_t *tda = tdalist->list.array[tda_index];
     tda_info.mapping_type = tda->mappingType;
     // As described in 38.331, when the field is absent the UE applies the value 1 when PUSCH SCS is 15/30KHz
@@ -479,6 +483,11 @@ NR_tda_info_t get_ul_tda_info(const NR_UE_UL_BWP_t *ul_bwp,
     tda_info.nrOfSymbols = L;
   } else {
     bool normal_CP = ul_bwp->cyclicprefix ? false : true;
+    tda_info.valid_tda = tda_index < 16;
+    if (!tda_info.valid_tda) {
+      LOG_E(NR_MAC, "TDA index from DCI %d exceeds default TDA list array size %d\n", tda_index, 16);
+      return tda_info;
+    }
     if (normal_CP) {
       tda_info.mapping_type = table_6_1_2_1_1_2[tda_index][0];
       tda_info.k2 = table_6_1_2_1_1_2[tda_index][1] + j;
@@ -500,6 +509,11 @@ NR_tda_info_t get_info_from_tda_tables(default_table_type_t table_type,
                                        int normal_CP)
 {
   NR_tda_info_t tda_info = {0};
+  tda_info.valid_tda = tda < 16;
+  if (!tda_info.valid_tda) {
+    LOG_E(NR_MAC, "TDA index from DCI %d exceeds default TDA list array size %d\n", tda, 16);
+    return tda_info;
+  }
   bool is_mapping_typeA;
   int k0 = 0;
   switch(table_type){
@@ -586,7 +600,11 @@ default_table_type_t get_default_table_type(int mux_pattern)
 NR_tda_info_t set_tda_info_from_list(NR_PDSCH_TimeDomainResourceAllocationList_t *tdalist, int tda_index)
 {
   NR_tda_info_t tda_info = {0};
-  AssertFatal(tda_index < tdalist->list.count, "TDA index from DCI %d exceeds TDA list array size %d\n", tda_index, tdalist->list.count);
+  tda_info.valid_tda = tda_index < tdalist->list.count;
+  if (!tda_info.valid_tda) {
+    LOG_E(NR_MAC, "TDA index from DCI %d exceeds TDA list array size %d\n", tda_index, tdalist->list.count);
+    return tda_info;
+  }
   NR_PDSCH_TimeDomainResourceAllocation_t *tda = tdalist->list.array[tda_index];
   tda_info.mapping_type = tda->mappingType;
   int S, L;
@@ -5018,7 +5036,8 @@ void compute_cqi_bitlen(struct NR_CSI_ReportConfig *csi_reportconfig,
 }
 
 //!TODO : same function can be written to handle csi_resources
-void compute_csi_bitlen(NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *csi_report_template) {
+void compute_csi_bitlen(const NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *csi_report_template)
+{
   uint8_t csi_report_id = 0;
   uint8_t nb_resources = 0;
   NR_CSI_ReportConfig__reportQuantity_PR reportQuantity_type;
@@ -5027,7 +5046,7 @@ void compute_csi_bitlen(NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *cs
 
   // for each CSI measurement report configuration (list of CSI-ReportConfig)
   LOG_D(NR_MAC,"Searching %d csi_reports\n",csi_MeasConfig->csi_ReportConfigToAddModList->list.count);
-  for (csi_report_id=0; csi_report_id < csi_MeasConfig->csi_ReportConfigToAddModList->list.count; csi_report_id++){
+  for (csi_report_id = 0; csi_report_id < csi_MeasConfig->csi_ReportConfigToAddModList->list.count; csi_report_id++) {
     struct NR_CSI_ReportConfig *csi_reportconfig = csi_MeasConfig->csi_ReportConfigToAddModList->list.array[csi_report_id];
     // MAC structure for CSI measurement reports (per UE and per report)
     nr_csi_report_t *csi_report = &csi_report_template[csi_report_id];
@@ -5039,7 +5058,7 @@ void compute_csi_bitlen(NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *cs
     int csi_resourceidx = 0;
     while (found_resource == 0 && csi_resourceidx < csi_MeasConfig->csi_ResourceConfigToAddModList->list.count) {
       csi_resourceconfig = csi_MeasConfig->csi_ResourceConfigToAddModList->list.array[csi_resourceidx];
-      if ( csi_resourceconfig->csi_ResourceConfigId == csi_ResourceConfigId)
+      if (csi_resourceconfig->csi_ResourceConfigId == csi_ResourceConfigId)
         found_resource = 1;
       csi_resourceidx++;
     }
@@ -5050,6 +5069,7 @@ void compute_csi_bitlen(NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *cs
 
     reportQuantity_type = csi_reportconfig->reportQuantity.present;
     csi_report->reportQuantity_type = reportQuantity_type;
+    csi_report->reportConfigId = csi_reportconfig->reportConfigId;
 
     // setting the CSI or SSB index list
     if (NR_CSI_ReportConfig__reportQuantity_PR_ssb_Index_RSRP == csi_report->reportQuantity_type) {
@@ -5114,21 +5134,21 @@ void compute_csi_bitlen(NR_CSI_MeasConfig_t *csi_MeasConfig, nr_csi_report_t *cs
   }
 }
 
-uint16_t nr_get_csi_bitlen(nr_csi_report_t *csi_report_template, uint8_t csi_report_id) {
-
+uint16_t nr_get_csi_bitlen(nr_csi_report_t *csi_report)
+{
   uint16_t csi_bitlen = 0;
   uint16_t max_bitlen = 0;
   L1_RSRP_bitlen_t *CSI_report_bitlen = NULL;
   CSI_Meas_bitlen_t *csi_meas_bitlen = NULL;
 
-  if (csi_report_template[csi_report_id].reportQuantity_type == NR_CSI_ReportConfig__reportQuantity_PR_ssb_Index_RSRP ||
-      csi_report_template[csi_report_id].reportQuantity_type == NR_CSI_ReportConfig__reportQuantity_PR_cri_RSRP) {
-    CSI_report_bitlen = &(csi_report_template[csi_report_id].CSI_report_bitlen); // This might need to be moodif for Aperiodic CSI-RS measurements
+  if (csi_report->reportQuantity_type == NR_CSI_ReportConfig__reportQuantity_PR_ssb_Index_RSRP ||
+      csi_report->reportQuantity_type == NR_CSI_ReportConfig__reportQuantity_PR_cri_RSRP) {
+    CSI_report_bitlen = &(csi_report->CSI_report_bitlen); // This might need to be moodif for Aperiodic CSI-RS measurements
     csi_bitlen += ((CSI_report_bitlen->cri_ssbri_bitlen * CSI_report_bitlen->nb_ssbri_cri) +
                    CSI_report_bitlen->rsrp_bitlen +(CSI_report_bitlen->diff_rsrp_bitlen *
                                                     (CSI_report_bitlen->nb_ssbri_cri -1 )));
   } else {
-    csi_meas_bitlen = &(csi_report_template[csi_report_id].csi_meas_bitlen); //This might need to be moodif for Aperiodic CSI-RS measurements
+    csi_meas_bitlen = &(csi_report->csi_meas_bitlen); //This might need to be moodif for Aperiodic CSI-RS measurements
     uint16_t temp_bitlen;
     for (int i = 0; i < 8; i++) {
       temp_bitlen = (csi_meas_bitlen->cri_bitlen+
@@ -5142,7 +5162,6 @@ uint16_t nr_get_csi_bitlen(nr_csi_report_t *csi_report_template, uint8_t csi_rep
     }
     csi_bitlen += max_bitlen;
   }
-
   return csi_bitlen;
 }
 
@@ -5199,9 +5218,9 @@ bool supported_bw_comparison(int bw_mhz, NR_SupportedBandwidth_t *supported_BW, 
   return false;
 }
 
-uint16_t compute_PDU_length(uint32_t num_TLV, uint16_t total_length)
+uint32_t compute_PDU_length(uint32_t num_TLV, uint32_t total_length)
 {
-  uint8_t pdu_length = 8; // 2 bytes PDU_Length + 2 bytes PDU_Index + 4 bytes num_TLV
+  uint32_t pdu_length = 8; // 2 bytes PDU_Length + 2 bytes PDU_Index + 4 bytes num_TLV
   // For each TLV, add 2 bytes tag + 2 bytes length + value size without padding
   pdu_length += (num_TLV * 4) + total_length;
   return pdu_length;

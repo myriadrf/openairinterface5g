@@ -276,10 +276,12 @@ static void nr_postDecode(PHY_VARS_gNB *gNB, notifiedFIFO_elt_t *req)
   bool decodeSuccess = (rdata->decodeIterations <= rdata->decoderParms.numMaxIter);
   ulsch_harq->processedSegments++;
   LOG_D(PHY,
-        "processing result of segment: %d, processed %d/%d\n",
+        "processing result of segment: %d, processed %d/%d, %s\n",
         rdata->segment_r,
         ulsch_harq->processedSegments,
-        rdata->nbSegments);
+        rdata->nbSegments,
+        decodeSuccess ? "Decoded Successfully" : "Decoding Unsuccessful");
+
   if (decodeSuccess) {
     memcpy(ulsch_harq->b + rdata->offset, ulsch_harq->c[r], rdata->Kr_bytes - (ulsch_harq->F >> 3) - ((ulsch_harq->C > 1) ? 3 : 0));
 
@@ -466,11 +468,16 @@ void nr_fill_indication(PHY_VARS_gNB *gNB, int frame, int slot_rx, int ULSCH_id,
 
   // put timing advance command in 0..63 range
   timing_advance_update += 31;
+  timing_advance_update = max(timing_advance_update, 0);
+  timing_advance_update = min(timing_advance_update, 63);
 
-  if (timing_advance_update < 0)  timing_advance_update = 0;
-  if (timing_advance_update > 63) timing_advance_update = 63;
-
-  if (crc_flag == 0) LOG_D(PHY, "%d.%d : Received PUSCH : Estimated timing advance PUSCH is  = %d, timing_advance_update is %d \n", frame,slot_rx,sync_pos,timing_advance_update);
+  if (crc_flag == 0)
+    LOG_D(PHY,
+          "%d.%d : Received PUSCH : Estimated timing advance PUSCH is  = %d, timing_advance_update is %d \n",
+          frame,
+          slot_rx,
+          sync_pos,
+          timing_advance_update);
 
   // estimate UL_CQI for MAC
   int SNRtimes10 =
@@ -541,20 +548,20 @@ void nr_fill_indication(PHY_VARS_gNB *gNB, int frame, int slot_rx, int ULSCH_id,
 }
 
 // Function to fill UL RB mask to be used for N0 measurements
-void fill_ul_rb_mask(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx) {
-
+static void fill_ul_rb_mask(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx, uint32_t rb_mask_ul[14][9])
+{
   int rb = 0;
   int rb2 = 0;
   int prbpos = 0;
 
   for (int symbol = 0; symbol < 14; symbol++) {
     for (int m = 0; m < 9; m++) {
-      gNB->rb_mask_ul[symbol][m] = 0;
+      rb_mask_ul[symbol][m] = 0;
       for (int i = 0; i < 32; i++) {
         prbpos = (m * 32) + i;
         if (prbpos>gNB->frame_parms.N_RB_UL)
           break;
-        gNB->rb_mask_ul[symbol][m] |= (gNB->ulprbbl[prbpos] > 0 ? 1U : 0) << i;
+        rb_mask_ul[symbol][m] |= (gNB->ulprbbl[prbpos] > 0 ? 1U : 0) << i;
       }
     }
   }
@@ -574,7 +581,7 @@ void fill_ul_rb_mask(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx) {
               rb2 = rb + pucch_pdu->bwp_start +
                     ((symbol < pucch_pdu->start_symbol_index+(pucch_pdu->nr_of_symbols>>1)) || (pucch_pdu->freq_hop_flag == 0) ?
                      pucch_pdu->prb_start : pucch_pdu->second_hop_prb);
-              gNB->rb_mask_ul[symbol][rb2>>5] |= (((uint32_t)1)<<(rb2&31));
+              rb_mask_ul[symbol][rb2>>5] |= (((uint32_t)1)<<(rb2&31));
             }
           }
         }
@@ -599,7 +606,7 @@ void fill_ul_rb_mask(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx) {
           LOG_D(PHY, "symbol %d Filling rb_mask_ul rb_size %d\n", symbol, ulsch_harq->ulsch_pdu.rb_size);
           for (rb = 0; rb < ulsch_harq->ulsch_pdu.rb_size; rb++) {
             rb2 = rb + ulsch_harq->ulsch_pdu.rb_start + ulsch_harq->ulsch_pdu.bwp_start;
-            gNB->rb_mask_ul[symbol][rb2 >> 5] |= 1U << (rb2 & 31);
+            rb_mask_ul[symbol][rb2 >> 5] |= 1U << (rb2 & 31);
           }
         }
       }
@@ -613,14 +620,13 @@ void fill_ul_rb_mask(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx) {
         nfapi_nr_srs_pdu_t *srs_pdu = &srs->srs_pdu;
         for(int symbol = 0; symbol<(1<<srs_pdu->num_symbols); symbol++) {
           for(rb = srs_pdu->bwp_start; rb < (srs_pdu->bwp_start+srs_pdu->bwp_size); rb++) {
-            gNB->rb_mask_ul[gNB->frame_parms.symbols_per_slot - srs_pdu->time_start_position - 1 + symbol][rb >> 5] |= 1U
+            rb_mask_ul[gNB->frame_parms.symbols_per_slot - srs_pdu->time_start_position - 1 + symbol][rb >> 5] |= 1U
                                                                                                                        << (rb & 31);
           }
         }
       }
     }
   }
-
 }
 
 int fill_srs_reported_symbol_list(nfapi_nr_srs_reported_symbol_t *prgs,
@@ -718,8 +724,9 @@ int phy_procedures_gNB_uespec_RX(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx)
 
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_gNB_UESPEC_RX,1);
   LOG_D(PHY,"phy_procedures_gNB_uespec_RX frame %d, slot %d\n",frame_rx,slot_rx);
-
-  fill_ul_rb_mask(gNB, frame_rx, slot_rx);
+  // Mask of occupied RBs, per symbol and PRB
+  uint32_t rb_mask_ul[14][9];
+  fill_ul_rb_mask(gNB, frame_rx, slot_rx, rb_mask_ul);
 
   int first_symb=0,num_symb=0;
   if (gNB->frame_parms.frame_type == TDD)
@@ -731,7 +738,7 @@ int phy_procedures_gNB_uespec_RX(PHY_VARS_gNB *gNB, int frame_rx, int slot_rx)
     }
   else
     num_symb = NR_NUMBER_OF_SYMBOLS_PER_SLOT;
-  gNB_I0_measurements(gNB,slot_rx,first_symb,num_symb);
+  gNB_I0_measurements(gNB, slot_rx, first_symb, num_symb, rb_mask_ul);
 
   const int soffset = (slot_rx & 3) * gNB->frame_parms.symbols_per_slot * gNB->frame_parms.ofdm_symbol_size;
   int offset = 10 * gNB->frame_parms.ofdm_symbol_size + gNB->frame_parms.first_carrier_offset;

@@ -286,6 +286,7 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
   UE->rf_map.card          = card_offset;
   UE->rf_map.chain         = CC_id + chain_offset;
   UE->max_ldpc_iterations  = nrUE_params.max_ldpc_iterations;
+  UE->ldpc_offload_enable  = nrUE_params.ldpc_offload_flag;
   UE->UE_scan_carrier      = nrUE_params.UE_scan_carrier;
   UE->UE_fo_compensation   = nrUE_params.UE_fo_compensation;
   UE->if_freq              = nrUE_params.if_freq;
@@ -315,13 +316,17 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
 
 }
 
-void init_openair0(void) {
+void init_openair0()
+{
   int card;
   int freq_off = 0;
   NR_DL_FRAME_PARMS *frame_parms = &PHY_vars_UE_g[0][0]->frame_parms;
+  bool is_sidelink = (get_softmodem_params()->sl_mode) ? true : false;
+  if (is_sidelink)
+    frame_parms = &PHY_vars_UE_g[0][0]->SL_UE_PHY_PARAMS.sl_frame_params;
 
   for (card=0; card<MAX_CARDS; card++) {
-    uint64_t dl_carrier, ul_carrier, sl_carrier;
+    uint64_t dl_carrier, ul_carrier;
     openair0_cfg[card].configFilename    = NULL;
     openair0_cfg[card].threequarter_fs   = frame_parms->threequarter_fs;
     openair0_cfg[card].sample_rate       = frame_parms->samples_per_subframe * 1e3;
@@ -347,14 +352,13 @@ void init_openair0(void) {
       openair0_cfg[card].rx_num_channels,
       duplex_mode[openair0_cfg[card].duplex_mode]);
 
-    nr_get_carrier_frequencies(PHY_vars_UE_g[0][0], &dl_carrier, &ul_carrier);
+    if (is_sidelink) {
+      dl_carrier = frame_parms->dl_CarrierFreq;
+      ul_carrier = frame_parms->ul_CarrierFreq;
+    } else
+      nr_get_carrier_frequencies(PHY_vars_UE_g[0][0], &dl_carrier, &ul_carrier);
 
     nr_rf_card_config_freq(&openair0_cfg[card], ul_carrier, dl_carrier, freq_off);
-
-    if (get_softmodem_params()->sl_mode == 2) {
-      nr_get_carrier_frequencies_sl(PHY_vars_UE_g[0][0], &sl_carrier);
-      nr_rf_card_config_freq(&openair0_cfg[card], sl_carrier, sl_carrier, freq_off);
-    }
 
     nr_rf_card_config_gain(&openair0_cfg[card], rx_gain_off);
 
@@ -487,7 +491,11 @@ int main(int argc, char **argv)
   cpuf=get_cpu_freq_GHz();
   itti_init(TASK_MAX, tasks_info);
 
-  init_opt() ;
+  init_opt();
+
+  if (nrUE_params.ldpc_offload_flag)
+    load_LDPClib("_t2", &ldpc_interface_offload);
+
   load_LDPClib(NULL, &ldpc_interface);
 
   if (ouput_vcd) {
@@ -499,11 +507,13 @@ int main(int argc, char **argv)
   // strdup to put the sring in the core file for post mortem identification
   LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
 
-  PHY_vars_UE_g = malloc(sizeof(*PHY_vars_UE_g));
-  PHY_vars_UE_g[0] = malloc(sizeof(*PHY_vars_UE_g[0]) * MAX_NUM_CCs);
-  for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
-    PHY_vars_UE_g[0][CC_id] = malloc(sizeof(*PHY_vars_UE_g[0][CC_id]));
-    memset(PHY_vars_UE_g[0][CC_id], 0, sizeof(*PHY_vars_UE_g[0][CC_id]));
+  PHY_vars_UE_g = malloc(sizeof(*PHY_vars_UE_g) * NB_UE_INST);
+  for (int inst = 0; inst < NB_UE_INST; inst++) {
+    PHY_vars_UE_g[inst] = malloc(sizeof(*PHY_vars_UE_g[inst]) * MAX_NUM_CCs);
+    for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+      PHY_vars_UE_g[inst][CC_id] = malloc(sizeof(*PHY_vars_UE_g[inst][CC_id]));
+      memset(PHY_vars_UE_g[inst][CC_id], 0, sizeof(*PHY_vars_UE_g[inst][CC_id]));
+    }
   }
 
   int mode_offset = get_softmodem_params()->nsa ? NUMBER_OF_UE_MAX : 1;
@@ -511,7 +521,7 @@ int main(int argc, char **argv)
   ue_id_g = (node_number == 0) ? 0 : node_number - 2;
   AssertFatal(ue_id_g >= 0, "UE id is expected to be nonnegative.\n");
 
-  if(node_number == 0)
+  if (node_number == 0)
     init_pdcp(0);
   else
     init_pdcp(mode_offset + ue_id_g);
@@ -533,33 +543,52 @@ int main(int argc, char **argv)
     start_oai_nrue_threads();
 
   if (!get_softmodem_params()->emulate_l1) {
-    PHY_VARS_NR_UE *UE[MAX_NUM_CCs];
-    for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
-      UE[CC_id] = PHY_vars_UE_g[0][CC_id];
+    for (int inst = 0; inst < NB_UE_INST; inst++) {
+      PHY_VARS_NR_UE *UE[MAX_NUM_CCs];
+      for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+        UE[CC_id] = PHY_vars_UE_g[inst][CC_id];
 
-      set_options(CC_id, UE[CC_id]);
-      NR_UE_MAC_INST_t *mac = get_mac_inst(0);
+        set_options(CC_id, UE[CC_id]);
+        NR_UE_MAC_INST_t *mac = get_mac_inst(inst);
 
-      if (get_softmodem_params()->sa) { // set frame config to initial values from command line and assume that the SSB is centered on the grid
-        uint16_t nr_band = get_softmodem_params()->band;
-        mac->nr_band = nr_band;
-        mac->ssb_start_subcarrier = UE[CC_id]->frame_parms.ssb_start_subcarrier;
-        nr_init_frame_parms_ue_sa(&UE[CC_id]->frame_parms,
-                                  downlink_frequency[CC_id][0],
-                                  uplink_frequency_offset[CC_id][0],
-                                  get_softmodem_params()->numerology,
-                                  nr_band);
+        if (get_softmodem_params()->sa || get_softmodem_params()->sl_mode) { // set frame config to initial values from command line
+                                                                            // and assume that the SSB is centered on the grid
+          uint16_t nr_band = get_softmodem_params()->band;
+          mac->nr_band = nr_band;
+          mac->ssb_start_subcarrier = UE[CC_id]->frame_parms.ssb_start_subcarrier;
+          nr_init_frame_parms_ue_sa(&UE[CC_id]->frame_parms,
+                                    downlink_frequency[CC_id][0],
+                                    uplink_frequency_offset[CC_id][0],
+                                    get_softmodem_params()->numerology,
+                                    nr_band);
+        } else {
+          DevAssert(mac->if_module != NULL && mac->if_module->phy_config_request != NULL);
+          mac->if_module->phy_config_request(&mac->phy_config);
+          mac->phy_config_request_sent = true;
+          fapi_nr_config_request_t *nrUE_config = &UE[CC_id]->nrUE_config;
+
+          nr_init_frame_parms_ue(&UE[CC_id]->frame_parms, nrUE_config, mac->nr_band);
+        }
+
+        UE[CC_id]->sl_mode = get_softmodem_params()->sl_mode;
+        init_nr_ue_vars(UE[CC_id], inst, abstraction_flag);
+
+        if (UE[CC_id]->sl_mode) {
+          AssertFatal(UE[CC_id]->sl_mode == 2, "Only Sidelink mode 2 supported. Mode 1 not yet supported\n");
+          DevAssert(mac->if_module != NULL && mac->if_module->sl_phy_config_request != NULL);
+          nr_sl_phy_config_t *phycfg = &mac->SL_MAC_PARAMS->sl_phy_config;
+          phycfg->sl_config_req.sl_carrier_config.sl_num_rx_ant = get_nrUE_params()->nb_antennas_rx;
+          phycfg->sl_config_req.sl_carrier_config.sl_num_tx_ant = get_nrUE_params()->nb_antennas_tx;
+          mac->if_module->sl_phy_config_request(phycfg);
+          mac->phy_config_request_sent = true;
+          sl_nr_ue_phy_params_t *sl_phy = &UE[CC_id]->SL_UE_PHY_PARAMS;
+          nr_init_frame_parms_ue_sl(&sl_phy->sl_frame_params,
+                                    &sl_phy->sl_config,
+                                    get_softmodem_params()->threequarter_fs,
+                                    get_nrUE_params()->ofdm_offset_divisor);
+          sl_ue_phy_init(UE[CC_id]);
+        }
       }
-      else{
-        DevAssert(mac->if_module != NULL && mac->if_module->phy_config_request != NULL);
-        mac->if_module->phy_config_request(&mac->phy_config);
-        mac->phy_config_request_sent = true;
-        fapi_nr_config_request_t *nrUE_config = &UE[CC_id]->nrUE_config;
-
-        nr_init_frame_parms_ue(&UE[CC_id]->frame_parms, nrUE_config, mac->nr_band);
-      }
-
-      init_nr_ue_vars(UE[CC_id], 0, abstraction_flag);
     }
 
     init_openair0();
@@ -573,7 +602,10 @@ int main(int argc, char **argv)
       load_softscope("nr",PHY_vars_UE_g[0][0]);
     }
 
-    init_NR_UE_threads(1);
+    for (int inst = 0; inst < NB_UE_INST; inst++) {
+      LOG_I(PHY,"Intializing UE Threads for instance %d ...\n", inst);
+      init_NR_UE_threads(PHY_vars_UE_g[inst][0]);
+    }
     printf("UE threads created by %ld\n", gettid());
   }
 

@@ -273,7 +273,7 @@ void nr_csi_meas_reporting(int Mod_idP,
       curr_pucch->frame = sched_frame;
       curr_pucch->ul_slot = sched_slot;
       curr_pucch->resource_indicator = res_index;
-      curr_pucch->csi_bits += nr_get_csi_bitlen(UE->csi_report_template, csi_report_id);
+      curr_pucch->csi_bits += nr_get_csi_bitlen(&UE->csi_report_template[csi_report_id]);
       curr_pucch->active = true;
 
       int bwp_start = ul_bwp->BWPStart;
@@ -1116,10 +1116,12 @@ void handle_nr_uci_pucch_2_3_4(module_id_t mod_id,
   }
   /* phy-test has hardcoded allocation, so no use to handle CSI reports */
   if ((uci_234->pduBitmap >> 2) & 0x01 && !get_softmodem_params()->phy_test) {
-    //API to parse the csi report and store it into sched_ctrl
-    extract_pucch_csi_report(csi_MeasConfig, uci_234, frame, slot, UE, nrmac->common_channels->ServingCellConfigCommon);
-    //TCI handling function
-    tci_handling(UE,frame, slot);
+    if (uci_234->csi_part1.csi_part1_crc != 1) {
+      // API to parse the csi report and store it into sched_ctrl
+      extract_pucch_csi_report(csi_MeasConfig, uci_234, frame, slot, UE, nrmac->common_channels->ServingCellConfigCommon);
+      // TCI handling function
+      tci_handling(UE, frame, slot);
+    }
     free(uci_234->csi_part1.csi_part1_payload);
   }
   if ((uci_234->pduBitmap >> 3) & 0x01) {
@@ -1353,7 +1355,7 @@ int nr_acknack_scheduling(gNB_MAC_INST *mac,
       return pucch_index; // index of current PUCCH structure
     }
   }
-  LOG_W(NR_MAC, "DL %4d.%2d, Couldn't find scheduling occasion for this HARQ process\n", frame, slot);
+  LOG_D(NR_MAC, "DL %4d.%2d, Couldn't find scheduling occasion for this HARQ process\n", frame, slot);
   return -1;
 }
 

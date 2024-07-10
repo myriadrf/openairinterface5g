@@ -79,7 +79,17 @@ void init_RA(NR_UE_MAC_INST_t *mac,
   int n_prbs = get_N_RA_RB(prach_scs, mac->current_UL_BWP->scs);
   int start_prb = rach_ConfigGeneric->msg1_FrequencyStart + mac->current_UL_BWP->BWPStart;
   // PRACH shall be as specified for QPSK modulated DFT-s-OFDM of equivalent RB allocation (38.101-1)
-  prach_resources->RA_PCMAX = nr_get_Pcmax(mac, 2, false, prach_scs, cfg->carrier_config.dl_grid_size[prach_scs], true, n_prbs, start_prb);
+  prach_resources->RA_PCMAX = nr_get_Pcmax(mac->p_Max,
+                                           mac->nr_band,
+                                           mac->frame_type,
+                                           mac->frequency_range,
+                                           2,
+                                           false,
+                                           prach_scs,
+                                           cfg->carrier_config.dl_grid_size[prach_scs],
+                                           true,
+                                           n_prbs,
+                                           start_prb);
   prach_resources->RA_PREAMBLE_TRANSMISSION_COUNTER = 1;
   prach_resources->RA_PREAMBLE_POWER_RAMPING_COUNTER = 1;
   prach_resources->POWER_OFFSET_2STEP_RA = 0;
@@ -930,7 +940,6 @@ void prepare_msg4_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
   mac->nr_ue_emul_l1.num_harqs = 1;
   PUCCH_sched_t pucch = {.n_CCE = current_harq->n_CCE,
                          .N_CCE = current_harq->N_CCE,
-                         .delta_pucch = current_harq->delta_pucch,
                          .ack_payload = ack_nack,
                          .n_harq = 1};
   current_harq->active = false;
@@ -943,7 +952,7 @@ void prepare_msg4_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
   fapi_nr_ul_config_request_pdu_t *pdu = lockGet_ul_config(mac, sched_frame, sched_slot, FAPI_NR_UL_CONFIG_TYPE_PUCCH);
   if (!pdu)
     return;
-  int ret = nr_ue_configure_pucch(mac, sched_slot, mac->ra.t_crnti, &pucch, &pdu->pucch_config_pdu);
+  int ret = nr_ue_configure_pucch(mac, sched_slot, sched_frame, mac->ra.t_crnti, &pucch, &pdu->pucch_config_pdu);
   if (ret != 0)
     remove_ul_config_last_item(pdu);
   release_ul_config(pdu, false);

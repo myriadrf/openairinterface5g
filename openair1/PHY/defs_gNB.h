@@ -343,13 +343,13 @@ typedef struct {
   /// \f$\log_2(\max|H_i|^2)\f$
   int16_t log2_maxh;
   /// measured RX power based on DRS
-  int ulsch_power[8];
+  uint32_t ulsch_power[8];
   /// total signal over antennas
-  int ulsch_power_tot;
+  uint32_t ulsch_power_tot;
   /// measured RX noise power
   int ulsch_noise_power[8];
   /// total noise over antennas
-  int ulsch_noise_power_tot;
+  uint32_t ulsch_noise_power_tot;
   /// \brief llr values.
   /// - first index: ? [0..1179743] (hard coded)
   int16_t *llr;
@@ -621,9 +621,6 @@ typedef struct PHY_VARS_gNB_s {
 
   /// PUSCH DMRS
   uint32_t ****nr_gold_pusch_dmrs;
-
-  // Mask of occupied RBs, per symbol and PRB
-  uint32_t rb_mask_ul[14][9];
 
   /// PRS sequence
   uint32_t ****nr_gold_prs;

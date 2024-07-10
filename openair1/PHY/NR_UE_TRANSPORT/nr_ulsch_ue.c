@@ -123,6 +123,11 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
   const nfapi_nr_ue_pusch_pdu_t *pusch_pdu = &ulsch_ue->pusch_pdu;
 
   uint32_t tb_size = pusch_pdu->pusch_data.tb_size;
+  AssertFatal(pusch_pdu->pusch_uci.harq_ack_bit_length == 0 &&
+              pusch_pdu->pusch_uci.csi_part1_bit_length == 0 &&
+              pusch_pdu->pusch_uci.csi_part2_bit_length == 0,
+              "UCI on PUSCH not supported at PHY\n");
+
   int start_symbol          = pusch_pdu->start_symbol_index;
   uint16_t ul_dmrs_symb_pos = pusch_pdu->ul_dmrs_symb_pos;
   uint8_t number_of_symbols = pusch_pdu->nr_of_symbols;
@@ -566,17 +571,20 @@ uint8_t nr_ue_pusch_common_procedures(PHY_VARS_NR_UE *UE,
                                       const uint8_t slot,
                                       const NR_DL_FRAME_PARMS *frame_parms,
                                       const uint8_t n_antenna_ports,
-                                      c16_t **txdataF)
+                                      c16_t **txdataF,
+                                      uint32_t linktype)
 {
   const int tx_offset = frame_parms->get_samples_slot_timestamp(slot, frame_parms, 0);
+
+  int N_RB = (linktype == link_type_sl) ? frame_parms->N_RB_SL : frame_parms->N_RB_UL;
 
   c16_t **txdata = UE->common_vars.txData;
   for(int ap = 0; ap < n_antenna_ports; ap++) {
     apply_nr_rotation_TX(frame_parms,
                          txdataF[ap],
-                         frame_parms->symbol_rotation[1],
+                         frame_parms->symbol_rotation[linktype],
                          slot,
-                         frame_parms->N_RB_UL,
+                         N_RB,
                          0,
                          NR_NUMBER_OF_SYMBOLS_PER_SLOT);
   }

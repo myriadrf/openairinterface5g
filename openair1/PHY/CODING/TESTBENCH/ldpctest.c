@@ -259,7 +259,7 @@ one_measurement_t test_ldpc(short max_iterations,
   printf("To: %d\n", (Kb + nrows - no_punctured_columns) * Zc - removed_bit);
   printf("number of undecoded bits: %d\n", (Kb + nrows - no_punctured_columns - 2) * Zc - removed_bit);
 
-  encoder_implemparams_t impp = {.Zc = Zc, .Kb = Kb, .E = block_length, .BG = BG, .Kr = block_length, .K = block_length};
+  encoder_implemparams_t impp = {.Zc = Zc, .Kb = Kb, .BG = BG, .Kr = block_length, .K = block_length};
   impp.gen_code = 2;
 
   if (ntrials==0)
@@ -430,11 +430,11 @@ int main(int argc, char *argv[])
   }
   logInit();
 
-  while ((c = getopt (argc, argv, "--:q:r:s:S:l:G:n:d:i:t:u:hv:")) != -1) {
+  while ((c = getopt (argc, argv, "--:O:q:r:s:S:l:G:n:d:i:t:u:hv:")) != -1) {
 
-    /* ignore long options starting with '--' and their arguments that are handled by configmodule */
+    /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
     /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
-    if (c == 1 || c == '-')
+    if (c == 1 || c == '-' || c == 'O')
       continue;
 
     printf("handling optarg %c\n",c);

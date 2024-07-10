@@ -135,33 +135,29 @@ nr_rrc_pdcp_config_security(
 )
 //------------------------------------------------------------------------------
 {
-  uint8_t kRRCenc[NR_K_KEY_SIZE] = {0};
-  uint8_t kRRCint[NR_K_KEY_SIZE] = {0};
-  uint8_t kUPenc[NR_K_KEY_SIZE]  = {0};
   //uint8_t                            *k_kdf  = NULL;
   static int                          print_keys= 1;
   gNB_RRC_UE_t *UE = &ue_context_pP->ue_context;
 
   /* Derive the keys from kgnb */
-  if (UE->Srb[1].Active || UE->Srb[2].Active) {
-    nr_derive_key(UP_ENC_ALG, UE->ciphering_algorithm, UE->kgnb, kUPenc);
-  }
-
-  nr_derive_key(RRC_ENC_ALG, UE->ciphering_algorithm, UE->kgnb, kRRCenc);
-  nr_derive_key(RRC_INT_ALG, UE->integrity_algorithm, UE->kgnb, kRRCint);
+  nr_pdcp_entity_security_keys_and_algos_t security_parameters;
+  /* set ciphering algorithm depending on 'enable_ciphering' */
+  security_parameters.ciphering_algorithm = enable_ciphering ? UE->ciphering_algorithm : 0;
+  security_parameters.integrity_algorithm = UE->integrity_algorithm;
+  /* use current ciphering algorithm, independently of 'enable_ciphering' to derive ciphering key */
+  nr_derive_key(RRC_ENC_ALG, UE->ciphering_algorithm, UE->kgnb, security_parameters.ciphering_key);
+  nr_derive_key(RRC_INT_ALG, UE->integrity_algorithm, UE->kgnb, security_parameters.integrity_key);
 
   if ( LOG_DUMPFLAG( DEBUG_SECURITY ) ) {
     if (print_keys == 1 ) {
       print_keys =0;
       LOG_DUMPMSG(NR_RRC, DEBUG_SECURITY, UE->kgnb, 32, "\nKgNB:");
-      LOG_DUMPMSG(NR_RRC, DEBUG_SECURITY, kRRCenc, 16,"\nKRRCenc:" );
-      LOG_DUMPMSG(NR_RRC, DEBUG_SECURITY, kRRCint, 16,"\nKRRCint:" );
+      LOG_DUMPMSG(NR_RRC, DEBUG_SECURITY, security_parameters.ciphering_key, 16,"\nKRRCenc:" );
+      LOG_DUMPMSG(NR_RRC, DEBUG_SECURITY, security_parameters.integrity_key, 16,"\nKRRCint:" );
     }
   }
 
-  uint8_t security_mode =
-      enable_ciphering ? UE->ciphering_algorithm | (UE->integrity_algorithm << 4) : 0 | (UE->integrity_algorithm << 4);
-  nr_pdcp_config_set_security(ctxt_pP->rntiMaybeUEid, DCCH, security_mode, kRRCenc, kRRCint, kUPenc);
+  nr_pdcp_config_set_security(ctxt_pP->rntiMaybeUEid, DCCH, true, &security_parameters);
 }
 
 //------------------------------------------------------------------------------
@@ -199,60 +195,42 @@ rrc_gNB_send_NGAP_NAS_FIRST_REQ(
   //              NGAP_NAS_FIRST_REQ (message_p).nas_pdu.length,
   //              ue_context_pP);
 
+  /* selected_plmn_identity: IE is 1-based, convert to 0-based (C array) */
+  int selected_plmn_identity = rrcSetupComplete->selectedPLMN_Identity - 1;
+  if (selected_plmn_identity != 0)
+    LOG_E(NGAP, "UE %u: sent selected PLMN identity %ld, but only one PLMN supported\n", req->gNB_ue_ngap_id, rrcSetupComplete->selectedPLMN_Identity);
+
+  req->selected_plmn_identity = 0; /* always zero because we only support one */
+
   /* Fill UE identities with available information */
-  req->ue_identity.presenceMask = NGAP_UE_IDENTITIES_NONE;
   if (UE->Initialue_identity_5g_s_TMSI.presence) {
     /* Fill s-TMSI */
     req->ue_identity.presenceMask = NGAP_UE_IDENTITIES_FiveG_s_tmsi;
     req->ue_identity.s_tmsi.amf_set_id = UE->Initialue_identity_5g_s_TMSI.amf_set_id;
     req->ue_identity.s_tmsi.amf_pointer = UE->Initialue_identity_5g_s_TMSI.amf_pointer;
     req->ue_identity.s_tmsi.m_tmsi = UE->Initialue_identity_5g_s_TMSI.fiveg_tmsi;
-  }
+  } else if (rrcSetupComplete->registeredAMF != NULL) {
+    NR_RegisteredAMF_t *r_amf = rrcSetupComplete->registeredAMF;
+    req->ue_identity.presenceMask = NGAP_UE_IDENTITIES_guami;
 
-  /* selected_plmn_identity: IE is 1-based, convert to 0-based (C array) */
-  int selected_plmn_identity = rrcSetupComplete->selectedPLMN_Identity - 1;
-  req->selected_plmn_identity = selected_plmn_identity;
+    /* The IE AMF-Identifier (AMFI) comprises of an AMF Region ID (8b), an AMF Set ID (10b) and an AMF Pointer (6b) as specified in TS 23.003 [21], clause 2.10.1. */
+    uint32_t amf_Id = BIT_STRING_to_uint32(&r_amf->amf_Identifier);
+    req->ue_identity.guami.amf_region_id = (amf_Id >> 16) & 0xff;
+    req->ue_identity.guami.amf_set_id = (amf_Id >> 6) & 0x3ff;
+    req->ue_identity.guami.amf_pointer = amf_Id & 0x3f;
 
-  if (rrcSetupComplete->registeredAMF != NULL) {
-      NR_RegisteredAMF_t *r_amf = rrcSetupComplete->registeredAMF;
-      req->ue_identity.presenceMask |= NGAP_UE_IDENTITIES_guami;
+    UE->ue_guami.amf_region_id = req->ue_identity.guami.amf_region_id;
+    UE->ue_guami.amf_set_id = req->ue_identity.guami.amf_set_id;
+    UE->ue_guami.amf_pointer = req->ue_identity.guami.amf_pointer;
 
-      if (r_amf->plmn_Identity != NULL) {
-          if ((r_amf->plmn_Identity->mcc != NULL) && (r_amf->plmn_Identity->mcc->list.count > 0)) {
-              /* Use first indicated PLMN MCC if it is defined */
-              req->ue_identity.guami.mcc = *r_amf->plmn_Identity->mcc->list.array[selected_plmn_identity];
-              LOG_I(NGAP, "[gNB %d] Build NGAP_NAS_FIRST_REQ adding in s_TMSI: GUMMEI MCC %u ue %x\n", ctxt_pP->module_id, req->ue_identity.guami.mcc, UE->rnti);
-          }
-
-          if (r_amf->plmn_Identity->mnc.list.count > 0) {
-              /* Use first indicated PLMN MNC if it is defined */
-              req->ue_identity.guami.mnc = *r_amf->plmn_Identity->mnc.list.array[selected_plmn_identity];
-              LOG_I(NGAP, "[gNB %d] Build NGAP_NAS_FIRST_REQ adding in s_TMSI: GUMMEI MNC %u ue %x\n", ctxt_pP->module_id, req->ue_identity.guami.mnc, UE->rnti);
-          }
-      } else {
-          /* TODO */
-      }
-
-      /* amf_Identifier */
-      uint32_t amf_Id = BIT_STRING_to_uint32(&r_amf->amf_Identifier);
-      req->ue_identity.guami.amf_region_id = amf_Id >> 16;
-      req->ue_identity.guami.amf_set_id = UE->Initialue_identity_5g_s_TMSI.amf_set_id;
-      req->ue_identity.guami.amf_pointer = UE->Initialue_identity_5g_s_TMSI.amf_pointer;
-
-      // fixme: illogical place to set UE values, should be in the function that call this one
-      UE->ue_guami.mcc = req->ue_identity.guami.mcc;
-      UE->ue_guami.mnc = req->ue_identity.guami.mnc;
-      UE->ue_guami.mnc_len = req->ue_identity.guami.mnc_len;
-      UE->ue_guami.amf_region_id = req->ue_identity.guami.amf_region_id;
-      UE->ue_guami.amf_set_id = req->ue_identity.guami.amf_set_id;
-      UE->ue_guami.amf_pointer = req->ue_identity.guami.amf_pointer;
-
-      LOG_I(NGAP,
-            "[gNB %d] Build NGAP_NAS_FIRST_REQ adding in s_TMSI: GUAMI amf_set_id %u amf_region_id %u ue %x\n",
-            ctxt_pP->module_id,
-            req->ue_identity.guami.amf_set_id,
-            req->ue_identity.guami.amf_region_id,
-            UE->rnti);
+    LOG_I(NGAP,
+          "[gNB %d] Build NGAP_NAS_FIRST_REQ adding in s_TMSI: GUAMI amf_set_id %u amf_region_id %u ue %x\n",
+          ctxt_pP->module_id,
+          req->ue_identity.guami.amf_set_id,
+          req->ue_identity.guami.amf_region_id,
+          UE->rnti);
+  } else {
+    req->ue_identity.presenceMask = NGAP_UE_IDENTITIES_NONE;
   }
 
   itti_send_msg_to_task (TASK_NGAP, ctxt_pP->instance, message_p);
@@ -481,6 +459,15 @@ int rrc_gNB_process_NGAP_INITIAL_CONTEXT_SETUP_REQ(MessageDef *msg_p, instance_t
   }
   PROTOCOL_CTXT_SET_BY_INSTANCE(&ctxt, instance, GNB_FLAG_YES, UE->rrc_ue_id, 0, 0);
   UE->amf_ue_ngap_id = req->amf_ue_ngap_id;
+
+  /* store guami in gNB_RRC_UE_t context;
+   * we copy individual members because the guami types are different (nr_rrc_guami_t and ngap_guami_t) */
+  UE->ue_guami.mcc = req->guami.mcc;
+  UE->ue_guami.mnc = req->guami.mnc;
+  UE->ue_guami.mnc_len = req->guami.mnc_len;
+  UE->ue_guami.amf_region_id = req->guami.amf_region_id;
+  UE->ue_guami.amf_set_id = req->guami.amf_set_id;
+  UE->ue_guami.amf_pointer = req->guami.amf_pointer;
 
   /* NAS PDU */
   // this is malloced pointers, we pass it for later free()

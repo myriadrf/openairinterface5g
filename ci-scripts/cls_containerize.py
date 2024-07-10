@@ -286,7 +286,7 @@ class Containerize():
 		self.host = result.group(0)
 		if self.host == 'Ubuntu':
 			self.cli = 'docker'
-			self.dockerfileprefix = '.ubuntu20'
+			self.dockerfileprefix = '.ubuntu22'
 			self.cliBuildOptions = ''
 		elif self.host == 'Red Hat':
 			self.cli = 'sudo podman'
@@ -321,7 +321,7 @@ class Containerize():
 				imageNames.append(('oai-nr-cuup', 'nr-cuup', 'oai-nr-cuup-asan', '--build-arg "BUILD_OPTION=--sanitize"'))
 		result = re.search('build_cross_arm64', self.imageKind)
 		if result is not None:
-			self.dockerfileprefix = '.ubuntu20.cross-arm64'
+			self.dockerfileprefix = '.ubuntu22.cross-arm64'
 		
 		# Workaround for some servers, we need to erase completely the workspace
 		if self.forcedWorkspaceCleanup:
@@ -412,10 +412,10 @@ class Containerize():
 			elif image != 'ran-build':
 				cmd.run(f'sed -i -e "s#ran-build:latest#ran-build:{imageTag}#" docker/Dockerfile.{pattern}{self.dockerfileprefix}')
 			if image == 'oai-gnb-aerial':
-				cmd.run('cp -f /opt/nvidia-ipc/nvipc_src.2023.11.28.tar.gz .')
+				cmd.run('cp -f /opt/nvidia-ipc/nvipc_src.2024.05.23.tar.gz .')
 			ret = cmd.run(f'{self.cli} build {self.cliBuildOptions} --target {image} --tag {name}:{imageTag} --file docker/Dockerfile.{pattern}{self.dockerfileprefix} {option} . > cmake_targets/log/{name}.log 2>&1', timeout=1200)
 			if image == 'oai-gnb-aerial':
-				cmd.run('rm -f nvipc_src.2023.11.28.tar.gz')
+				cmd.run('rm -f nvipc_src.2024.05.23.tar.gz')
 			if image == 'ran-build' and ret.returncode == 0:
 				cmd.run(f"docker run --name test-log -d {name}:{imageTag} /bin/true")
 				cmd.run(f"docker cp test-log:/oai-ran/cmake_targets/log/ cmake_targets/log/{name}/")
@@ -677,9 +677,11 @@ class Containerize():
 			return False
 
 		# build ran-unittests image
-		dockerfile = "ci-scripts/docker/Dockerfile.unittest.ubuntu20"
+		dockerfile = "ci-scripts/docker/Dockerfile.unittest.ubuntu22"
 		ret = cmd.run(f'docker build --progress=plain --tag ran-unittests:{baseTag} --file {dockerfile} . &> {lSourcePath}/cmake_targets/log/unittest-build.log')
 		if ret.returncode != 0:
+			build_log_name = f'build_log_{self.testCase_id}'
+			CopyLogsToExecutor(cmd, lSourcePath, build_log_name)
 			logging.error(f'Cannot build unit tests')
 			HTML.CreateHtmlTestRow("Unit test build failed", 'KO', [dockerfile])
 			HTML.CreateHtmlTabFooter(False)

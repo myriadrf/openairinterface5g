@@ -501,6 +501,7 @@ typedef struct{
 } CSI_Meas_bitlen_t;
 
 typedef struct nr_csi_report {
+  NR_CSI_ReportConfigId_t reportConfigId;
   NR_CSI_ReportConfig__reportQuantity_PR reportQuantity_type;
   long periodicity;
   uint16_t offset;
@@ -561,6 +562,7 @@ typedef struct NR_UE_UL_BWP {
   NR_PUSCH_TimeDomainResourceAllocationList_t *tdaList_Common;
   NR_ConfiguredGrantConfig_t *configuredGrantConfig;
   NR_PUSCH_Config_t *pusch_Config;
+  NR_UCI_OnPUSCH_t *uci_onPusch;
   NR_PUCCH_Config_t *pucch_Config;
   NR_PUCCH_ConfigCommon_t *pucch_ConfigCommon;
   NR_SRS_Config_t *srs_Config;
@@ -569,6 +571,7 @@ typedef struct NR_UE_UL_BWP {
   uint8_t mcs_table;
   nr_dci_format_t dci_format;
   int max_fb_time;
+  long *p0_NominalWithGrant;
 } NR_UE_UL_BWP_t;
 
 // non-BWP serving cell configuration
@@ -612,6 +615,7 @@ typedef struct NR_tda_info {
   int startSymbolIndex;
   int nrOfSymbols;
   long k2;
+  bool valid_tda;
 } NR_tda_info_t;
 
 #endif /*__LAYER2_MAC_H__ */
