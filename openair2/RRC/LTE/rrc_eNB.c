@@ -78,8 +78,7 @@
 #include "T.h"
 #include "LTE_MeasResults.h"
 
-#include "RRC/NAS/nas_config.h"
-#include "RRC/NAS/rb_config.h"
+#include "common/utils/tun_if.h"
 
 #include "rrc_eNB_S1AP.h"
 #include "rrc_eNB_GTPV1U.h"
@@ -98,6 +97,8 @@
 #endif
 
 #include "SIMULATION/TOOLS/sim.h" // for taus
+
+#include "openair1/PHY/LTE_TRANSPORT/transport_proto.h"
 
 #define ASN_MAX_ENCODE_SIZE 4096
 #define NUMBEROF_DRBS_TOBE_ADDED 1
@@ -879,7 +880,7 @@ rrc_eNB_free_UE(
 void put_UE_in_freelist(module_id_t mod_id, rnti_t rnti, bool removeFlag) {
   eNB_MAC_INST                             *eNB_MAC = RC.mac[mod_id];
   pthread_mutex_lock(&lock_ue_freelist);
-  LOG_I(PHY,"add ue %d in free list, context flag: %d\n", rnti, removeFlag);
+  LOG_I(PHY, "adding ue %x in UE to free list, context flag: %d\n", rnti, removeFlag);
   int i;
   for (i=0; i < sizeofArray(eNB_MAC->UE_free_ctrl); i++) 
     if (eNB_MAC->UE_free_ctrl[i].rnti == 0)
@@ -892,15 +893,17 @@ void put_UE_in_freelist(module_id_t mod_id, rnti_t rnti, bool removeFlag) {
   eNB_MAC->UE_free_ctrl[i].rnti = rnti;
   eNB_MAC->UE_free_ctrl[i].removeContextFlg = removeFlag;
   eNB_MAC->UE_free_ctrl[i].raFlag = 0;
-  eNB_MAC->UE_release_req.ue_release_request_body.ue_release_request_TLVs_list[eNB_MAC->UE_release_req.ue_release_request_body.number_of_TLVs].rnti = rnti;
-  eNB_MAC->UE_release_req.ue_release_request_body.number_of_TLVs++;
+  if (eNB_MAC->UE_release_req.ue_release_request_body.number_of_TLVs < NFAPI_RELEASE_MAX_RNTI) {
+    eNB_MAC->UE_release_req.ue_release_request_body
+        .ue_release_request_TLVs_list[eNB_MAC->UE_release_req.ue_release_request_body.number_of_TLVs]
+        .rnti = rnti;
+    eNB_MAC->UE_release_req.ue_release_request_body.number_of_TLVs++;
+  } else {
+    LOG_E(PHY, "fapi List of UE to release is full\n");
+  }
+
   pthread_mutex_unlock(&lock_ue_freelist);
 }
-
-extern int16_t find_dlsch(uint16_t rnti, PHY_VARS_eNB *eNB,find_type_t type);
-extern int16_t find_ulsch(uint16_t rnti, PHY_VARS_eNB *eNB,find_type_t type);
-extern void clean_eNb_ulsch(LTE_eNB_ULSCH_t *ulsch);
-extern void clean_eNb_dlsch(LTE_eNB_DLSCH_t *dlsch);
 
 void release_UE_in_freeList(module_id_t mod_id) {
   PHY_VARS_eNB                             *eNB_PHY = NULL;
@@ -919,13 +922,11 @@ void release_UE_in_freeList(module_id_t mod_id) {
       int id;
       // clean ULSCH entries for rnti
       id = find_ulsch(rnti, eNB_PHY, eNB_MAC->UE_free_ctrl[ue_num].raFlag ? SEARCH_EXIST_RA : SEARCH_EXIST);
-
       if (id >= 0)
         clean_eNb_ulsch(eNB_PHY->ulsch[id]);
 
         // clean DLSCH entries for rnti
       id = find_dlsch(rnti, eNB_PHY, eNB_MAC->UE_free_ctrl[ue_num].raFlag ? SEARCH_EXIST_RA : SEARCH_EXIST);
-
       if (id >= 0)
         clean_eNb_dlsch(eNB_PHY->dlsch[id][0]);
 
@@ -3887,7 +3888,11 @@ check_handovers(
           ue_context_p->ue_context.handover_info->buf,
           PDCP_TRANSMISSION_MODE_CONTROL);
         ue_context_p->ue_context.handover_info->state = HO_COMPLETE;
-        LOG_I(RRC, "RRC Sends RRCConnectionReconfiguration to UE %d  at frame %d and subframe %d \n", ue_context_p->ue_context.rnti, ctxt_pP->frame,ctxt_pP->subframe);
+        LOG_I(RRC,
+              "RRC Sends RRCConnectionReconfiguration to UE %x  at frame %d and subframe %d \n",
+              ue_context_p->ue_context.rnti,
+              ctxt_pP->frame,
+              ctxt_pP->subframe);
       }
 
       /* in the target, UE in HO_ACK mode */
@@ -5144,7 +5149,6 @@ rrc_eNB_process_RRCConnectionReconfigurationComplete(
 {
   int                                 drb_id;
   int                                 oip_ifup = 0;
-  int                                 dest_ip_offset = 0;
   uint8_t kRRCenc[32] = {0};
   uint8_t kRRCint[32] = {0};
   uint8_t kUPenc[32] = {0};
@@ -5257,26 +5261,18 @@ rrc_eNB_process_RRCConnectionReconfigurationComplete(
             LOG_I(OIP, "[eNB %d] trying to bring up the OAI interface oai%d\n",
                   ctxt_pP->module_id,
                   ctxt_pP->module_id);
-            oip_ifup = nas_config(ctxt_pP->module_id,   // interface index
-                                  ctxt_pP->module_id + 1,   // third octet
-                                  ctxt_pP->module_id + 1,   // fourth octet
-                                  "oai");
+            char ip[20];
+            snprintf(ip, sizeof(ip), "10.0.%d.%d", ctxt_pP->module_id + 1, ctxt_pP->module_id + 1);
+            oip_ifup = tun_config(ctxt_pP->module_id, ip, NULL, "oaitun_oai");
 
             if (oip_ifup == 0) { // interface is up --> send a config the DRB
               module_id_t ue_module_id;
-              dest_ip_offset = 8;
               LOG_I(OIP,
                     "[eNB %d] Config the oai%d to send/receive pkt on DRB %ld to/from the protocol stack\n",
                     ctxt_pP->module_id, ctxt_pP->module_id,
                     (long int)((ue_context_pP->local_uid * LTE_maxDRB) + DRB_configList->list.array[i]->drb_Identity));
               ue_module_id = 0; // Was oai_emulation.info.eNB_ue_local_uid_to_ue_module_id[ctxt_pP->module_id][ue_context_pP->local_uid];
-              rb_conf_ipv4(0, //add
-                           ue_module_id,  //cx
-                           ctxt_pP->module_id,    //inst
-                           (ue_module_id * LTE_maxDRB) + DRB_configList->list.array[i]->drb_Identity, // RB
-                           0,    //dscp
-                           ipv4_address(ctxt_pP->module_id + 1, ctxt_pP->module_id + 1),  //saddr
-                           ipv4_address(ctxt_pP->module_id + 1, dest_ip_offset + ue_module_id + 1));  //daddr
+              AssertFatal(false, "not implemented\n");
               LOG_D(RRC, "[eNB %d] State = Attached (UE rnti %x module id %u)\n",
                     ctxt_pP->module_id, ue_context_pP->ue_context.rnti, ue_module_id);
             } /* oip_ifup */
@@ -7578,16 +7574,16 @@ void rrc_eNB_process_ENDC_DC_prep_timeout(module_id_t module_id, x2ap_ENDC_dc_pr
 
   ue_context = rrc_eNB_get_ue_context(RC.rrc[module_id], m->rnti);
   if (ue_context == NULL) {
-    LOG_E(RRC, "receiving DC prep timeout for unknown UE rnti %d\n", m->rnti);
+    LOG_E(RRC, "receiving DC prep timeout for unknown UE rnti %x\n", m->rnti);
     return;
   }
 
   if (ue_context->ue_context.StatusRrc != RRC_NR_NSA) {
-    LOG_E(RRC, "receiving DC prep timeout for UE rnti %d not in state RRC_NR_NSA\n", m->rnti);
+    LOG_E(RRC, "receiving DC prep timeout for UE rnti %x not in state RRC_NR_NSA\n", m->rnti);
     return;
   }
 
-  LOG_I(RRC, "DC prep timeout for UE rnti %d, put back to RRC_RECONFIGURED mode\n", m->rnti);
+  LOG_I(RRC, "DC prep timeout for UE rnti %x, put back to RRC_RECONFIGURED mode\n", m->rnti);
   ue_context->ue_context.StatusRrc = RRC_RECONFIGURED;
 }
 
@@ -7598,7 +7594,7 @@ void rrc_eNB_process_ENDC_sgNB_release_required(module_id_t module_id, x2ap_ENDC
 
   ue_context = rrc_eNB_find_ue_context_from_gnb_rnti(RC.rrc[module_id], m->gnb_rnti);
   if (ue_context == NULL) {
-    LOG_E(RRC, "receiving ENDC SgNB Release Required for unknown UE (with gNB's rnti %d)\n", m->gnb_rnti);
+    LOG_E(RRC, "receiving ENDC SgNB Release Required for unknown UE (with gNB's rnti %x)\n", m->gnb_rnti);
     return;
   }
 

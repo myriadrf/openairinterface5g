@@ -517,7 +517,6 @@ int logInit (void)
 		   "Invalid log options: time and wall_clock both set but are mutually exclusive\n");
 
   g_log->flag =  g_log->flag | FLAG_INITIALIZED;
-  printf("log init done\n");
   return 0;
 }
 
@@ -946,7 +945,6 @@ int logInit_log_mem (char * filename)
     return -1;
   }
   pthread_create(&log_mem_thread, NULL, (void *(*)(void *))flush_mem_to_file, (void *)NULL);
-  printf("log init done\n");
   
   return 0;
 }

@@ -254,6 +254,7 @@ void ngap_gNB_handle_sctp_association_resp(instance_t instance, sctp_new_associa
   ngap_amf_data_p->in_streams  = sctp_new_association_resp->in_streams;
   ngap_amf_data_p->out_streams = sctp_new_association_resp->out_streams;
   /* Prepare new NG Setup Request */
+  LOG_A(NGAP, "Send NGSetupRequest to AMF\n");
   ngap_gNB_generate_ng_setup_request(instance_p, ngap_amf_data_p);
 }
 

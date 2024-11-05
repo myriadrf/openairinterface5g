@@ -30,6 +30,7 @@
 # include "nas_parser.h"
 # include "nas_proc.h"
 #include "common/utils/mem/oai_memory.h"
+#include "common/oai_version.h"
 
 #include "nas_user.h"
 #include "common/ran_context.h"
@@ -134,7 +135,7 @@ void *nas_ue_task(void *args_p)
       user->at_response = calloc_or_fail(1, sizeof(at_response_t));
       user->lowerlayer_data = calloc_or_fail(1, sizeof(lowerlayer_data_t));
       /* Initialize NAS user */
-      nas_user_initialize(user, &user_api_emm_callback, &user_api_esm_callback, FIRMWARE_VERSION);
+      nas_user_initialize(user, &user_api_emm_callback, &user_api_esm_callback, OAI_FIRMWARE_VERSION);
     }
   }
   else
@@ -174,7 +175,7 @@ void *nas_ue_task(void *args_p)
       user->at_response = calloc_or_fail(1, sizeof(at_response_t));
       user->lowerlayer_data = calloc_or_fail(1, sizeof(lowerlayer_data_t));
       /* Initialize NAS user */
-      nas_user_initialize(user, &user_api_emm_callback, &user_api_esm_callback, FIRMWARE_VERSION);
+      nas_user_initialize(user, &user_api_emm_callback, &user_api_esm_callback, OAI_FIRMWARE_VERSION);
       user->ueid = 0;
   }
 
@@ -254,7 +255,7 @@ void *nas_ue_task(void *args_p)
 
         if ((NAS_CONN_ESTABLI_CNF (msg_p).errCode == AS_SUCCESS)
             || (NAS_CONN_ESTABLI_CNF (msg_p).errCode == AS_TERMINATED_NAS)) {
-          nas_proc_establish_cnf(user, NAS_CONN_ESTABLI_CNF (msg_p).nasMsg.data, NAS_CONN_ESTABLI_CNF (msg_p).nasMsg.length);
+          nas_proc_establish_cnf(user, NAS_CONN_ESTABLI_CNF(msg_p).nasMsg.nas_data, NAS_CONN_ESTABLI_CNF(msg_p).nasMsg.length);
 
           /* TODO checks if NAS will free the nas message, better to do it there anyway! */
           // result = itti_free (ITTI_MSG_ORIGIN_ID(msg_p), NAS_CONN_ESTABLI_CNF(msg_p).nasMsg.data);
@@ -286,13 +287,8 @@ void *nas_ue_task(void *args_p)
         LOG_I(NAS, "[UE %d] Received %s: UEid %u, length %u\n", Mod_id,  ITTI_MSG_NAME (msg_p),
               NAS_DOWNLINK_DATA_IND (msg_p).UEid, NAS_DOWNLINK_DATA_IND (msg_p).nasMsg.length);
 
-        nas_proc_dl_transfer_ind (user, NAS_DOWNLINK_DATA_IND(msg_p).nasMsg.data, NAS_DOWNLINK_DATA_IND(msg_p).nasMsg.length);
-
-        if (0) {
-          /* TODO checks if NAS will free the nas message, better to do it there anyway! */
-          result = itti_free (ITTI_MSG_ORIGIN_ID(msg_p), NAS_DOWNLINK_DATA_IND(msg_p).nasMsg.data);
-          AssertFatal (result == EXIT_SUCCESS, "Failed to free memory (%d)!\n", result);
-        }
+        nas_proc_dl_transfer_ind(user, NAS_DOWNLINK_DATA_IND(msg_p).nasMsg.nas_data, NAS_DOWNLINK_DATA_IND(msg_p).nasMsg.length);
+        free(NAS_DOWNLINK_DATA_IND(msg_p).nasMsg.nas_data);
 
         break;
 

@@ -36,6 +36,79 @@
 #include "nr_common.h"
 #include <complex.h>
 
+#define C_SRS_NUMBER (64)
+#define B_SRS_NUMBER (4)
+
+/* TS 38.211 Table 6.4.1.4.3-1: SRS bandwidth configuration */
+static const unsigned short srs_bandwidth_config[C_SRS_NUMBER][B_SRS_NUMBER][2] = {
+    /*           B_SRS = 0    B_SRS = 1   B_SRS = 2    B_SRS = 3     */
+    /* C SRS   m_srs0  N_0  m_srs1 N_1  m_srs2   N_2 m_srs3   N_3    */
+    /* 0  */ {{4, 1}, {4, 1}, {4, 1}, {4, 1}},
+    /* 1  */ {{8, 1}, {4, 2}, {4, 1}, {4, 1}},
+    /* 2  */ {{12, 1}, {4, 3}, {4, 1}, {4, 1}},
+    /* 3  */ {{16, 1}, {4, 4}, {4, 1}, {4, 1}},
+    /* 4  */ {{16, 1}, {8, 2}, {4, 2}, {4, 1}},
+    /* 5  */ {{20, 1}, {4, 5}, {4, 1}, {4, 1}},
+    /* 6  */ {{24, 1}, {4, 6}, {4, 1}, {4, 1}},
+    /* 7  */ {{24, 1}, {12, 2}, {4, 3}, {4, 1}},
+    /* 8  */ {{28, 1}, {4, 7}, {4, 1}, {4, 1}},
+    /* 9  */ {{32, 1}, {16, 2}, {8, 2}, {4, 2}},
+    /* 10 */ {{36, 1}, {12, 3}, {4, 3}, {4, 1}},
+    /* 11 */ {{40, 1}, {20, 2}, {4, 5}, {4, 1}},
+    /* 12 */ {{48, 1}, {16, 3}, {8, 2}, {4, 2}},
+    /* 13 */ {{48, 1}, {24, 2}, {12, 2}, {4, 3}},
+    /* 14 */ {{52, 1}, {4, 13}, {4, 1}, {4, 1}},
+    /* 15 */ {{56, 1}, {28, 2}, {4, 7}, {4, 1}},
+    /* 16 */ {{60, 1}, {20, 3}, {4, 5}, {4, 1}},
+    /* 17 */ {{64, 1}, {32, 2}, {16, 2}, {4, 4}},
+    /* 18 */ {{72, 1}, {24, 3}, {12, 2}, {4, 3}},
+    /* 19 */ {{72, 1}, {36, 2}, {12, 3}, {4, 3}},
+    /* 20 */ {{76, 1}, {4, 19}, {4, 1}, {4, 1}},
+    /* 21 */ {{80, 1}, {40, 2}, {20, 2}, {4, 5}},
+    /* 22 */ {{88, 1}, {44, 2}, {4, 11}, {4, 1}},
+    /* 23 */ {{96, 1}, {32, 3}, {16, 2}, {4, 4}},
+    /* 24 */ {{96, 1}, {48, 2}, {24, 2}, {4, 6}},
+    /* 25 */ {{104, 1}, {52, 2}, {4, 13}, {4, 1}},
+    /* 26 */ {{112, 1}, {56, 2}, {28, 2}, {4, 7}},
+    /* 27 */ {{120, 1}, {60, 2}, {20, 3}, {4, 5}},
+    /* 28 */ {{120, 1}, {40, 3}, {8, 5}, {4, 2}},
+    /* 29 */ {{120, 1}, {24, 5}, {12, 2}, {4, 3}},
+    /* 30 */ {{128, 1}, {64, 2}, {32, 2}, {4, 8}},
+    /* 31 */ {{128, 1}, {64, 2}, {16, 4}, {4, 4}},
+    /* 32 */ {{128, 1}, {16, 8}, {8, 2}, {4, 2}},
+    /* 33 */ {{132, 1}, {44, 3}, {4, 11}, {4, 1}},
+    /* 34 */ {{136, 1}, {68, 2}, {4, 17}, {4, 1}},
+    /* 35 */ {{144, 1}, {72, 2}, {36, 2}, {4, 9}},
+    /* 36 */ {{144, 1}, {48, 3}, {24, 2}, {12, 2}},
+    /* 37 */ {{144, 1}, {48, 3}, {16, 3}, {4, 4}},
+    /* 38 */ {{144, 1}, {16, 9}, {8, 2}, {4, 2}},
+    /* 39 */ {{152, 1}, {76, 2}, {4, 19}, {4, 1}},
+    /* 40 */ {{160, 1}, {80, 2}, {40, 2}, {4, 10}},
+    /* 41 */ {{160, 1}, {80, 2}, {20, 4}, {4, 5}},
+    /* 42 */ {{160, 1}, {32, 5}, {16, 2}, {4, 4}},
+    /* 43 */ {{168, 1}, {84, 2}, {28, 3}, {4, 7}},
+    /* 44 */ {{176, 1}, {88, 2}, {44, 2}, {4, 11}},
+    /* 45 */ {{184, 1}, {92, 2}, {4, 23}, {4, 1}},
+    /* 46 */ {{192, 1}, {96, 2}, {48, 2}, {4, 12}},
+    /* 47 */ {{192, 1}, {96, 2}, {24, 4}, {4, 6}},
+    /* 48 */ {{192, 1}, {64, 3}, {16, 4}, {4, 4}},
+    /* 49 */ {{192, 1}, {24, 8}, {8, 3}, {4, 2}},
+    /* 50 */ {{208, 1}, {104, 2}, {52, 2}, {4, 13}},
+    /* 51 */ {{216, 1}, {108, 2}, {36, 3}, {4, 9}},
+    /* 52 */ {{224, 1}, {112, 2}, {56, 2}, {4, 14}},
+    /* 53 */ {{240, 1}, {120, 2}, {60, 2}, {4, 15}},
+    /* 54 */ {{240, 1}, {80, 3}, {20, 4}, {4, 5}},
+    /* 55 */ {{240, 1}, {48, 5}, {16, 3}, {8, 2}},
+    /* 56 */ {{240, 1}, {24, 10}, {12, 2}, {4, 3}},
+    /* 57 */ {{256, 1}, {128, 2}, {64, 2}, {4, 16}},
+    /* 58 */ {{256, 1}, {128, 2}, {32, 4}, {4, 8}},
+    /* 59 */ {{256, 1}, {16, 16}, {8, 2}, {4, 2}},
+    /* 60 */ {{264, 1}, {132, 2}, {44, 3}, {4, 11}},
+    /* 61 */ {{272, 1}, {136, 2}, {68, 2}, {4, 17}},
+    /* 62 */ {{272, 1}, {68, 4}, {4, 17}, {4, 1}},
+    /* 63 */ {{272, 1}, {16, 17}, {8, 2}, {4, 2}},
+};
+
 const char *duplex_mode[]={"FDD","TDD"};
 
 static const uint8_t bit_reverse_table_256[] = {
@@ -103,6 +176,16 @@ int get_supported_band_index(int scs, frequency_range_t freq_range, int n_rbs)
       return i;
   }
   return (-1); // not found
+}
+
+int get_smallest_supported_bandwidth_index(int scs, frequency_range_t frequency_range, int n_rbs)
+{
+  int scs_index = scs + frequency_range;
+  for (int i = 0; i < 12; i++) {
+    if (n_rbs <= tables_5_3_2[scs_index][i])
+      return i;
+  }
+  return -1; // not found
 }
 
 // Table 5.2-1 NR operating bands in FR1 & FR2 (3GPP TS 38.101)
@@ -299,64 +382,30 @@ void check_ssb_raster(uint64_t freq, int band, int scs)
               band);
 }
 
-int get_supported_bw_mhz(frequency_range_t frequency_range, int scs, int nb_rb)
+int get_supported_bw_mhz(frequency_range_t frequency_range, int bw_index)
 {
-  int bw_index = get_supported_band_index(scs, frequency_range, nb_rb);
   if (frequency_range == FR1) {
-    switch (bw_index) {
-      case 0 :
-        return 5; // 5MHz
-      case 1 :
-        return 10;
-      case 2 :
-        return 15;
-      case 3 :
-        return 20;
-      case 4 :
-        return 25;
-      case 5 :
-        return 30;
-      case 6 :
-        return 40;
-      case 7 :
-        return 50;
-      case 8 :
-        return 60;
-      case 9 :
-        return 80;
-      case 10 :
-        return 90;
-      case 11 :
-        return 100;
-      default :
-        AssertFatal(false, "Invalid band index for FR1 %d\n", bw_index);
-    }
-  }
-  else {
-    switch (bw_index) {
-      case 0 :
-        return 50; // 50MHz
-      case 1 :
-        return 100;
-      case 2 :
-        return 200;
-      case 3 :
-        return 400;
-      default :
-        AssertFatal(false, "Invalid band index for FR2 %d\n", bw_index);
-    }
+    int bandwidth_index_to_mhz[] = {5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 90, 100};
+    AssertFatal(bw_index >= 0 && bw_index <= sizeofArray(bandwidth_index_to_mhz),
+                "Bandwidth index %d is invalid\n",
+                bw_index);
+    return bandwidth_index_to_mhz[bw_index];
+  } else {
+    int bandwidth_index_to_mhz[] = {50, 100, 200, 400};
+    AssertFatal(bw_index >= 0 && bw_index <= sizeofArray(bandwidth_index_to_mhz),
+                "Bandwidth index %d is invalid\n",
+                bw_index);
+    return bandwidth_index_to_mhz[bw_index];
   }
 }
 
-bool compare_relative_ul_channel_bw(int nr_band, int scs, int nb_ul, frame_type_t frame_type)
+bool compare_relative_ul_channel_bw(int nr_band, int scs, int channel_bandwidth, frame_type_t frame_type)
 {
   // 38.101-1 section 6.2.2
   // Relative channel bandwidth <= 4% for TDD bands and <= 3% for FDD bands
   int index = get_nr_table_idx(nr_band, scs);
-
-  int band_size_khz = get_supported_bw_mhz(nr_band > 256 ? FR2 : FR1, scs, nb_ul) * 1000;
   float limit = frame_type == TDD ? 0.04 : 0.03;
-  float rel_bw = (float) (band_size_khz) / (float) (nr_bandtable[index].ul_max - nr_bandtable[index].ul_min);
+  float rel_bw = (float) (2 * channel_bandwidth * 1000) / (float) (nr_bandtable[index].ul_max - nr_bandtable[index].ul_min);
   return rel_bw > limit;
 }
 
@@ -1173,6 +1222,20 @@ void init_delay_table(uint16_t ofdm_symbol_size,
   }
 }
 
+int set_default_nta_offset(frequency_range_t freq_range, uint32_t samples_per_subframe)
+{
+  // ta_offset_samples : ta_offset = samples_per_subframe : (Δf_max x N_f / 1000)
+  // As described in Section 4.3.1 in 38.211
+
+  // TODO There is no way for the UE to know about LTE-NR coexistence case
+  //      as mentioned in Table 7.1.2-2 of 38.133
+  //      LTE-NR coexistence means the presence of an active LTE service in the same band as NR in current deployment
+  //      We assume no coexistence
+
+  uint64_t numer = (freq_range == FR1 ? 25600 : 13792) * (uint64_t)samples_per_subframe;
+  return numer / (4096 * 480);
+}
+
 void nr_timer_start(NR_timer_t *timer)
 {
   timer->active = true;
@@ -1185,9 +1248,9 @@ void nr_timer_stop(NR_timer_t *timer)
   timer->counter = 0;
 }
 
-bool is_nr_timer_active(NR_timer_t timer)
+bool nr_timer_is_active(const NR_timer_t *timer)
 {
-  return timer.active;
+  return timer->active;
 }
 
 bool nr_timer_tick(NR_timer_t *timer)
@@ -1197,23 +1260,23 @@ bool nr_timer_tick(NR_timer_t *timer)
     timer->counter += timer->step;
     if (timer->target == UINT_MAX) // infinite target, never expires
       return false;
-    expired = nr_timer_expired(*timer);
+    expired = nr_timer_expired(timer);
     if (expired)
       timer->active = false;
   }
   return expired;
 }
 
-bool nr_timer_expired(NR_timer_t timer)
+bool nr_timer_expired(const NR_timer_t *timer)
 {
-  if (timer.target == UINT_MAX) // infinite target, never expires
+  if (timer->target == UINT_MAX) // infinite target, never expires
     return false;
-  return (timer.counter >= timer.target);
+  return timer->counter >= timer->target;
 }
 
-uint32_t nr_timer_elapsed_time(NR_timer_t timer)
+uint32_t nr_timer_elapsed_time(const NR_timer_t *timer)
 {
-  return timer.counter;
+  return timer->counter;
 }
 
 void nr_timer_setup(NR_timer_t *timer, const uint32_t target, const uint32_t step)
@@ -1221,4 +1284,12 @@ void nr_timer_setup(NR_timer_t *timer, const uint32_t target, const uint32_t ste
   timer->target = target;
   timer->step = step;
   nr_timer_stop(timer);
+}
+
+unsigned short get_m_srs(int c_srs, int b_srs) {
+  return srs_bandwidth_config[c_srs][b_srs][0];
+}
+
+unsigned short get_N_b_srs(int c_srs, int b_srs) {
+  return srs_bandwidth_config[c_srs][b_srs][1];
 }

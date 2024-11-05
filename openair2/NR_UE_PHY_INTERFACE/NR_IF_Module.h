@@ -37,7 +37,6 @@
 #include <semaphore.h>
 #include "fapi_nr_ue_interface.h"
 #include "openair2/PHY_INTERFACE/queue_t.h"
-#include "nfapi_nr_interface_scf.h"
 #include "openair2/NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "NR_Packet_Drop.h"
 #include "nfapi/open-nFAPI/nfapi/public_inc/sidelink_nr_ue_interface.h"
@@ -50,6 +49,17 @@ typedef enum sl_sidelink_slot_type {
   SIDELINK_SLOT_TYPE_BOTH
 
 } sl_sidelink_slot_type_t;
+
+extern queue_t nr_rach_ind_queue;
+extern queue_t nr_rx_ind_queue;
+extern queue_t nr_crc_ind_queue;
+extern queue_t nr_uci_ind_queue;
+extern queue_t nr_sfn_slot_queue;
+extern queue_t nr_chan_param_queue;
+extern queue_t nr_dl_tti_req_queue;
+extern queue_t nr_tx_req_queue;
+extern queue_t nr_ul_dci_req_queue;
+extern queue_t nr_ul_tti_req_queue;
 
 extern slot_rnti_mcs_s slot_rnti_mcs[NUM_NFAPI_SLOT];
 
@@ -216,18 +226,12 @@ typedef void (nr_sl_ue_scheduled_response_f)(nr_scheduled_response_t *sl_schedul
 /*
  * Generic type of an application-defined callback to return various
  * types of data to the application.
- * EXPECTED RETURN VALUES:
- *  -1: Failed to consume bytes. Abort the mission.
- * Non-negative return values indicate success, and ignored.
  */
-typedef int8_t (nr_ue_phy_config_request_f)(nr_phy_config_t *phy_config);
+typedef void (nr_ue_phy_config_request_f)(nr_phy_config_t *phy_config);
 
 /*
  * Generic type of an application-defined callback to return various
  * types of data to the application.
- * EXPECTED RETURN VALUES:
- *  -1: Failed to consume bytes. Abort the mission.
- * Non-negative return values indicate success, and ignored.
  */
 typedef void(nr_ue_sl_phy_config_request_f)(nr_sl_phy_config_t *sl_phy_config);
 

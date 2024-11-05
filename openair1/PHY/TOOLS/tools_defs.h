@@ -52,8 +52,8 @@
 extern "C" {
 #endif
 
-#define CEILIDIV(a,b) ((a+b-1)/b)
-#define ROUNDIDIV(a,b) (((a<<1)+b)/(b<<1))
+#define ALIGNARRAYSIZE(a, b) (((a + b - 1) / b) * b)
+#define ALNARS_16_4(a) ALIGNARRAYSIZE(a, 4)
 
   typedef struct complexd {
     double r;
@@ -431,135 +431,109 @@ void init_fft(uint16_t size,
               uint16_t *rev);
 
 #define FOREACH_DFTSZ(SZ_DEF) \
-  SZ_DEF(12) \
-  SZ_DEF(24) \
-  SZ_DEF(36) \
-  SZ_DEF(48) \
-  SZ_DEF(60) \
-  SZ_DEF(64) \
-  SZ_DEF(72) \
-  SZ_DEF(96) \
-  SZ_DEF(108) \
-  SZ_DEF(120) \
-  SZ_DEF(128) \
-  SZ_DEF(144) \
-  SZ_DEF(180) \
-  SZ_DEF(192) \
-  SZ_DEF(216) \
-  SZ_DEF(240) \
-  SZ_DEF(256) \
-  SZ_DEF(288) \
-  SZ_DEF(300) \
-  SZ_DEF(324) \
-  SZ_DEF(360) \
-  SZ_DEF(384) \
-  SZ_DEF(432) \
-  SZ_DEF(480) \
-  SZ_DEF(512) \
-  SZ_DEF(540) \
-  SZ_DEF(576) \
-  SZ_DEF(600) \
-  SZ_DEF(648) \
-  SZ_DEF(720) \
-  SZ_DEF(768) \
-  SZ_DEF(864) \
-  SZ_DEF(900) \
-  SZ_DEF(960) \
-  SZ_DEF(972) \
-  SZ_DEF(1024) \
-  SZ_DEF(1080) \
-  SZ_DEF(1152) \
-  SZ_DEF(1200) \
-  SZ_DEF(1296) \
-  SZ_DEF(1440) \
-  SZ_DEF(1500) \
-  SZ_DEF(1536) \
-  SZ_DEF(1620) \
-  SZ_DEF(1728) \
-  SZ_DEF(1800) \
-  SZ_DEF(1920) \
-  SZ_DEF(1944) \
-  SZ_DEF(2048) \
-  SZ_DEF(2160) \
-  SZ_DEF(2304) \
-  SZ_DEF(2400) \
-  SZ_DEF(2592) \
-  SZ_DEF(2700) \
-  SZ_DEF(2880) \
-  SZ_DEF(2916) \
-  SZ_DEF(3000) \
-  SZ_DEF(3072) \
-  SZ_DEF(3240) \
-  SZ_DEF(4096) \
-  SZ_DEF(6144) \
-  SZ_DEF(8192) \
-  SZ_DEF(9216) \
-  SZ_DEF(12288) \
-  SZ_DEF(18432) \
-  SZ_DEF(24576) \
-  SZ_DEF(36864) \
-  SZ_DEF(49152) \
-  SZ_DEF(73728) \
+  SZ_DEF(12)                  \
+  SZ_DEF(24)                  \
+  SZ_DEF(36)                  \
+  SZ_DEF(48)                  \
+  SZ_DEF(60)                  \
+  SZ_DEF(64)                  \
+  SZ_DEF(72)                  \
+  SZ_DEF(96)                  \
+  SZ_DEF(108)                 \
+  SZ_DEF(120)                 \
+  SZ_DEF(128)                 \
+  SZ_DEF(144)                 \
+  SZ_DEF(180)                 \
+  SZ_DEF(192)                 \
+  SZ_DEF(216)                 \
+  SZ_DEF(240)                 \
+  SZ_DEF(256)                 \
+  SZ_DEF(288)                 \
+  SZ_DEF(300)                 \
+  SZ_DEF(324)                 \
+  SZ_DEF(360)                 \
+  SZ_DEF(384)                 \
+  SZ_DEF(432)                 \
+  SZ_DEF(480)                 \
+  SZ_DEF(512)                 \
+  SZ_DEF(540)                 \
+  SZ_DEF(576)                 \
+  SZ_DEF(600)                 \
+  SZ_DEF(648)                 \
+  SZ_DEF(720)                 \
+  SZ_DEF(768)                 \
+  SZ_DEF(864)                 \
+  SZ_DEF(900)                 \
+  SZ_DEF(960)                 \
+  SZ_DEF(972)                 \
+  SZ_DEF(1024)                \
+  SZ_DEF(1080)                \
+  SZ_DEF(1152)                \
+  SZ_DEF(1200)                \
+  SZ_DEF(1296)                \
+  SZ_DEF(1440)                \
+  SZ_DEF(1500)                \
+  SZ_DEF(1536)                \
+  SZ_DEF(1620)                \
+  SZ_DEF(1728)                \
+  SZ_DEF(1800)                \
+  SZ_DEF(1920)                \
+  SZ_DEF(1944)                \
+  SZ_DEF(2048)                \
+  SZ_DEF(2160)                \
+  SZ_DEF(2304)                \
+  SZ_DEF(2400)                \
+  SZ_DEF(2592)                \
+  SZ_DEF(2700)                \
+  SZ_DEF(2880)                \
+  SZ_DEF(2916)                \
+  SZ_DEF(3000)                \
+  SZ_DEF(3072)                \
+  SZ_DEF(3240)                \
+  SZ_DEF(4096)                \
+  SZ_DEF(6144)                \
+  SZ_DEF(8192)                \
+  SZ_DEF(12288)               \
+  SZ_DEF(18432)               \
+  SZ_DEF(24576)               \
+  SZ_DEF(36864)               \
+  SZ_DEF(49152)               \
   SZ_DEF(98304)
 
-#define FOREACH_IDFTSZ(SZ_DEF)\
-  SZ_DEF(64) \
-  SZ_DEF(128) \
-  SZ_DEF(256) \
-  SZ_DEF(512) \
-  SZ_DEF(768) \
-  SZ_DEF(1024) \
-  SZ_DEF(1536) \
-  SZ_DEF(2048) \
-  SZ_DEF(3072) \
-  SZ_DEF(4096) \
-  SZ_DEF(6144) \
-  SZ_DEF(8192) \
-  SZ_DEF(9216) \
-  SZ_DEF(12288) \
-  SZ_DEF(16384) \
-  SZ_DEF(18432) \
-  SZ_DEF(24576) \
-  SZ_DEF(32768) \
-  SZ_DEF(36864) \
-  SZ_DEF(49152) \
-  SZ_DEF(65536) \
-  SZ_DEF(73728) \
+#define FOREACH_IDFTSZ(SZ_DEF) \
+  SZ_DEF(64)                   \
+  SZ_DEF(128)                  \
+  SZ_DEF(256)                  \
+  SZ_DEF(512)                  \
+  SZ_DEF(768)                  \
+  SZ_DEF(1024)                 \
+  SZ_DEF(1536)                 \
+  SZ_DEF(2048)                 \
+  SZ_DEF(3072)                 \
+  SZ_DEF(4096)                 \
+  SZ_DEF(6144)                 \
+  SZ_DEF(8192)                 \
+  SZ_DEF(12288)                \
+  SZ_DEF(16384)                \
+  SZ_DEF(18432)                \
+  SZ_DEF(24576)                \
+  SZ_DEF(32768)                \
+  SZ_DEF(36864)                \
+  SZ_DEF(49152)                \
+  SZ_DEF(65536)                \
   SZ_DEF(98304)
 
-#ifdef OAIDFTS_MAIN
-typedef  void(*adftfunc_t)(int16_t *sigF,int16_t *sig,unsigned char scale_flag);
-typedef  void(*aidftfunc_t)(int16_t *sigF,int16_t *sig,unsigned char scale_flag);
-
-#define SZ_FUNC(Sz) void dft ## Sz(int16_t *x,int16_t *y,uint8_t scale_flag);
-
-FOREACH_DFTSZ(SZ_FUNC)
-
-#define SZ_iFUNC(Sz) void idft ## Sz(int16_t *x,int16_t *y,uint8_t scale_flag);
-
-FOREACH_IDFTSZ(SZ_iFUNC)
-
-#else
 typedef  void(*dftfunc_t)(uint8_t sizeidx,int16_t *sigF,int16_t *sig,unsigned char scale_flag);
-typedef  void(*idftfunc_t)(uint8_t sizeidx,int16_t *sigF,int16_t *sig,unsigned char scale_flag);
-#  ifdef OAIDFTS_LOADER
-dftfunc_t dft;
-idftfunc_t idft;
-#  else
+typedef void (*idftfunc_t)(uint8_t sizeidx, int16_t *sigF, int16_t *sig, unsigned char scale_flag);
 extern dftfunc_t dft;
 extern idftfunc_t idft;
-extern int load_dftslib(void);
-#  endif
-#endif
+int load_dftslib(void);
 
-#define SZ_ENUM(Sz) DFT_ ## Sz,
-
+#define SZ_ENUM(Sz) DFT_##Sz,
 typedef enum dft_size_idx {
   FOREACH_DFTSZ(SZ_ENUM)
   DFT_SIZE_IDXTABLESIZE
 }  dft_size_idx_t;
-
-#define SZ_iENUM(Sz) IDFT_ ## Sz,
 
 /*******************************************************************
 *
@@ -572,48 +546,15 @@ typedef enum dft_size_idx {
 * DESCRIPTION :  get dft function depending of ofdm size
 *
 *********************************************************************/
+#define FIND_ENUM(Sz) \
+  case Sz:            \
+    return DFT_##Sz;  \
+    break;
 static inline
 dft_size_idx_t get_dft(int ofdm_symbol_size)
 {
   switch (ofdm_symbol_size) {
-    case 128:
-      return DFT_128;
-    case 256:
-      return DFT_256;
-    case 512:
-      return DFT_512;
-    case 768:
-      return DFT_768;
-    case 1024:
-      return DFT_1024;
-    case 1536:
-      return DFT_1536;
-    case 2048:
-      return DFT_2048;
-    case 3072:
-      return DFT_3072;
-    case 4096:
-      return DFT_4096;
-    case 6144:
-      return DFT_6144;
-    case 8192:
-      return DFT_8192;
-    case 9216:
-      return DFT_9216;
-    case 12288:
-      return DFT_12288;
-    case 18432:
-      return DFT_18432;
-    case 24576:
-      return DFT_24576;
-    case 36864:
-      return DFT_36864;
-    case 49152:
-      return DFT_49152;
-    case 73728:
-      return DFT_73728;
-    case 98304:
-      return DFT_98304;
+    FOREACH_DFTSZ(FIND_ENUM)
     default:
       printf("function get_dft : unsupported ofdm symbol size \n");
       assert(0);
@@ -622,13 +563,23 @@ dft_size_idx_t get_dft(int ofdm_symbol_size)
   return DFT_SIZE_IDXTABLESIZE; // never reached and will trigger assertion in idft function;
 }
 
+#define SZ_iENUM(Sz) IDFT_##Sz,
 typedef enum idft_size_idx {
   FOREACH_IDFTSZ(SZ_iENUM)
   IDFT_SIZE_IDXTABLESIZE
 }  idft_size_idx_t;
 
 #ifdef OAIDFTS_MAIN
+typedef void (*adftfunc_t)(int16_t *sigF, int16_t *sig, unsigned char scale_flag);
+typedef void (*aidftfunc_t)(int16_t *sigF, int16_t *sig, unsigned char scale_flag);
 
+#define SZ_FUNC(Sz) void dft##Sz(int16_t *x, int16_t *y, uint8_t scale_flag);
+
+FOREACH_DFTSZ(SZ_FUNC)
+
+#define SZ_iFUNC(Sz) void idft##Sz(int16_t *x, int16_t *y, uint8_t scale_flag);
+
+FOREACH_IDFTSZ(SZ_iFUNC)
 #define SZ_PTR(Sz) {dft ## Sz,Sz},
 struct {
   adftfunc_t func;
@@ -654,54 +605,16 @@ struct {
 * DESCRIPTION :  get idft function depending of ofdm size
 *
 *********************************************************************/
+#define FIND_iENUM(iSz) \
+  case iSz:             \
+    return IDFT_##iSz;  \
+    break;
+
 static inline
 idft_size_idx_t get_idft(int ofdm_symbol_size)
 {
   switch (ofdm_symbol_size) {
-    case 128:
-      return IDFT_128;
-    case 256:
-      return IDFT_256;
-    case 512:
-      return IDFT_512;
-    case 768:
-      return IDFT_768;
-    case 1024:
-      return IDFT_1024;
-    case 1536:
-      return IDFT_1536;
-    case 2048:
-      return IDFT_2048;
-    case 3072:
-      return IDFT_3072;
-    case 4096:
-      return IDFT_4096;
-    case 6144:
-      return IDFT_6144;
-    case 8192:
-      return IDFT_8192;
-    case 9216:
-      return IDFT_9216;
-    case 12288:
-      return IDFT_12288;
-    case 16384:
-      return IDFT_16384;
-    case 18432:
-      return IDFT_18432;
-    case 24576:
-      return IDFT_24576;
-    case 32768:
-      return IDFT_32768;
-    case 36864:
-      return IDFT_36864;
-    case 49152:
-      return IDFT_49152;
-    case 65536:
-      return IDFT_65536;
-    case 73728:
-      return IDFT_73728;
-    case 98304:
-      return IDFT_98304;
+    FOREACH_IDFTSZ(FIND_iENUM)
     default:
       printf("function get_idft : unsupported ofdm symbol size \n");
       assert(0);
@@ -758,10 +671,10 @@ int32_t signal_energy_amp_shift(int32_t *input, uint32_t length);
 int32_t subcarrier_energy(int32_t *,uint32_t, int32_t *subcarrier_energy, uint16_t rx_power_correction);
 #endif
 
-/*!\fn int32_t signal_energy_nodc(int32_t *,uint32_t);
+/*!\fn uint32_t signal_energy_nodc(c16_t *,uint32_t);
 \brief Computes the signal energy per subcarrier, without DC removal
 */
-int32_t signal_energy_nodc(int32_t *,uint32_t);
+uint32_t signal_energy_nodc(const c16_t *input, uint32_t length);
 
 int32_t signal_power(int32_t *,uint32_t);
 int32_t interference_power(int32_t *,uint32_t);

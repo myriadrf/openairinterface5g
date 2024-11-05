@@ -935,10 +935,6 @@ static uint8_t pack_ul_tti_request_prach_pdu(nfapi_nr_prach_pdu_t *prach_pdu, ui
     return 0;
   }
 
-  if (prach_pdu->beamforming.num_prgs > 0 || prach_pdu->beamforming.prg_size > 0 || prach_pdu->beamforming.dig_bf_interface > 0) {
-    AssertFatal(1 == 0, "PRACH PDU Beamforming not supported yet");
-  }
-
   // Pack RX Beamforming PDU
   if (!(push16(prach_pdu->beamforming.num_prgs, ppWritePackedMsg, end)
         && push16(prach_pdu->beamforming.prg_size, ppWritePackedMsg, end)
@@ -3177,18 +3173,16 @@ uint8_t pack_nr_slot_indication(void *msg, uint8_t **ppWritePackedMsg, uint8_t *
 
 static uint8_t pack_nr_rx_data_indication_body(nfapi_nr_rx_data_pdu_t *value, uint8_t **ppWritePackedMsg, uint8_t *end)
 {
-  AssertFatal(value->pdu_length <= 0xFFFF,"RX_DATA.indication PDU_Length should be within 16 bit, according to SCF222.10.02");
-  if(!(push32(value->handle, ppWritePackedMsg, end) &&
-       push16(value->rnti, ppWritePackedMsg, end) &&
-       push8(value->harq_id, ppWritePackedMsg, end) &&
-       push16(value->pdu_length, ppWritePackedMsg, end) &&
-       push8(value->ul_cqi, ppWritePackedMsg, end) &&
-       push16(value->timing_advance, ppWritePackedMsg, end) &&
-       push16(value->rssi, ppWritePackedMsg, end)
-  ))
+  if (!(push32(value->handle, ppWritePackedMsg, end)
+        && push16(value->rnti, ppWritePackedMsg, end)
+        && push8(value->harq_id, ppWritePackedMsg, end)
+        && push32(value->pdu_length, ppWritePackedMsg, end)
+        && push8(value->ul_cqi, ppWritePackedMsg, end)
+        && push16(value->timing_advance, ppWritePackedMsg, end)
+        && push16(value->rssi, ppWritePackedMsg, end)))
     return 0;
 
-  if(pusharray8(value->pdu, value->pdu_length, value->pdu_length, ppWritePackedMsg, end) == 0)
+  if (pusharray8(value->pdu, value->pdu_length, value->pdu_length, ppWritePackedMsg, end) == 0)
     return 0;
 
   return 1;
@@ -4774,15 +4768,6 @@ static uint8_t unpack_ul_tti_request_prach_pdu(void *tlv, uint8_t **ppReadPacked
         && pull8(ppReadPackedMsg, &prach_pdu->beamforming.dig_bf_interface, end))) {
     return 0;
   }
-  if (prach_pdu->beamforming.num_prgs > 0) {
-    prach_pdu->beamforming.prgs_list = calloc(prach_pdu->beamforming.num_prgs, sizeof(*prach_pdu->beamforming.prgs_list));
-    if (prach_pdu->beamforming.dig_bf_interface > 0) {
-      for(int prg_idx = 0; prg_idx < prach_pdu->beamforming.num_prgs;prg_idx++){
-        prach_pdu->beamforming.prgs_list[prg_idx].dig_bf_interface_list =
-            calloc(prach_pdu->beamforming.dig_bf_interface, sizeof(*prach_pdu->beamforming.prgs_list[0].dig_bf_interface_list));
-      }
-    }
-  }
   for (int prg = 0; prg < prach_pdu->beamforming.num_prgs; prg++) {
     for (int digBFInterface = 0; digBFInterface < prach_pdu->beamforming.dig_bf_interface; digBFInterface++) {
       if (!pull16(ppReadPackedMsg, &prach_pdu->beamforming.prgs_list[prg].dig_bf_interface_list[digBFInterface].beam_idx, end)) {
@@ -6066,19 +6051,18 @@ static uint8_t unpack_nr_rx_data_indication_body(nfapi_nr_rx_data_pdu_t *value,
                                                  uint8_t *end,
                                                  nfapi_p7_codec_config_t *config)
 {
-if (!(pull32(ppReadPackedMsg, &value->handle, end) && pull16(ppReadPackedMsg, &value->rnti, end)
-      && pull8(ppReadPackedMsg, &value->harq_id, end) && pull16(ppReadPackedMsg, (uint16_t *)&value->pdu_length, end)
-      && pull8(ppReadPackedMsg, &value->ul_cqi, end) && pull16(ppReadPackedMsg, &value->timing_advance, end)
-      && pull16(ppReadPackedMsg, &value->rssi, end)))
-      return 0;
+  if (!(pull32(ppReadPackedMsg, &value->handle, end) && pull16(ppReadPackedMsg, &value->rnti, end)
+        && pull8(ppReadPackedMsg, &value->harq_id, end) && pull32(ppReadPackedMsg, &value->pdu_length, end)
+        && pull8(ppReadPackedMsg, &value->ul_cqi, end) && pull16(ppReadPackedMsg, &value->timing_advance, end)
+        && pull16(ppReadPackedMsg, &value->rssi, end)))
+    return 0;
 
-uint32_t length = value->pdu_length;
-value->pdu = nfapi_p7_allocate(sizeof(*value->pdu) * length, config);
-if (pullarray8(ppReadPackedMsg, value->pdu, length, length, end) == 0) {
-      NFAPI_TRACE(NFAPI_TRACE_ERROR, "%s pullarray8 failure\n", __FUNCTION__);
-      return 0;
-}
-return 1;
+  value->pdu = nfapi_p7_allocate(sizeof(*value->pdu) * value->pdu_length, config);
+  if (pullarray8(ppReadPackedMsg, value->pdu, value->pdu_length, value->pdu_length, end) == 0) {
+    NFAPI_TRACE(NFAPI_TRACE_ERROR, "%s pullarray8 failure\n", __FUNCTION__);
+    return 0;
+  }
+  return 1;
 }
 
 static uint8_t unpack_nr_rx_data_indication(uint8_t **ppReadPackedMsg, uint8_t *end, nfapi_nr_rx_data_indication_t *msg, nfapi_p7_codec_config_t* config)

@@ -174,6 +174,7 @@ typedef struct {
 } udp_ctx_t;
 
 typedef enum {
+  RU_GPIO_CONTROL_NONE,
   RU_GPIO_CONTROL_GENERIC,
   RU_GPIO_CONTROL_INTERDIGITAL,
 } gpio_control_t;

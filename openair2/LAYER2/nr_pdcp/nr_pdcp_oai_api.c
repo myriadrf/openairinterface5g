@@ -367,14 +367,14 @@ static void enqueue_pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
   if (pthread_mutex_unlock(&pq.m) != 0) abort();
 }
 
-bool pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
-                   const srb_flag_t srb_flagP,
-                   const MBMS_flag_t MBMS_flagP,
-                   const rb_id_t rb_id,
-                   const sdu_size_t sdu_buffer_size,
-                   uint8_t *const sdu_buffer,
-                   const uint32_t *const srcID,
-                   const uint32_t *const dstID)
+bool nr_pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
+                      const srb_flag_t srb_flagP,
+                      const MBMS_flag_t MBMS_flagP,
+                      const rb_id_t rb_id,
+                      const sdu_size_t sdu_buffer_size,
+                      uint8_t *const sdu_buffer,
+                      const uint32_t *const srcID,
+                      const uint32_t *const dstID)
 {
   enqueue_pdcp_data_ind(ctxt_pP,
                         srb_flagP,
@@ -566,7 +566,7 @@ void pdcp_layer_init(void)
   abort();
 }
 
-void nr_pdcp_layer_init(bool uses_e1)
+void nr_pdcp_layer_init(void)
 {
   /* hack: be sure to initialize only once */
   static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
@@ -586,15 +586,17 @@ void nr_pdcp_layer_init(bool uses_e1)
   if ((RC.nrrrc == NULL) || (!NODE_IS_CU(node_type))) {
     init_nr_rlc_data_req_queue();
   }
-
-  nr_pdcp_e1_if_init(uses_e1);
+  nr_pdcp_e1_if_init(node_type == ngran_gNB_CUUP || node_type == ngran_gNB_CUCP);
   init_nr_pdcp_data_ind_queue();
   nr_pdcp_init_timer_thread(nr_pdcp_ue_manager);
+  if (NODE_IS_CU(node_type)) {
+    nr_pdcp_init_tick_thread();
+  }
 }
 
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "executables/lte-softmodem.h"
-#include "openair2/RRC/NAS/nas_config.h"
+#include "common/utils/tun_if.h"
 
 uint64_t nr_pdcp_module_init(uint64_t _pdcp_optmask, int id)
 {
@@ -608,48 +610,29 @@ uint64_t nr_pdcp_module_init(uint64_t _pdcp_optmask, int id)
   initialized = 1;
   if (pthread_mutex_unlock(&m) != 0) abort();
 
-#if 0
-  pdcp_optmask = _pdcp_optmask;
-  return pdcp_optmask;
-#endif
-  /* temporary enforce netlink when UE_NAS_USE_TUN is set,
-     this is while switching from noS1 as build option
-     to noS1 as config option                               */
-  if ( _pdcp_optmask & UE_NAS_USE_TUN_BIT) {
-    pdcp_optmask = pdcp_optmask | PDCP_USE_NETLINK_BIT ;
-  }
-
   pdcp_optmask = pdcp_optmask | _pdcp_optmask ;
-  LOG_I(PDCP, "pdcp init,%s %s\n",
-        ((LINK_ENB_PDCP_TO_GTPV1U)?"usegtp":""),
-        ((PDCP_USE_NETLINK)?"usenetlink":""));
 
-  if (PDCP_USE_NETLINK) {
-    nas_getparams();
-
-    if(UE_NAS_USE_TUN) {
-      char *ifsuffix_ue = get_softmodem_params()->nsa ? "nrue" : "ue";
-      int num_if = (NFAPI_MODE == NFAPI_UE_STUB_PNF || IS_SOFTMODEM_SIML1 || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF)? MAX_MOBILES_PER_ENB : 1;
-      netlink_init_tun(ifsuffix_ue, num_if, id);
-      //Add --nr-ip-over-lte option check for next line
-      if (IS_SOFTMODEM_NOS1){
-        nas_config(1, 1, !get_softmodem_params()->nsa ? 2 : 3, ifsuffix_ue);
-        set_qfi_pduid(7, 10);
-      }
-      LOG_I(PDCP, "UE pdcp will use tun interface\n");
-      start_pdcp_tun_ue();
-    } else if(ENB_NAS_USE_TUN) {
-      char *ifsuffix_base_s = get_softmodem_params()->nsa ? "gnb" : "enb";
-      netlink_init_tun(ifsuffix_base_s, 1, id);
-      nas_config(1, 1, 1, ifsuffix_base_s);
-      LOG_I(PDCP, "ENB pdcp will use tun interface\n");
-      start_pdcp_tun_enb();
-    } else {
-      LOG_I(PDCP, "pdcp will use kernel modules\n");
-      abort();
-      netlink_init();
+  if (UE_NAS_USE_TUN) {
+    char *ifprefix = get_softmodem_params()->nsa ? "oaitun_nrue" : "oaitun_ue";
+    int num_if = (NFAPI_MODE == NFAPI_UE_STUB_PNF || IS_SOFTMODEM_SIML1 || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF)
+                     ? MAX_MOBILES_PER_ENB
+                     : 1;
+    tun_init(ifprefix, num_if, id);
+    if (IS_SOFTMODEM_NOS1) {
+      const char *ip = !get_softmodem_params()->nsa ? "10.0.1.2" : "10.0.1.3";
+      tun_config(1, ip, NULL, ifprefix);
+      set_qfi_pduid(7, 10);
     }
+    LOG_I(PDCP, "UE pdcp will use tun interface\n");
+    start_pdcp_tun_ue();
+  } else if (ENB_NAS_USE_TUN) {
+    char *ifprefix = get_softmodem_params()->nsa ? "oaitun_gnb" : "oaitun_enb";
+    tun_init(ifprefix, 1, id);
+    tun_config(1, "10.0.1.1", NULL, ifprefix);
+    LOG_I(PDCP, "ENB pdcp will use tun interface\n");
+    start_pdcp_tun_enb();
   }
+
   return pdcp_optmask ;
 }
 
@@ -1313,7 +1296,7 @@ bool cu_f1u_data_req(protocol_ctxt_t  *ctxt_pP,
     exit(1);
   }
   memcpy(memblock, sdu_buffer, sdu_buffer_size);
-  int ret=pdcp_data_ind(ctxt_pP,srb_flagP, false, rb_id, sdu_buffer_size, memblock, NULL, NULL);
+  int ret = nr_pdcp_data_ind(ctxt_pP, srb_flagP, false, rb_id, sdu_buffer_size, memblock, NULL, NULL);
   if (!ret) {
     LOG_E(RLC, "%s:%d:%s: ERROR: pdcp_data_ind failed\n", __FILE__, __LINE__, __FUNCTION__);
     /* what to do in case of failure? for the moment: nothing */
@@ -1335,16 +1318,6 @@ bool pdcp_data_req(protocol_ctxt_t  *ctxt_pP,
 {
   abort();
   return false;
-}
-
-void pdcp_set_pdcp_data_ind_func(pdcp_data_ind_func_t pdcp_data_ind)
-{
-  /* nothing to do */
-}
-
-void pdcp_set_rlc_data_req_func(send_rlc_data_req_func_t send_rlc_data_req)
-{
-  /* nothing to do */
 }
 
 //Dummy function needed due to LTE dependencies

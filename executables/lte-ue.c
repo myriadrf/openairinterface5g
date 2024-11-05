@@ -80,11 +80,6 @@ void init_UE_threads_stub(int);
 void init_UE_single_thread_stub(int);
 void *UE_thread(void *arg);
 int init_timer_thread(void);
-extern void multicast_link_start(void (*rx_handlerP) (unsigned int, char *),
-                                 unsigned char _multicast_group,
-                                 char *multicast_ifname);
-extern int multicast_link_write_sock(int groupP, char *dataP, uint32_t sizeP);
-
 
 int tx_req_num_elems;
 extern uint16_t sf_ahead;
@@ -364,10 +359,9 @@ void init_UE_stub_single_thread(int nb_inst,
   init_UE_single_thread_stub(nb_inst);
   printf("UE threads created \n");
 
-  if(NFAPI_MODE!=NFAPI_UE_STUB_PNF && NFAPI_MODE!=NFAPI_MODE_STANDALONE_PNF) {
-    LOG_I(PHY,"Starting multicast link on %s\n",emul_iface);
-    multicast_link_start(ue_stub_rx_handler,0,emul_iface);
-  }
+  AssertFatal(NFAPI_MODE == NFAPI_UE_STUB_PNF || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF,
+              "unsupported NFAPI mode %d\n",
+              NFAPI_MODE);
 }
 
 void init_UE_standalone_thread(int ue_idx) {
@@ -408,8 +402,9 @@ void init_UE_stub(int nb_inst,
   printf("UE threads created \n");
   LOG_I(PHY,"Starting multicast link on %s\n",emul_iface);
 
-  if(NFAPI_MODE!=NFAPI_UE_STUB_PNF && NFAPI_MODE!=NFAPI_MODE_STANDALONE_PNF)
-    multicast_link_start(ue_stub_rx_handler,0,emul_iface);
+  AssertFatal(NFAPI_MODE == NFAPI_UE_STUB_PNF || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF,
+              "unsupported NFAPI mode %d\n",
+              NFAPI_MODE);
 }
 
 
@@ -1704,12 +1699,13 @@ void write_dummy(PHY_VARS_UE *UE,  openair0_timestamp timestamp) {
   for ( int i=0; i < UE->frame_parms.nb_antennas_tx; i++)
     samplesVoid[i]=(void *)&v;
 
-  AssertFatal( 1 == UE->rfdevice.trx_write_func(&UE->rfdevice,
-               timestamp+2*UE->frame_parms.samples_per_tti,
-               samplesVoid,
-               1,
-               UE->frame_parms.nb_antennas_tx,
-               1),"");
+  int written = UE->rfdevice.trx_write_func(&UE->rfdevice,
+                                            timestamp + 2 * UE->frame_parms.samples_per_tti,
+                                            samplesVoid,
+                                            1,
+                                            UE->frame_parms.nb_antennas_tx,
+                                            TX_BURST_START_AND_END);
+  AssertFatal(1 == written, "write to SDR failed\n");
 }
 
 void *UE_thread(void *arg) {
@@ -2269,7 +2265,6 @@ static void *timer_thread( void *param ) {
   //double t_diff;
   int external_timer = 0;
   wait_sync("timer_thread");
-  opp_enabled = 1;
 
   // first check if we are receiving timing indications
   if(NFAPI_MODE==NFAPI_UE_STUB_OFFNET) {
@@ -2356,15 +2351,7 @@ static void *timer_thread( void *param ) {
       }
 
       nanosleep(&t_sleep, (struct timespec *)NULL);
-      UE_tport_t pdu;
-      pdu.header.packet_type = TTI_SYNC;
-      pdu.header.absSF = (timer_frame*10)+timer_subframe;
-
-      if (NFAPI_MODE != NFAPI_UE_STUB_PNF && NFAPI_MODE != NFAPI_MODE_STANDALONE_PNF) {
-        multicast_link_write_sock(0,
-                                  (char *)&pdu,
-                                  sizeof(UE_tport_header_t));
-      }
+      AssertFatal(NFAPI_MODE == NFAPI_UE_STUB_PNF || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF, "unsupported NFAPI mode %d\n", NFAPI_MODE);
     } else {
       wait_on_condition(&UE->timer_mutex,&UE->timer_cond,&UE->instance_cnt_timer,"timer_thread");
       release_thread(&UE->timer_mutex,&UE->instance_cnt_timer,"timer_thread");

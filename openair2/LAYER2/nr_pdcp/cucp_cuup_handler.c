@@ -157,6 +157,7 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
     AssertFatal(req_pdu->numDRB2Setup == 1, "can only handle one DRB per PDU session\n");
     resp_pdu->numDRBSetup = req_pdu->numDRB2Setup;
     const DRB_nGRAN_to_setup_t *req_drb = &req_pdu->DRBnGRanList[0];
+    AssertFatal(req_drb->numQosFlow2Setup == 1, "can only handle one QoS Flow per DRB\n");
     DRB_nGRAN_setup_t *resp_drb = &resp_pdu->DRBnGRanList[0];
     resp_drb->id = req_drb->id;
     resp_drb->numQosFlowSetup = req_drb->numQosFlow2Setup;
@@ -168,7 +169,7 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
 
     // GTP tunnel for N3/to core
     gtpv1u_gnb_create_tunnel_resp_t resp_n3 = {0};
-    int qfi = 0; // put PDU session marker
+    int qfi = req_drb->qosFlows[0].qfi;
     int ret = drb_gtpu_create(n3inst,
                               cu_up_ue_id,
                               req_drb->id,
@@ -196,6 +197,7 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
                      cu_up_ue_id,
                      &DRB_configList,
                      &security_parameters);
+    ASN_STRUCT_RESET(asn_DEF_NR_DRB_ToAddModList, &DRB_configList.list);
     if (f1inst >= 0) { /* we have F1(-U) */
       teid_t dummy_teid = 0xffff; // we will update later with answer from DU
       in_addr_t dummy_address = {0}; // IPv4, updated later with answer from DU

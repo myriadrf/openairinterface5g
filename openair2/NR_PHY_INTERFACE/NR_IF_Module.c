@@ -30,7 +30,6 @@
 * \warning
 */
 
-#include "openair1/SCHED_NR/fapi_nr_l1.h"
 #include "openair2/NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
 #include "LAYER2/NR_MAC_gNB/mac_proto.h"
@@ -42,7 +41,6 @@
 #include "openair2/NR_PHY_INTERFACE/nr_sched_response.h"
 
 #define MAX_IF_MODULES 100
-//#define UL_HARQ_PRINT
 
 static NR_IF_Module_t *nr_if_inst[MAX_IF_MODULES];
 extern int oai_nfapi_harq_indication(nfapi_harq_indication_t *harq_ind);
@@ -80,7 +78,9 @@ void handle_nr_rach(NR_UL_IND_t *UL_info)
     LOG_D(MAC,"UL_info[Frame %d, Slot %d] Calling initiate_ra_proc RACH:SFN/SLOT:%d/%d\n",
           UL_info->frame, UL_info->slot, UL_info->rach_ind.sfn, UL_info->rach_ind.slot);
     for (int i = 0; i < UL_info->rach_ind.number_of_pdus; i++) {
-      AssertFatal(UL_info->rach_ind.pdu_list[i].num_preamble == 1, "More than 1 preamble not supported\n");
+      if (UL_info->rach_ind.pdu_list[i].num_preamble > 1) {
+	LOG_E(MAC, "Not more than 1 preamble per RACH PDU supported, ignoring the rest\n");
+      }
       nr_initiate_ra_proc(UL_info->module_id,
                           UL_info->CC_id,
                           UL_info->rach_ind.sfn,
@@ -192,6 +192,9 @@ void handle_nr_ulsch(NR_UL_IND_t *UL_info)
       AssertFatal(crc->rnti == rx->rnti, "mis-match between CRC RNTI %04x and RX RNTI %04x\n",
                   crc->rnti, rx->rnti);
 
+      AssertFatal(crc->harq_id == rx->harq_id, "mis-match between CRC HARQ ID %04x and RX HARQ ID %04x\n",
+                  crc->harq_id, rx->harq_id);
+
       LOG_D(NR_MAC,
             "%4d.%2d Calling rx_sdu (CRC %s/tb_crc_status %d)\n",
             UL_info->frame,
@@ -207,6 +210,7 @@ void handle_nr_ulsch(NR_UL_IND_t *UL_info)
                 crc->rnti,
                 crc->tb_crc_status ? NULL : rx->pdu,
                 rx->pdu_length,
+                crc->harq_id,
                 crc->timing_advance,
                 crc->ul_cqi,
                 crc->rssi);
@@ -236,6 +240,8 @@ void handle_nr_srs(NR_UL_IND_t *UL_info) {
   const sub_frame_t slot = UL_info->srs_ind.slot;
   const int num_srs = UL_info->srs_ind.number_of_pdus;
   nfapi_nr_srs_indication_pdu_t *srs_list = UL_info->srs_ind.pdu_list;
+
+  // from here
 
   for (int i = 0; i < num_srs; i++) {
     nfapi_nr_srs_indication_pdu_t *srs_ind = &srs_list[i];
@@ -363,8 +369,7 @@ static void match_crc_rx_pdu(nfapi_nr_rx_data_indication_t *rx_ind, nfapi_nr_crc
     rx_ind_unmatched->pdu_list = calloc(rx_ind_unmatched->number_of_pdus, sizeof(nfapi_nr_pdu_t));
     for (int i = 0; i < rx_ind->number_of_pdus; i++) {
       if (!crc_ind_has_rnti(crc_ind, rx_ind->pdu_list[i].rnti)) {
-        LOG_I(NR_MAC, "rx_ind->pdu_list[%d].rnti %d does not match any crc_ind pdu rnti\n",
-              i, rx_ind->pdu_list[i].rnti);
+        LOG_I(NR_MAC, "rx_ind->pdu_list[%d].rnti %x does not match any crc_ind pdu rnti\n", i, rx_ind->pdu_list[i].rnti);
         rx_ind_unmatched->pdu_list[num_unmatched_rxs] = rx_ind->pdu_list[i];
         num_unmatched_rxs++;
         remove_rx_pdu(rx_ind, i);
@@ -491,13 +496,13 @@ void NR_UL_indication(NR_UL_IND_t *UL_info) {
 
 NR_IF_Module_t *NR_IF_Module_init(int Mod_id) {
   AssertFatal(Mod_id<MAX_MODULES,"Asking for Module %d > %d\n",Mod_id,MAX_IF_MODULES);
-  LOG_I(PHY,"Installing callbacks for IF_Module - UL_indication\n");
+  LOG_D(PHY, "Installing callbacks for IF_Module - UL_indication\n");
 
   if (nr_if_inst[Mod_id]==NULL) {
     nr_if_inst[Mod_id] = (NR_IF_Module_t*)malloc(sizeof(NR_IF_Module_t));
     memset((void*)nr_if_inst[Mod_id],0,sizeof(NR_IF_Module_t));
 
-    LOG_I(MAC,"Allocating shared L1/L2 interface structure for instance %d @ %p\n",Mod_id,nr_if_inst[Mod_id]);
+    LOG_D(MAC, "Allocating shared L1/L2 interface structure for instance %d @ %p\n", Mod_id, nr_if_inst[Mod_id]);
 
     nr_if_inst[Mod_id]->CC_mask=0;
     nr_if_inst[Mod_id]->NR_UL_indication = NR_UL_indication;

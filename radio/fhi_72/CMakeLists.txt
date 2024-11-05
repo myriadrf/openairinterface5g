@@ -9,7 +9,7 @@ endif()
 pkg_check_modules(dpdk REQUIRED libdpdk)
 pkg_check_modules(numa REQUIRED numa)
 
-find_package(xran 5.1.3 EXACT REQUIRED) # E release -> 5
+find_package(xran 5.1.4 EXACT REQUIRED) # E release -> 5
 
 # Ignore xran-specific warning: we don't care/can't change the following warning, so suppress
 # alignment 1 of 'struct XYZ' is less than 2
@@ -36,3 +36,6 @@ set_target_properties(oran_fhlib_5g PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_
 add_custom_command(TARGET oran_fhlib_5g POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E create_symlink liboran_fhlib_5g.so liboai_transpro.so
                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+message(STATUS "Temporary added -DOAI_FHI72")
+target_compile_definitions(nr-softmodem PUBLIC OAI_FHI72)

@@ -38,9 +38,11 @@
 #include "assertions.h"
 #include "PHY/defs_common.h"
 
+#define NR_MAX_PDSCH_TBS 3824
+#define MAX_NUM_BEAM_PERIODS 4
 #define MAX_BWP_SIZE 275
 #define NR_MAX_NUM_BWP 4
-#define NR_MAX_HARQ_PROCESSES 16
+#define NR_MAX_HARQ_PROCESSES 32
 #define NR_NB_REG_PER_CCE 6
 #define NR_NB_SC_PER_RB 12
 #define NR_MAX_NUM_LCID 32
@@ -52,6 +54,7 @@
   R(TYPE_P_RNTI_) /* Paging RNTI */                                \
   R(TYPE_SI_RNTI_) /* System information RNTI */                   \
   R(TYPE_RA_RNTI_) /* Random Access RNTI */                        \
+  R(TYPE_MSGB_RNTI_) /* Random Access MsgB RNTI */                 \
   R(TYPE_SP_CSI_RNTI_) /* Semipersistent CSI reporting on PUSCH */ \
   R(TYPE_SFI_RNTI_) /* Slot Format Indication on the given cell */ \
   R(TYPE_INT_RNTI_) /* Indication pre-emption in DL */            \
@@ -162,21 +165,21 @@ void nr_timer_setup(NR_timer_t *timer, const uint32_t target, const uint32_t ste
  * @param timer Timer to be checked
  * @return Indication if the timer is expired or not
  */
-bool nr_timer_expired(NR_timer_t timer);
+bool nr_timer_expired(const NR_timer_t *timer);
 /**
  * @brief To check if a timer is active
  * @param timer Timer to be checked
  * @return Indication if the timer is active or not
  */
-bool is_nr_timer_active(NR_timer_t timer);
+bool nr_timer_is_active(const NR_timer_t *timer);
 /**
  * @brief To return how much time has passed since start of timer
  * @param timer Timer to be checked
  * @return Time passed since start of timer
  */
-uint32_t nr_timer_elapsed_time(NR_timer_t timer);
+uint32_t nr_timer_elapsed_time(const NR_timer_t *timer);
 
-
+int set_default_nta_offset(frequency_range_t freq_range, uint32_t samples_per_subframe);
 extern const nr_bandentry_t nr_bandtable[];
 
 static inline int get_num_dmrs(uint16_t dmrs_mask )
@@ -224,8 +227,8 @@ int get_dmrs_port(int nl, uint16_t dmrs_ports);
 uint16_t SL_to_bitmap(int startSymbolIndex, int nrOfSymbols);
 int get_nb_periods_per_frame(uint8_t tdd_period);
 long rrc_get_max_nr_csrs(const int max_rbs, long b_SRS);
-bool compare_relative_ul_channel_bw(int nr_band, int scs, int nb_ul, frame_type_t frame_type);
-int get_supported_bw_mhz(frequency_range_t frequency_range, int scs, int nb_rb);
+bool compare_relative_ul_channel_bw(int nr_band, int scs, int channel_bandwidth, frame_type_t frame_type);
+int get_supported_bw_mhz(frequency_range_t frequency_range, int bw_index);
 int get_supported_band_index(int scs, frequency_range_t freq_range, int n_rbs);
 void get_samplerate_and_bw(int mu,
                            int n_rb,
@@ -248,9 +251,15 @@ int get_scan_ssb_first_sc(const double fc,
                           nr_gscn_info_t ssbStartSC[MAX_GSCN_BAND]);
 
 void check_ssb_raster(uint64_t freq, int band, int scs);
+int get_smallest_supported_bandwidth_index(int scs, frequency_range_t frequency_range, int n_rbs);
+unsigned short get_m_srs(int c_srs, int b_srs);
+unsigned short get_N_b_srs(int c_srs, int b_srs);
 
 #define CEILIDIV(a,b) ((a+b-1)/b)
 #define ROUNDIDIV(a,b) (((a<<1)+b)/(b<<1))
+
+// Align up to a multiple of 16
+#define ALIGN_UP_16(a) ((a + 15) & ~15)
 
 #ifdef __cplusplus
 #ifdef min

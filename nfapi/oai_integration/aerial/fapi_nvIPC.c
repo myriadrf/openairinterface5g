@@ -29,7 +29,7 @@
 * \note
 * \warning
 */
-#ifdef ENABLE_AERIAL
+
 #define _GNU_SOURCE
 #include <sched.h>
 #include <stdio.h>
@@ -79,39 +79,8 @@ static int ipc_handle_rx_msg(nv_ipc_t *ipc, nv_ipc_msg_t *msg)
     return -1;
   }
 
-  char *p_cpu_data = NULL;
-  if (msg->data_buf != NULL) {
-    int gpu;
-    if (msg->data_pool == NV_IPC_MEMPOOL_CUDA_DATA) {
-      gpu = 1;
-    } else {
-      gpu = 0;
-    }
-
-#ifdef NVIPC_CUDA_ENABLE
-    // Test CUDA: call CUDA functions to change all string to lower case
-    test_cuda_to_lower_case(test_cuda_device_id, msg->data_buf, TEST_DATA_BUF_LEN, gpu);
-#endif
-
-    if (gpu) {
-      p_cpu_data = cpu_buf_recv;
-      memset(cpu_buf_recv, 0, RECV_BUF_LEN);
-      ipc->cuda_memcpy_to_host(ipc, p_cpu_data, msg->data_buf, RECV_BUF_LEN);
-    } else {
-      p_cpu_data = msg->data_buf;
-    }
-  }
-
-  int messageBufLen = msg->msg_len;
-  int dataBufLen = msg->data_len;
-  uint8_t msgbuf[messageBufLen];
-  uint8_t databuf[dataBufLen];
-  memcpy(msgbuf, msg->msg_buf, messageBufLen);
-  memcpy(databuf, msg->data_buf, dataBufLen);
-  uint8_t *pReadPackedMessage = msgbuf;
-  uint8_t *pReadData = databuf;
-  uint8_t *end = msgbuf + messageBufLen;
-  uint8_t *data_end = databuf + dataBufLen;
+  uint8_t *pReadPackedMessage = msg->msg_buf;
+  uint8_t *end = msg->msg_buf + msg->msg_len;
 
   // unpack FAPI messages and handle them
   if (vnf_config != 0) {
@@ -209,6 +178,9 @@ static int ipc_handle_rx_msg(nv_ipc_t *ipc, nv_ipc_msg_t *msg)
       }
 
       case NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION: {
+        uint8_t *pReadData = msg->data_buf;
+        int dataBufLen = msg->data_len;
+        uint8_t *data_end = msg->data_buf + dataBufLen;
         nfapi_nr_rx_data_indication_t ind;
         ind.header.message_id = fapi_msg.message_id;
         ind.header.message_length = fapi_msg.message_length;
@@ -590,24 +562,12 @@ static int aerial_recv_msg(nv_ipc_t *ipc, nv_ipc_msg_t *recv_msg)
 }
 
 bool recv_task_running = false;
-int stick_this_thread_to_core(int core_id)
-{
-  int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
-  if (core_id < 0 || core_id >= num_cores)
-    return EINVAL;
-
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  CPU_SET(core_id, &cpuset);
-
-  pthread_t current_thread = pthread_self();
-  return pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset);
-}
 void *epoll_recv_task(void *arg)
 {
   struct epoll_event ev, events[MAX_EVENTS];
-  stick_this_thread_to_core(10);
+
   LOG_D(NFAPI_VNF,"Aerial recv task start \n");
+
   int epoll_fd = epoll_create1(0);
   if (epoll_fd == -1) {
     LOG_E(NFAPI_VNF, "%s epoll_create failed\n", __func__);
@@ -649,19 +609,10 @@ void *epoll_recv_task(void *arg)
   return NULL;
 }
 
-int create_recv_thread(void)
+void create_recv_thread(int8_t affinity)
 {
   pthread_t thread_id;
-
-  void *(*recv_task)(void *);
-
-  recv_task = epoll_recv_task;
-
-  int ret = pthread_create(&thread_id, NULL, recv_task, NULL);
-  if (ret != 0) {
-    LOG_E(NFAPI_VNF, "%s failed, ret = %d\n", __func__, ret);
-  }
-  return ret;
+  threadCreate(&thread_id, epoll_recv_task, NULL, "vnf_nvipc_aerial", affinity, OAI_PRIORITY_RT);
 }
 
 int load_hard_code_config(nv_ipc_config_t *config, int module_type, nv_ipc_transport_t _transport)
@@ -673,11 +624,7 @@ int load_hard_code_config(nv_ipc_config_t *config, int module_type, nv_ipc_trans
     return -1;
   }
 
-#ifdef NVIPC_CUDA_ENABLE
-  int test_cuda_device_id = get_cuda_device_id();
-#else
   int test_cuda_device_id = -1;
-#endif
   LOG_D(NFAPI_VNF,"CUDA device ID configured : %d \n", test_cuda_device_id);
   config->transport_config.shm.cuda_device_id = test_cuda_device_id;
   if (test_cuda_device_id >= 0) {
@@ -689,19 +636,21 @@ int load_hard_code_config(nv_ipc_config_t *config, int module_type, nv_ipc_trans
   return 0;
 }
 
-int nvIPC_Init() {
-// Want to use transport SHM, type epoll, module secondary (reads the created shm from cuphycontroller)
+int nvIPC_Init(nvipc_params_t nvipc_params_s)
+{
+  // Want to use transport SHM, type epoll, module secondary (reads the created shm from cuphycontroller)
   load_hard_code_config(&nv_ipc_config, NV_IPC_MODULE_SECONDARY, NV_IPC_TRANSPORT_SHM);
   // Create nv_ipc_t instance
+  LOG_I(NFAPI_VNF, "%s: creating IPC interface with prefix %s\n", __func__, nvipc_params_s.nvipc_shm_prefix);
+  strcpy(nv_ipc_config.transport_config.shm.prefix, nvipc_params_s.nvipc_shm_prefix);
   if ((ipc = create_nv_ipc_interface(&nv_ipc_config)) == NULL) {
     LOG_E(NFAPI_VNF, "%s: create IPC interface failed\n", __func__);
     return -1;
   }
   LOG_I(NFAPI_VNF, "%s: create IPC interface successful\n", __func__);
   sleep(1);
-  create_recv_thread();
+  create_recv_thread(nvipc_params_s.nvipc_poll_core);
   while(!recv_task_running){usleep(100000);}
   aerial_pnf_nr_connection_indication_cb(vnf_config, 1);
   return 0;
 }
-#endif

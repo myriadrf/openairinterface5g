@@ -112,7 +112,7 @@ const char nr_W_4l_4p[5][4][4] = {
     {{'1', '1', '1', '1'}, {'1', 'n', '1', 'n'}, {'j', 'j', 'o', 'o'}, {'j', 'o', 'o', 'j'}} // pmi 4
 };
 
-void nr_modulation(uint32_t *in,
+void nr_modulation(const uint32_t *in,
                    uint32_t length,
                    uint16_t mod_order,
                    int16_t *out)
@@ -120,8 +120,8 @@ void nr_modulation(uint32_t *in,
   uint16_t mask = ((1<<mod_order)-1);
   int32_t* nr_mod_table32;
   int32_t* out32 = (int32_t*) out;
-  uint8_t* in_bytes = (uint8_t*) in;
-  uint64_t* in64 = (uint64_t*) in;
+  const uint8_t *in_bytes = (const uint8_t *)in;
+  const uint64_t *in64 = (const uint64_t *)in;
   int64_t* out64 = (int64_t*) out;
   uint32_t i=0;
 
@@ -318,10 +318,10 @@ void nr_layer_mapping(int nbCodes,
   }
 }
 
-void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, int sz, c16_t tx_layers[][sz])
+void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, c16_t tx_layers[][n_symbs])
 {
-  for (int i=0; i<n_symbs/n_layers; i++) {
-    for (int l=0; l<n_layers; l++) {
+  for (int l = 0; l < n_layers; l++) {
+    for (int i = 0; i < n_symbs; i++) {
       tx_layers[l][i] = c16mulRealShift(mod_symbs[n_layers * i + l], AMP, 15);
     }
   }
@@ -341,235 +341,20 @@ void nr_dft(c16_t *z, c16_t *d, uint32_t Msc_PUSCH)
       dft_in0[ip] = d[i];
     }
   }
-
+  dft_size_idx_t dftsize = get_dft(Msc_PUSCH);
   switch (Msc_PUSCH) {
     case 12:
-      dft(DFT_12,(int16_t *)dft_in0, (int16_t *)dft_out0,0);
-
+      dft(dftsize, (int16_t *)dft_in0, (int16_t *)dft_out0, 0);
       norm128 = simde_mm_set1_epi16(9459);
-      for (i=0; i<12; i++) {
-        ((simde__m128i*)dft_out0)[i] = simde_mm_slli_epi16(simde_mm_mulhi_epi16(((simde__m128i*)dft_out0)[i], norm128), 1);
+      for (i = 0; i < 12; i++) {
+        ((simde__m128i *)dft_out0)[i] = simde_mm_slli_epi16(simde_mm_mulhi_epi16(((simde__m128i *)dft_out0)[i], norm128), 1);
       }
 
       break;
-
-    case 24:
-      dft(DFT_24,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 36:
-      dft(DFT_36,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 48:
-      dft(DFT_48,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 60:
-      dft(DFT_60,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 72:
-      dft(DFT_72,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 96:
-      dft(DFT_96,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 108:
-      dft(DFT_108,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 120:
-      dft(DFT_120,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 144:
-      dft(DFT_144,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 180:
-      dft(DFT_180,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 192:
-      dft(DFT_192,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 216:
-      dft(DFT_216,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 240:
-      dft(DFT_240,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 288:
-      dft(DFT_288,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 300:
-      dft(DFT_300,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 324:
-      dft(DFT_324,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 360:
-      dft(DFT_360,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 384:
-      dft(DFT_384,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 432:
-      dft(DFT_432,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 480:
-      dft(DFT_480,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 540:
-      dft(DFT_540,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 576:
-      dft(DFT_576,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 600:
-      dft(DFT_600,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 648:
-      dft(DFT_648,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 720:
-      dft(DFT_720,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 768:
-      dft(DFT_768,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 864:
-      dft(DFT_864,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 900:
-      dft(DFT_900,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 960:
-      dft(DFT_960,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 972:
-      dft(DFT_972,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1080:
-      dft(DFT_1080,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1152:
-      dft(DFT_1152,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1200:
-      dft(DFT_1200,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1296:
-      dft(DFT_1296,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1440:
-      dft(DFT_1440,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1500:
-      dft(DFT_1500,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1536:
-      //dft(DFT_1536,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      dft(DFT_1536,(int16_t*)d, (int16_t*)z, 1);
-      break;
-
-    case 1620:
-      dft(DFT_1620,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1728:
-      dft(DFT_1728,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1800:
-      dft(DFT_1800,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1920:
-      dft(DFT_1920,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 1944:
-      dft(DFT_1944,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2160:
-      dft(DFT_2160,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2304:
-      dft(DFT_2304,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2400:
-      dft(DFT_2400,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2592:
-      dft(DFT_2592,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2700:
-      dft(DFT_2700,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2880:
-      dft(DFT_2880,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 2916:
-      dft(DFT_2916,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 3000:
-      dft(DFT_3000,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
-    case 3072:
-      //dft(DFT_3072,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      dft(DFT_3072,(int16_t*)d, (int16_t*)z, 1);
-      break;
-
-    case 3240:
-      dft(DFT_3240,(int16_t*)dft_in0, (int16_t*)dft_out0, 1);
-      break;
-
     default:
-      // should not be reached
-      LOG_E( PHY, "Unsupported Msc_PUSCH value of %"PRIu16"\n", Msc_PUSCH );
-      return;
-
+      dft(dftsize, (int16_t *)dft_in0, (int16_t *)dft_out0, 1);
+      break;
   }
-
 
   if ((Msc_PUSCH % 1536) > 0) {
     for (i = 0, ip = 0; i < Msc_PUSCH; i++, ip+=4)
@@ -586,7 +371,7 @@ void perform_symbol_rotation(NR_DL_FRAME_PARMS *fp, double f0, c16_t *symbol_rot
   const double Ncp0=16*64 + (144*64*(1/(float)(1<<fp->numerology_index)));
   const double Ncp1=(144*64*(1/(float)(1<<fp->numerology_index)));
 
-  LOG_I(PHY, "Doing symbol rotation calculation for TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
+  LOG_D(PHY, "Doing symbol rotation calculation for TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
 
   double tl = 0.0;
   double poff = 0.0;

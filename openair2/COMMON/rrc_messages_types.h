@@ -422,28 +422,7 @@ typedef struct NRDuDlReq_s {
   rnti_t rnti;
   uint8_t *buf;
   uint64_t srb_id;
-}  NRDuDlReq_t; 
-
-// UE: NAS -> RRC messages
-typedef kenb_refresh_req_t      NasKenbRefreshReq;
-typedef cell_info_req_t         NasCellSelectionReq;
-typedef nas_establish_req_t     NasConnEstabliReq;
-typedef ul_info_transfer_req_t  NasUlDataReq;
-typedef nas_deregistration_req_t NasDeregistrationReq;
-typedef nas_detach_req_t        NasDetachReq;
-
-typedef rab_establish_rsp_t     NasRabEstRsp;
-
-typedef nas_oai_tun_nsa_t       NasOaiTunNsa;
-
-// UE: RRC -> NAS messages
-typedef cell_info_cnf_t         NasCellSelectionCnf;
-typedef cell_info_ind_t         NasCellSelectionInd;
-typedef paging_ind_t            NasPagingInd;
-typedef nas_establish_cnf_t     NasConnEstabCnf;
-typedef nas_release_ind_t       NasConnReleaseInd;
-typedef ul_info_transfer_cnf_t  NasUlDataCnf;
-typedef dl_info_transfer_ind_t  NasDlDataInd;
+}  NRDuDlReq_t;
 
 // eNB: realtime -> RRC messages
 typedef struct rrc_subframe_process_s {

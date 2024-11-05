@@ -262,15 +262,15 @@ uint32_t get_slot_from_timestamp(openair0_timestamp timestamp_rx, const NR_DL_FR
    return slot_idx; 
 }
 
-uint32_t get_samples_slot_timestamp(int slot, const NR_DL_FRAME_PARMS *fp, uint8_t sl_ahead)
+uint32_t get_samples_slot_timestamp(int slot, const NR_DL_FRAME_PARMS *fp, unsigned int sl_ahead)
 {
   uint32_t samp_count = 0;
 
   if(!sl_ahead) {
-    for(uint8_t idx_slot = 0; idx_slot < slot; idx_slot++)
+    for(unsigned int idx_slot = 0; idx_slot < slot; idx_slot++)
       samp_count += fp->get_samples_per_slot(idx_slot, fp);
   } else {
-    for(uint8_t idx_slot = slot; idx_slot < slot+sl_ahead; idx_slot++)
+    for(unsigned int idx_slot = slot; idx_slot < slot+sl_ahead; idx_slot++)
       samp_count += fp->get_samples_per_slot(idx_slot, fp);
   }
   return samp_count;
@@ -316,7 +316,7 @@ void nr_init_frame_parms(nfapi_nr_config_request_scf_t* cfg, NR_DL_FRAME_PARMS *
   fp->get_samples_slot_timestamp = &get_samples_slot_timestamp;
   fp->get_slot_from_timestamp = &get_slot_from_timestamp;
   fp->samples_per_frame = 10 * fp->samples_per_subframe;
-  fp->freq_range = (fp->dl_CarrierFreq < 6e9)? FR1 : FR2;
+  fp->freq_range = (fp->dl_CarrierFreq < 6e9) ? FR1 : FR2;
 
   fp->Ncp = Ncp;
 
@@ -400,7 +400,7 @@ int nr_init_frame_parms_ue(NR_DL_FRAME_PARMS *fp,
   fp->get_samples_per_slot = &get_samples_per_slot;
   fp->get_samples_slot_timestamp = &get_samples_slot_timestamp;
   fp->samples_per_frame = 10 * fp->samples_per_subframe;
-  fp->freq_range = (fp->dl_CarrierFreq < 6e9)? FR1 : FR2;
+  fp->freq_range = (fp->dl_CarrierFreq < 6e9) ? FR1 : FR2;
 
   uint8_t sco = 0;
   if (((fp->freq_range == FR1) && (config->ssb_table.ssb_subcarrier_offset < 24)) ||

@@ -1121,8 +1121,6 @@ void dump_ulsch_stats(FILE *fd,PHY_VARS_eNB *eNB,int frame) {
 }
 
 void clear_ulsch_stats(PHY_VARS_eNB *eNB) {
-
-  for (int i=0;i<NUMBER_OF_ULSCH_MAX;i++)
-    memset((void*)&eNB->ulsch_stats[i],0,sizeof(eNB->ulsch_stats[i]));
+  memset(eNB->ulsch_stats, 0, sizeof(eNB->ulsch_stats));
 }
 

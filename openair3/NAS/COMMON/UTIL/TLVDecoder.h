@@ -62,8 +62,12 @@
 #define IES_DECODE_U8(bUFFER, dECODED, vALUE) \
     DECODE_U8(bUFFER + dECODED, vALUE, dECODED)
 
-#define IES_DECODE_U16(bUFFER, dECODED, vALUE)  \
-    DECODE_U16(bUFFER + dECODED, vALUE, dECODED)
+#define IES_DECODE_U16(bUFFER, dECODED, vALUE)   \
+  do {                                           \
+    uint16_t val;                                \
+    memcpy(&val, bUFFER + dECODED, sizeof(val)); \
+    DECODE_U16(&val, vALUE, dECODED);            \
+  } while (0)
 
 #define IES_DECODE_U24(bUFFER, dECODED, vALUE)  \
     DECODE_U24(bUFFER + dECODED, vALUE, dECODED)

@@ -374,7 +374,7 @@ bool dlsch_procedures(PHY_VARS_eNB *eNB,
     dlsch_encoding(eNB, proc, dlsch_harq->pdu, dlsch_harq->pdsch_start, dlsch, frame, subframe, &eNB->dlsch_rate_matching_stats, &eNB->dlsch_turbo_encoding_stats, &eNB->dlsch_interleaving_stats);
     stop_meas(&eNB->dlsch_encoding_stats);
 
-    if(eNB->dlsch_encoding_stats.p_time>500*3000 && opp_enabled == 1) {
+    if (eNB->dlsch_encoding_stats.p_time > 500 * 3000 && cpu_meas_enabled) {
       print_meas_now(&eNB->dlsch_encoding_stats,"total coding",stderr);
     }
 
@@ -1339,9 +1339,20 @@ void pusch_procedures(PHY_VARS_eNB *eNB,L1_rxtx_proc_t *proc) {
 
     ulsch_harq = ulsch->harq_processes[harq_pid];
 
-    if (ulsch->rnti>0) LOG_D(PHY,"eNB->ulsch[%d]->harq_processes[harq_pid:%d] SFN/SF:%04d%d: PUSCH procedures, UE %d/%x ulsch_harq[status:%d SFN/SF:%04d%d handled:%d]\n",
-                               i, harq_pid, frame,subframe,i,ulsch->rnti,
-                              ulsch_harq->status, ulsch_harq->frame, ulsch_harq->subframe, ulsch_harq->handled);
+    if (ulsch->rnti > 0)
+      LOG_D(PHY,
+            "eNB->ulsch[%d]->harq_processes[harq_pid:%d] SFN/SF:%04d%d: PUSCH procedures, UE %d/%x ulsch_harq[status:%d "
+            "SFN/SF:%04d%d handled:%d]\n",
+            i,
+            harq_pid,
+            frame,
+            subframe,
+            i,
+            ulsch->rnti,
+            ulsch_harq->status,
+            ulsch_harq->frame,
+            ulsch_harq->subframe,
+            ulsch_harq->handled);
 
     if ((ulsch->rnti>0) &&
         (ulsch_harq->status == ACTIVE) &&

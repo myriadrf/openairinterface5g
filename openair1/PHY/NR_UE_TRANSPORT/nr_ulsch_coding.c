@@ -48,7 +48,7 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
                       uint32_t tb_size,
                       unsigned int G)
 {
-  start_meas(&ue->ulsch_encoding_stats);
+  start_meas_nr_ue_phy(ue, ULSCH_ENCODING_STATS);
 
   /////////////////////////parameters and variables initialization/////////////////////////
 
@@ -107,7 +107,7 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
     harq_process->BG = ulsch->pusch_pdu.ldpcBaseGraph;
 
     VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_SEGMENTATION, VCD_FUNCTION_IN);
-    start_meas(&ue->ulsch_segmentation_stats);
+    start_meas_nr_ue_phy(ue, ULSCH_SEGMENTATION_STATS);
     impp.Kb = nr_segmentation(harq_process->payload_AB,
                               harq_process->c,
                               B,
@@ -116,6 +116,7 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
                               &harq_process->Z,
                               &harq_process->F,
                               harq_process->BG);
+    stop_meas_nr_ue_phy(ue, ULSCH_SEGMENTATION_STATS);
     impp.n_segments = harq_process->C;
     impp.K = harq_process->K;
     impp.Kr = impp.K;
@@ -126,7 +127,6 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
       LOG_E(PHY, "nr_segmentation.c: too many segments %d, B %d\n", impp.n_segments, B);
       return(-1);
     }
-    stop_meas(&ue->ulsch_segmentation_stats);
     VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_SEGMENTATION, VCD_FUNCTION_OUT);
 
 #ifdef DEBUG_ULSCH_CODING
@@ -148,19 +148,23 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
     }
     VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_LDPC_ENCODER_OPTIM, VCD_FUNCTION_IN);
   }
-  start_meas(&ue->ulsch_ldpc_encoding_stats);
+
   if (ldpc_interface_offload.LDPCencoder) {
     for (int j = 0; j < impp.n_segments; j++) {
       impp.perCB[j].E_cb = nr_get_E(G, impp.n_segments, impp.Qm, ulsch->pusch_pdu.nrOfLayers, j);
     }
+    start_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
     ldpc_interface_offload.LDPCencoder(harq_process->c, &harq_process->f, &impp);
+    stop_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
   } else {
     if (ulsch->pusch_pdu.pusch_data.new_data_indicator) {
+      start_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
       for (int j = 0; j < (impp.n_segments / 8 + 1); j++) {
         impp.macro_num = j;
         impp.Kr = impp.K;
         ldpc_interface.LDPCencoder(harq_process->c, harq_process->d, &impp);
       }
+      stop_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
       VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_LDPC_ENCODER_OPTIM, VCD_FUNCTION_OUT);
 
 #ifdef DEBUG_ULSCH_CODING
@@ -191,7 +195,7 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
       impp.perCB[r].E_cb = nr_get_E(G, impp.n_segments, impp.Qm, ulsch->pusch_pdu.nrOfLayers, r);
 
       VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_RATE_MATCHING_LDPC, VCD_FUNCTION_IN);
-      start_meas(&ue->ulsch_rate_matching_stats);
+      start_meas(&ue->phy_cpu_stats.cpu_time_stats[ULSCH_RATE_MATCHING_STATS]);
       if (nr_rate_matching_ldpc(ulsch->pusch_pdu.tbslbrm,
                                 impp.BG,
                                 impp.Zc,
@@ -205,7 +209,7 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
           == -1)
         return -1;
 
-      stop_meas(&ue->ulsch_rate_matching_stats);
+      stop_meas(&ue->phy_cpu_stats.cpu_time_stats[ULSCH_RATE_MATCHING_STATS]);
       VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_RATE_MATCHING_LDPC, VCD_FUNCTION_OUT);
 
 #ifdef DEBUG_ULSCH_CODING
@@ -215,9 +219,9 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
 
 ///////////////////////// e---->| Rate matching bit interleaving |---->f /////////////////////////
       VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_INTERLEAVING_LDPC, VCD_FUNCTION_IN);
-      start_meas(&ue->ulsch_interleaving_stats);
+      start_meas_nr_ue_phy(ue, ULSCH_INTERLEAVING_STATS);
       nr_interleaving_ldpc(impp.perCB[r].E_cb, impp.Qm, harq_process->e + r_offset, harq_process->f + r_offset);
-      stop_meas(&ue->ulsch_interleaving_stats);
+      stop_meas_nr_ue_phy(ue, ULSCH_INTERLEAVING_STATS);
     
       VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_INTERLEAVING_LDPC, VCD_FUNCTION_OUT);
 #ifdef DEBUG_ULSCH_CODING
@@ -231,6 +235,6 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
   }
   ///////////////////////////////////////////////////////////////////////////////////////////////
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_UE_ULSCH_ENCODING, VCD_FUNCTION_OUT);
-  stop_meas(&ue->ulsch_encoding_stats);
+  stop_meas_nr_ue_phy(ue, ULSCH_ENCODING_STATS);
   return(0);
 }

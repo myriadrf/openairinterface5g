@@ -87,6 +87,7 @@ void ngap_handle_ng_setup_message(ngap_gNB_amf_data_t *amf_desc_p, int sctp_shut
       }
     }
   } else {
+    LOG_A(NGAP, "Received NGSetupResponse from AMF\n");
     /* Check that at least one setup message is pending */
     DevCheck(amf_desc_p->ngap_gNB_instance->ngap_amf_pending_nb > 0, amf_desc_p->ngap_gNB_instance->instance,
              amf_desc_p->ngap_gNB_instance->ngap_amf_pending_nb, 0);

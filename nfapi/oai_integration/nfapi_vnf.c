@@ -200,18 +200,21 @@ int vnf_unpack_vendor_extension_tlv(nfapi_tl_t *tl, uint8_t **ppReadPackedMessag
 }
 void install_nr_schedule_handlers(NR_IF_Module_t *if_inst);
 void install_schedule_handlers(IF_Module_t *if_inst);
-extern int single_thread_flag;
 extern uint16_t sf_ahead;
 
 void oai_create_enb(void) {
   int bodge_counter=0;
   PHY_VARS_eNB *eNB = RC.eNB[0][0];
-  NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] RC.eNB[0][0]. Mod_id:%d CC_id:%d nb_CC[0]:%d abstraction_flag:%d single_thread_flag:%d if_inst:%p\n", eNB->Mod_id, eNB->CC_id, RC.nb_CC[0], eNB->abstraction_flag,
-         eNB->single_thread_flag, eNB->if_inst);
+  NFAPI_TRACE(NFAPI_TRACE_INFO,
+              "[VNF] RC.eNB[0][0]. Mod_id:%d CC_id:%d nb_CC[0]:%d abstraction_flag:%d if_inst:%p\n",
+              eNB->Mod_id,
+              eNB->CC_id,
+              RC.nb_CC[0],
+              eNB->abstraction_flag,
+              eNB->if_inst);
   eNB->Mod_id  = bodge_counter;
   eNB->CC_id   = bodge_counter;
   eNB->abstraction_flag   = 0;
-  eNB->single_thread_flag = 0;//single_thread_flag;
   RC.nb_CC[bodge_counter] = 1;
 
   if (eNB->if_inst==0) {
@@ -257,10 +260,8 @@ void oai_create_gnb(void) {
   PHY_VARS_gNB *gNB = RC.gNB[0];
   RC.nb_nr_CC = (int *)malloc(sizeof(int)); // TODO: find a better function to place this in
 
-  gNB->Mod_id  = bodge_counter;
-  gNB->CC_id   = bodge_counter;
-  gNB->abstraction_flag   = 0;
-  gNB->single_thread_flag = 0;//single_thread_flag;
+  gNB->Mod_id = bodge_counter;
+  gNB->CC_id = bodge_counter;
   RC.nb_nr_CC[bodge_counter] = 1;
 
   if (gNB->if_inst==0) {

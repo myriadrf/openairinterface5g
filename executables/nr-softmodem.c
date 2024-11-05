@@ -28,6 +28,7 @@
 
 #undef MALLOC //there are two conflicting definitions, so we better make sure we don't use it at all
 #include <common/utils/assertions.h>
+#include "common/oai_version.h"
 
 #include "PHY/types.h"
 #include "common/ran_context.h"
@@ -79,6 +80,7 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "gnb_config.h"
 #include "openair2/E1AP/e1ap_common.h"
+#include "LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
 #ifdef ENABLE_AERIAL
 #include "nfapi/oai_integration/aerial/fapi_nvIPC.h"
 #endif
@@ -106,7 +108,6 @@ int NB_UE_INST = 0;
 static int wait_for_sync = 0;
 
 unsigned int mmapped_dma=0;
-int single_thread_flag=1;
 
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
 int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
@@ -138,16 +139,7 @@ uint8_t dci_Format = 0;
 uint8_t nb_antenna_tx = 1;
 uint8_t nb_antenna_rx = 1;
 
-int rx_input_level_dBm;
-
 int otg_enabled;
-
-uint64_t num_missed_slots=0; // counter for the number of missed slots
-
-#include <SIMULATION/ETH_TRANSPORT/proto.h>
-
-extern void reset_opp_meas(void);
-extern void print_opp_meas(void);
 
 extern void *udp_eNB_task(void *args_p);
 
@@ -155,9 +147,6 @@ int transmission_mode=1;
 int emulate_rf = 0;
 int numerology = 0;
 
-
-static char *parallel_config = NULL;
-static char *worker_config = NULL;
 
 /* struct for ethernet specific parameters given in eNB conf file */
 eth_params_t *eth_params;
@@ -170,11 +159,6 @@ void pdcp_run(const protocol_ctxt_t *const ctxt_pP)
 {
   abort();
 }
-
-/* see file openair2/LAYER2/MAC/main.c for why abstraction_flag is needed
- * this is very hackish - find a proper solution
- */
-uint8_t abstraction_flag=0;
 
 /* forward declarations */
 void set_default_frame_parms(nfapi_nr_config_request_scf_t *config[MAX_NUM_CCs], NR_DL_FRAME_PARMS *frame_parms[MAX_NUM_CCs]);
@@ -198,12 +182,9 @@ struct timespec clock_difftime(struct timespec start, struct timespec end) {
   return temp;
 }
 
-void print_difftimes(void) {
-#ifdef DEBUG
-  printf("difftimes min = %lu ns ; max = %lu ns\n", min_diff_time.tv_nsec, max_diff_time.tv_nsec);
-#else
-  LOG_I(HW,"difftimes min = %lu ns ; max = %lu ns\n", min_diff_time.tv_nsec, max_diff_time.tv_nsec);
-#endif
+void print_difftimes(void)
+{
+  LOG_I(HW, "difftimes min = %lu ns ; max = %lu ns\n", min_diff_time.tv_nsec, max_diff_time.tv_nsec);
 }
 
 void update_difftimes(struct timespec start, struct timespec end) {
@@ -284,7 +265,7 @@ static int create_gNB_tasks(ngran_node_t node_type, configmodule_interface_t *cf
   uint32_t                        gnb_id_end = gnb_id_start + gnb_nb;
   LOG_D(GNB_APP, "%s(gnb_nb:%d)\n", __FUNCTION__, gnb_nb);
   itti_wait_ready(1);
-  LOG_I(PHY, "%s() Task ready initialize structures\n", __FUNCTION__);
+  LOG_D(PHY, "%s() Task ready initialize structures\n", __FUNCTION__);
 
 #ifdef ENABLE_AERIAL
   AssertFatal(NFAPI_MODE == NFAPI_MODE_AERIAL,"Can only be run with '--nfapi AERIAL' when compiled with AERIAL support, if you want to run other (n)FAPI modes, please run ./build_oai without -w AERIAL");
@@ -299,7 +280,7 @@ static int create_gNB_tasks(ngran_node_t node_type, configmodule_interface_t *cf
   if (RC.nb_nr_macrlc_inst > 0)
     RCconfig_nr_macrlc(cfg);
 
-  LOG_I(PHY, "%s() RC.nb_nr_L1_inst:%d\n", __FUNCTION__, RC.nb_nr_L1_inst);
+  LOG_D(PHY, "%s() RC.nb_nr_L1_inst:%d\n", __FUNCTION__, RC.nb_nr_L1_inst);
 
   if (RC.nb_nr_L1_inst>0) AssertFatal(l1_north_init_gNB()==0,"could not initialize L1 north interface\n");
 
@@ -307,7 +288,7 @@ static int create_gNB_tasks(ngran_node_t node_type, configmodule_interface_t *cf
                "Number of gNB is greater than gNB defined in configuration file (%d/%d)!",
                gnb_nb, RC.nb_nr_inst);
 
-  LOG_I(GNB_APP,"Allocating gNB_RRC_INST for %d instances\n",RC.nb_nr_inst);
+  LOG_D(GNB_APP, "Allocating gNB_RRC_INST for %d instances\n", RC.nb_nr_inst);
 
   if (RC.nb_nr_inst > 0) {
     AssertFatal(RC.nb_nr_inst == 1, "multiple RRC instances are not supported\n");
@@ -427,12 +408,7 @@ static void get_options(configmodule_interface_t *cfg)
     NRRCConfig();
     NB_gNB_INST = RC.nb_nr_inst;
     NB_RU   = RC.nb_RU;
-    printf("Configuration: nb_rrc_inst %d, nb_nr_L1_inst %d, nb_ru %hhu\n",NB_gNB_INST,RC.nb_nr_L1_inst,NB_RU);
   }
-
-  if(parallel_config != NULL) set_parallel_conf(parallel_config);
-
-  if(worker_config != NULL) set_worker_conf(worker_config);
 }
 
 void set_default_frame_parms(nfapi_nr_config_request_scf_t *config[MAX_NUM_CCs],
@@ -481,24 +457,22 @@ void set_default_frame_parms(nfapi_nr_config_request_scf_t *config[MAX_NUM_CCs],
     //    downlink_frequency[CC_id][1] = downlink_frequency[CC_id][0];
     //    downlink_frequency[CC_id][2] = downlink_frequency[CC_id][0];
     //    downlink_frequency[CC_id][3] = downlink_frequency[CC_id][0];
-        //printf("Downlink for CC_id %d frequency set to %u\n", CC_id, downlink_frequency[CC_id][0]);
         frame_parms[CC_id]->dl_CarrierFreq=downlink_frequency[CC_id][0];
     */
   }
 }
 
 void wait_RUs(void) {
-  LOG_I(PHY,"Waiting for RUs to be configured ... RC.ru_mask:%02lx\n", RC.ru_mask);
+  LOG_D(PHY, "Waiting for RUs to be configured ... RC.ru_mask:%02lx\n", RC.ru_mask);
   // wait for all RUs to be configured over fronthaul
   pthread_mutex_lock(&RC.ru_mutex);
 
   while (RC.ru_mask>0) {
     pthread_cond_wait(&RC.ru_cond,&RC.ru_mutex);
-    printf("RC.ru_mask:%02lx\n", RC.ru_mask);
   }
 
   pthread_mutex_unlock(&RC.ru_mutex);
-  LOG_I(PHY,"RUs configured\n");
+  LOG_D(PHY, "RUs configured\n");
 }
 
 void wait_gNBs(void) {
@@ -506,7 +480,7 @@ void wait_gNBs(void) {
   int waiting=1;
 
   while (waiting==1) {
-    printf("Waiting for gNB L1 instances to all get configured ... sleeping 50ms (nb_nr_sL1_inst %d)\n",RC.nb_nr_L1_inst);
+    LOG_D(GNB_APP, "Waiting for gNB L1 instances to all get configured ... sleeping 50ms (nb_nr_sL1_inst %d)\n", RC.nb_nr_L1_inst);
     usleep(50*1000);
     waiting=0;
 
@@ -518,7 +492,7 @@ void wait_gNBs(void) {
     }
   }
 
-  printf("gNB L1 are configured\n");
+  LOG_D(GNB_APP, "gNB L1 are configured\n");
 }
 
 /*
@@ -534,24 +508,21 @@ void terminate_task(task_id_t task_id, module_id_t mod_id) {
 //extern void  free_transport(PHY_VARS_gNB *);
 extern void  nr_phy_free_RU(RU_t *);
 
-static  void wait_nfapi_init(char *thread_name) {
-  printf( "waiting for NFAPI PNF connection and population of global structure (%s)\n",thread_name);
+static  void wait_nfapi_init(char *thread_name)
+{
   pthread_mutex_lock( &nfapi_sync_mutex );
 
   while (nfapi_sync_var<0)
     pthread_cond_wait( &nfapi_sync_cond, &nfapi_sync_mutex );
 
   pthread_mutex_unlock(&nfapi_sync_mutex);
-  printf( "NFAPI: got sync (%s)\n", thread_name);
 }
 
 void init_pdcp(void) {
-  uint32_t pdcp_initmask = (IS_SOFTMODEM_NOS1) ?
-    PDCP_USE_NETLINK_BIT | LINK_ENB_PDCP_TO_IP_DRIVER_BIT | ENB_NAS_USE_TUN_BIT | SOFTMODEM_NOKRNMOD_BIT:
-    LINK_ENB_PDCP_TO_GTPV1U_BIT;
-  
+  uint32_t pdcp_initmask = IS_SOFTMODEM_NOS1 ? ENB_NAS_USE_TUN_BIT : LINK_ENB_PDCP_TO_GTPV1U_BIT;
+
   if (!NODE_IS_DU(get_node_type())) {
-    nr_pdcp_layer_init(get_node_type() == ngran_gNB_CUCP);
+    nr_pdcp_layer_init();
     nr_pdcp_module_init(pdcp_initmask, 0);
   }
 }
@@ -623,7 +594,6 @@ int main( int argc, char **argv ) {
   memset(tx_max_power,0,sizeof(int)*MAX_NUM_CCs);
   logInit();
   lock_memory_to_ram();
-  printf("Reading in command-line options\n");
   get_options(uniqCfg);
 
   EPC_MODE_ENABLED = !IS_SOFTMODEM_NOS1;
@@ -648,27 +618,15 @@ int main( int argc, char **argv ) {
 #endif
   //randominit (0);
   set_taus_seed (0);
-  printf("configuring for RAU/RRU\n");
-
-  if (opp_enabled ==1) {
-    reset_opp_meas();
-  }
 
   cpuf=get_cpu_freq_GHz();
   itti_init(TASK_MAX, tasks_info);
   // initialize mscgen log after ITTI
   init_opt();
-  if(PDCP_USE_NETLINK && !IS_SOFTMODEM_NOS1) {
-    netlink_init();
-    if (get_softmodem_params()->nsa) {
-      init_pdcp();
-    }
-  }
-#ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
-#endif
+
   // strdup to put the sring in the core file for post mortem identification
-  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
+  char *pckg = strdup(OAI_PACKAGE_VERSION);
+  LOG_I(HW, "Version: %s\n", pckg);
 
   // don't create if node doesn't connect to RRC/S1/GTP
   const ngran_node_t node_type = get_node_type();
@@ -686,27 +644,20 @@ int main( int argc, char **argv ) {
   usleep(1000);
 
   if (NFAPI_MODE && NFAPI_MODE != NFAPI_MODE_AERIAL) {
-    printf("NFAPI*** - mutex and cond created - will block shortly for completion of PNF connection\n");
     pthread_cond_init(&sync_cond,NULL);
     pthread_mutex_init(&sync_mutex, NULL);
   }
 
-  printf("START MAIN THREADS\n");
   // start the main threads
   number_of_cards = 1;
-  printf("RC.nb_nr_L1_inst:%d\n", RC.nb_nr_L1_inst);
 
   if (RC.nb_nr_L1_inst > 0) {
-    printf("Initializing gNB threads single_thread_flag:%d wait_for_sync:%d\n", single_thread_flag,wait_for_sync);
-    init_gNB(single_thread_flag,wait_for_sync);
+    init_gNB(wait_for_sync);
   }
 
-  printf("wait_gNBs()\n");
   wait_gNBs();
-  printf("About to Init RU threads RC.nb_RU:%d\n", RC.nb_RU);
   int sl_ahead = NFAPI_MODE == NFAPI_MODE_AERIAL ? 0 : 6;
   if (RC.nb_RU >0) {
-    printf("Initializing RU threads\n");
     init_NR_RU(uniqCfg, get_softmodem_params()->rf_config_file);
 
     for (ru_id=0; ru_id<RC.nb_RU; ru_id++) {
@@ -748,46 +699,34 @@ int main( int argc, char **argv ) {
   if (RC.nb_RU > 0)
     start_NR_RU();
 #ifdef ENABLE_AERIAL
-  nvIPC_Init();
+  gNB_MAC_INST *nrmac = RC.nrmac[0];
+  nvIPC_Init(nrmac->nvipc_params_s);
 #endif
   if (RC.nb_nr_L1_inst > 0) {
-    printf("wait RUs\n");
     wait_RUs();
-    printf("ALL RUs READY!\n");
-    printf("RC.nb_RU:%d\n", RC.nb_RU);
     // once all RUs are ready initialize the rest of the gNBs ((dependence on final RU parameters after configuration)
-    printf("ALL RUs ready - init gNBs\n");
 
     for (int idx=0;idx<RC.nb_nr_L1_inst;idx++) RC.gNB[idx]->if_inst->sl_ahead = sl_ahead;
-    if(IS_SOFTMODEM_DOSCOPE) {
+    if (IS_SOFTMODEM_DOSCOPE || IS_SOFTMODEM_IMSCOPE_ENABLED) {
       sleep(1);
-      scopeParms_t p;
-      p.argc=&argc;
-      p.argv=argv;
-      p.gNB=RC.gNB[0];
-      p.ru=RC.ru[0];
-      load_softscope("nr",&p);
-    }
-
-    if(IS_SOFTMODEM_DOSCOPE_QT) {
       scopeParms_t p;
       p.argc = &argc;
       p.argv = argv;
-      p.gNB  = RC.gNB[0];
-      p.ru   = RC.ru[0];
-      load_softscope("nrqt", &p);
+      p.gNB = RC.gNB[0];
+      p.ru = RC.ru[0];
+      if (IS_SOFTMODEM_DOSCOPE) {
+        load_softscope("nr", &p);
+      }
+      if (IS_SOFTMODEM_IMSCOPE_ENABLED) {
+        load_softscope("im", &p);
+      }
     }
 
     if (NFAPI_MODE != NFAPI_MODE_PNF && NFAPI_MODE != NFAPI_MODE_VNF && NFAPI_MODE != NFAPI_MODE_AERIAL) {
-      printf("Not NFAPI mode - call init_eNB_afterRU()\n");
       init_eNB_afterRU();
-    } else {
-      printf("NFAPI mode - DO NOT call init_gNB_afterRU()\n");
     }
 
-    printf("ALL RUs ready - ALL gNBs ready\n");
     // connect the TX/RX buffers
-    printf("Sending sync to all threads\n");
     pthread_mutex_lock(&sync_mutex);
     sync_var=0;
     pthread_cond_broadcast(&sync_cond);
@@ -795,12 +734,10 @@ int main( int argc, char **argv ) {
   }
 
   // wait for end of program
-  printf("Entering ITTI signals handler\n");
   printf("TYPE <CTRL-C> TO TERMINATE\n");
   itti_wait_tasks_end(NULL);
   printf("Returned from ITTI signal handler\n");
   oai_exit=1;
-  printf("oai_exit=%d\n",oai_exit);
 
   // cleanup
   if (RC.nb_nr_L1_inst > 0)
@@ -831,6 +768,7 @@ int main( int argc, char **argv ) {
       RC.ru[ru_id]->ifdevice.trx_end_func(&RC.ru[ru_id]->ifdevice);
   }
 
+  free(pckg);
   logClean();
   printf("Bye.\n");
   return 0;
