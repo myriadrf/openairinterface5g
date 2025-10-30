@@ -2,6 +2,7 @@
 
 #include <limesuiteng/LimePlugin.h>
 #include <limesuiteng/StreamConfig.h>
+#include <limesuiteng/StreamMeta.h>
 
 #include <math.h>
 
@@ -120,118 +121,40 @@ static void trx_lms7002m_end(openair0_device *device) {
   delete context;
 }
 
-#if defined(__x86_64) || defined(__i386__)
-static __m256i writeBuff[16][65536];
-#elif defined(__arm__) || defined(__aarch64__)
-static int16x8_t writeBuff[16][65536];
-#endif
 static int trx_lms7002m_write(openair0_device *device, openair0_timestamp timestamp,
                           void **buff, int nsamps, int channelCount, int flags) 
 {
   if (!buff) // Nothing to transmit
     return 0;
 
-  int nsamps2;  // aligned to upper 32 or 16 byte boundary
-#if defined(__x86_64) || defined(__i386__)
-    nsamps2 = (nsamps+7)>>3;
-#elif defined(__arm__) || defined(__aarch64__)
-    nsamps2 = (nsamps+3)>>2;
-#else
-#error Unsupported CPU architecture
-#endif
-
-  // TODO: implement data shift in limesuite for efficiency
-  // (copied from USRP)
-  // bring TX data from 12 LSBs softmodem to 16bits
-  for (int i=0; i<channelCount; i++) {
-    for (int j=0; j<nsamps2; j++) {
-#if defined(__x86_64__) || defined(__i386__)
-      if ((((uintptr_t) buff[i])&0x1F)==0) {
-        writeBuff[i][j] = simde_mm256_slli_epi16(((__m256i *)buff[i])[j],4);
-      }
-      else
-      {
-        __m256i tmp = simde_mm256_loadu_si256(((__m256i *)buff[i])+j);
-        writeBuff[i][j] = simde_mm256_slli_epi16(tmp,4);
-      }
-#elif defined(__arm__) || defined(__aarch64__)
-      writeBuff[i][j] = vshlq_n_s16(((int16x8_t *)buff[i])[j],4);
-#endif
-    }
-  }
-
-  StreamMeta meta;
-  meta.timestamp = timestamp;
-  meta.waitForTimestamp = true;
-  meta.flushPartialPacket = (flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END);
+  StreamTxMeta meta;
+  meta.timestamp = lime::Timespec(int64_t(timestamp));
+  meta.hasTimestamp = true;
+  meta.flags = ((flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END)) ? StreamTxMeta::Flags::EndOfBurst : 0;
 
   // samples format conversion is done internally
   LimePluginContext* context = static_cast<LimePluginContext*>(device->priv);
 
   // OAI stores samples as 16bit I + 16bit Q, but actually uses only 12bit LSB
-  //lime::complex16_t** samples = reinterpret_cast<lime::complex16_t**>(buff);
-  lime::complex16_t* samples[16];
-  memset(samples, 0, sizeof(samples));
-  for (int i=0; i<channelCount; ++i)
-    samples[i] = reinterpret_cast<lime::complex16_t*>(writeBuff[i]);
-  return LimePlugin_Write_complex16(context, samples, nsamps, DEFAULT_PORT, meta);
+  lime::complex12_t** samples = reinterpret_cast<lime::complex12_t**>(buff);
+  return LimePlugin_Write_complex12(context, samples, nsamps, DEFAULT_PORT, meta);
 }
 
-
-#if defined(__x86_64) || defined(__i386__)
-static __m256i readBuff[16][65536];
-#elif defined(__arm__) || defined(__aarch64__)
-static int16x8_t readBuff[16][65536];
-#endif
 static int trx_lms7002m_read(openair0_device *device, openair0_timestamp *ptimestamp,
                           void **buff, int nsamps, int channelCount)
 {
-  int nsamps2;  // aligned to upper 32 or 16 byte boundary
-#if defined(__x86_64) || defined(__i386__)
-  nsamps2 = (nsamps+7)>>3;
-#elif defined(__arm__) || defined(__aarch64__)
-  nsamps2 = (nsamps+3)>>2;
-#endif
-
   LimePluginContext *context = (LimePluginContext*)device->priv;
 
   // OAI stores samples as 16bit I + 16bit Q, but actually uses only 12bit LSB
-  lime::complex16_t* samples[16];
-  memset(samples, 0, sizeof(samples));
-  for (int i=0; i<channelCount; ++i)
-    samples[i] = reinterpret_cast<lime::complex16_t*>(readBuff[i]);
+  lime::complex12_t** samples = reinterpret_cast<lime::complex12_t**>(buff);
 
-  StreamMeta meta;
-  meta.waitForTimestamp = false;
-  meta.flushPartialPacket = false;
+  StreamRxMeta meta;
 
-  int samplesGot = LimePlugin_Read_complex16(context, samples, nsamps, DEFAULT_PORT, meta);
+  int samplesGot = LimePlugin_Read_complex12(context, samples, nsamps, DEFAULT_PORT, meta);
   if (samplesGot <= 0)
     return samplesGot;
 
-  *ptimestamp = meta.timestamp;
-  // TODO: implement Rx data shift in limesuite for efficiency
-
-  // (copied from USRP)
-  // bring RX data into 12 LSBs for softmodem RX
-  const int rxshift=4;
-  for (int i=0; i<channelCount; i++) {
-    for (int j=0; j<nsamps2; j++) {
-#if defined(__x86_64__) || defined(__i386__)
-      // FK: in some cases the buffer might not be 32 byte aligned, so we cannot use avx2
-
-      if ((((uintptr_t) buff[i])&0x1F)==0) {
-        ((__m256i *)buff[i])[j] = simde_mm256_srai_epi16(readBuff[i][j],rxshift);
-      } else {
-        __m256i tmp = simde_mm256_srai_epi16(readBuff[i][j],rxshift);
-        simde_mm256_storeu_si256(((__m256i *)buff[i])+j, tmp);
-      }
-    }
-#elif defined(__arm__) || defined(__aarch64__)
-      for (int j=0; j<nsamps2; j++)
-        ((int16x8_t *)buff[i])[j] = vshrq_n_s16(readBuff[i][j],rxshift);
-#endif
-  }
+  *ptimestamp = meta.timestamp.GetTicks();
   return samplesGot;
 }
 
@@ -278,7 +201,7 @@ int device_init(openair0_device *device,
 
   LimePluginContext* context = new LimePluginContext();
   context->currentWorkingDirectory = cwd;
-  context->samplesFormat = DataFormat::I16;
+  context->samplesFormat = DataFormat::I12;
 
   int status = LimePlugin_Init(context, LogCallback, &configProvider);
   if (status != 0)
