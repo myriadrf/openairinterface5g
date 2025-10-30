@@ -909,9 +909,6 @@ const static int16_t tw64c[96] __attribute__((aligned(32))) = {
 #ifdef simd_q15_t
 #undef simd_q15_t
 #endif
-#ifdef simdshort_q15_t 
-#undef simdshort_q15_t
-#endif
 #ifdef shiftright_int16
 #undef shiftright_int16
 #endif
@@ -3633,8 +3630,6 @@ void idft65536(int16_t *x,int16_t *y,unsigned char scale)
 
   }
 
-  simde_mm_empty();
-  simde_m_empty();
 }
 
 int16_t twa98304[65536] __attribute__((aligned(32)));

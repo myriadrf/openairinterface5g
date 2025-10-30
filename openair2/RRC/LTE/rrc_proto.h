@@ -331,12 +331,6 @@ void *rrc_enb_task(void *args_p);
    \param args_p Pointer on arguments to start the task. */
 void *rrc_ue_task(void *args_p);
 
-/**\brief RRC NSA UE task.
-   \param args_p Pointer on arguments to start the task. */
-void *recv_msgs_from_nr_ue(void *args_p);
-
-void init_connections_with_nr_ue(void);
-
 void rrc_eNB_process_x2_setup_request(int mod_id, x2ap_setup_req_t *m);
 
 void rrc_eNB_process_x2_setup_response(int mod_id, x2ap_setup_resp_t *m);
@@ -654,5 +648,16 @@ extern pthread_mutex_t      lock_ue_freelist;
 void remove_UE_from_freelist(module_id_t mod_id, rnti_t rnti);
 void put_UE_in_freelist(module_id_t mod_id, rnti_t rnti, bool removeFlag);
 void release_UE_in_freeList(module_id_t mod_id);
-
+int rrc_eNB_process_security(const protocol_ctxt_t *const ctxt_pP,
+                             rrc_eNB_ue_context_t *const ue_context_pP,
+                             security_capabilities_t *security_capabilities_pP);
+void process_eNB_security_key(const protocol_ctxt_t *const ctxt_pP,
+                              rrc_eNB_ue_context_t *const ue_context_pP,
+                              uint8_t *security_key_pP);
+int rrc_eNB_generate_RRCConnectionReconfiguration_endc(protocol_ctxt_t *ctxt,
+                                                       rrc_eNB_ue_context_t *ue_context,
+                                                       unsigned char *buffer,
+                                                       int buffer_size,
+                                                       OCTET_STRING_t *scg_group_config,
+                                                       OCTET_STRING_t *scg_RB_config);
 /** @}*/

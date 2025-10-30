@@ -52,7 +52,7 @@ void nr_pdcch_channel_estimation(PHY_VARS_NR_UE *ue,
                                  uint16_t BWPStart,
                                  int32_t pdcch_est_size,
                                  c16_t pdcch_dl_ch_estimates[][pdcch_est_size],
-                                 c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]);
+                                 c16_t rxdataF[ue->frame_parms.nb_antennas_rx][ue->frame_parms.ofdm_symbol_size]);
 
 c32_t nr_pbch_dmrs_correlation(const NR_DL_FRAME_PARMS *fp,
                                const UE_nr_rxtx_proc_t *proc,
@@ -78,23 +78,18 @@ int nr_pbch_channel_estimation(const NR_DL_FRAME_PARMS *fp,
                                bool sidelink,
                                uint Nid);
 
-int nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
-                                const UE_nr_rxtx_proc_t *proc,
-                                int nl,
-                                unsigned short p,
-                                unsigned char symbol,
-                                unsigned char nscid,
-                                unsigned short scrambling_id,
-                                unsigned short BWPStart,
-                                uint8_t config_type,
-                                uint16_t rb_offset,
-                                unsigned short bwp_start_subcarrier,
-                                unsigned short nb_rb_pdsch,
-                                uint32_t pdsch_est_size,
-                                int32_t dl_ch_estimates[][pdsch_est_size],
-                                int rxdataFsize,
-                                c16_t rxdataF[][rxdataFsize],
-                                uint32_t *nvar);
+void nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
+                                 const UE_nr_rxtx_proc_t *proc,
+                                 const fapi_nr_dl_config_dlsch_pdu_rel15_t *dlsch,
+                                 const freq_alloc_bitmap_t *freq_alloc,
+                                 int nl,
+                                 unsigned short p,
+                                 unsigned char symbol,
+                                 uint32_t pdsch_est_size,
+                                 int32_t dl_ch_estimates[][pdsch_est_size],
+                                 int rxdataFsize,
+                                 c16_t rxdataF[][rxdataFsize],
+                                 uint32_t *nvar);
 
 int nr_adjust_synch_ue(NR_DL_FRAME_PARMS *frame_parms,
                        PHY_VARS_NR_UE *ue,
@@ -107,15 +102,15 @@ int nr_adjust_synch_ue(NR_DL_FRAME_PARMS *frame_parms,
 
 void nr_ue_measurements(PHY_VARS_NR_UE *ue,
                         const UE_nr_rxtx_proc_t *proc,
-                        NR_UE_DLSCH_t *dlsch,
+                        int number_rbs,
                         uint32_t pdsch_est_size,
                         int32_t dl_ch_estimates[][pdsch_est_size]);
 
-int nr_ue_calculate_ssb_rsrp(const NR_DL_FRAME_PARMS *fp,
-                             const UE_nr_rxtx_proc_t *proc,
-                             const c16_t rxdataF[][fp->samples_per_slot_wCP],
-                             int symbol_offset,
-                             int ssb_start_subcarrier);
+uint32_t nr_ue_calculate_ssb_rsrp(const NR_DL_FRAME_PARMS *fp,
+                                  const UE_nr_rxtx_proc_t *proc,
+                                  const c16_t rxdataF[][fp->samples_per_slot_wCP],
+                                  int symbol_offset,
+                                  int ssb_start_subcarrier);
 
 void nr_ue_ssb_rsrp_measurements(PHY_VARS_NR_UE *ue,
                                  uint8_t gNB_index,
@@ -142,15 +137,13 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
                               uint8_t gNB_id,
                               uint8_t nr_slot_rx,
                               unsigned char symbol,
-                              uint32_t nb_re_pdsch,
                               uint16_t rnti,
                               NR_UE_DLSCH_t dlsch[2]);
-
-float_t get_nr_RSRP(module_id_t Mod_id,uint8_t CC_id,uint8_t gNB_index);
 
 int nr_sl_psbch_rsrp_measurements(sl_nr_ue_phy_params_t *sl_phy_params,
                                   NR_DL_FRAME_PARMS *fp,
                                   c16_t rxdataF[][fp->samples_per_slot_wCP],
-                                  bool use_SSS);
+                                  bool use_SSS,
+                                  openair0_config_t *openair0_cfg);
 /** @}*/
 #endif

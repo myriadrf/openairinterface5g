@@ -59,8 +59,6 @@ RAN_CONTEXT_t RC;
 int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
 
 double cpuf;
-//uint8_t nfapi_mode = 0;
-const int NB_UE_INST = 1;
 
 // needed for some functions
 openair0_config_t openair0_cfg[MAX_CARDS];
@@ -77,8 +75,6 @@ void deref_sched_response(int _)
   LOG_E(PHY, "fatal\n");
   exit(1);
 }
-
-uint64_t get_softmodem_optmask(void) {return 0;}
 static softmodem_params_t softmodem_params;
 softmodem_params_t *get_softmodem_params(void) {
   return &softmodem_params;
@@ -114,20 +110,13 @@ void nr_fill_rx_indication(fapi_nr_rx_indication_t *rx_ind,
 {
 }
 
-int nr_ue_pdcch_procedures(PHY_VARS_NR_UE *ue,
-                           const UE_nr_rxtx_proc_t *proc,
-                           int32_t pdcch_est_size,
-                           c16_t pdcch_dl_ch_estimates[][pdcch_est_size],
-                           nr_phy_data_t *phy_data,
-                           int n_ss,
-                           c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP])
-{
-  return 0;
-}
-
 configmodule_interface_t *uniqCfg = NULL;
 int main(int argc, char **argv)
 {
+  stop = false;
+  __attribute__((unused)) struct sigaction oldaction;
+  sigaction(SIGINT, &sigint_action, &oldaction);
+
   int i,aa,start_symbol;
   double sigma2, sigma2_dB=10,SNR,snr0=-2.0,snr1=2.0;
   double cfo=0;
@@ -146,6 +135,7 @@ int main(int argc, char **argv)
   //  int subframe_offset;
   //  char fname[40], vname[40];
   int trial,n_trials=1,n_errors=0,n_errors_payload=0;
+  int ret_test = 1;
   uint8_t transmission_mode = 1,n_tx=1,n_rx=1;
   uint16_t Nid_cell=0;
   uint64_t SSB_positions=0x01;
@@ -153,8 +143,6 @@ int main(int argc, char **argv)
   int ssb_scan_threads = 0;
 
   channel_desc_t *gNB2UE;
-  get_softmodem_params()->sa = 1;
-  get_softmodem_params()->usim_test = 1;
 
   //uint8_t extended_prefix_flag=0;
   //int8_t interf1=-21,interf2=-21;
@@ -451,13 +439,10 @@ int main(int argc, char **argv)
   frame_parms->freq_range = mu<2 ? FR1 : FR2;
 
   nr_phy_config_request_sim(gNB, N_RB_DL, N_RB_DL, mu, Nid_cell, SSB_positions);
+  // TDD configuration
   gNB->gNB_config.tdd_table.tdd_period.value = 6;
-  if (mu == 0)
-    set_tdd_config_nr(&gNB->gNB_config, mu, 3, 6, 1, 4);
-  else if (mu == 1)
-    set_tdd_config_nr(&gNB->gNB_config, mu, 7, 6, 2, 4);
-  else if (mu == 3)
-    set_tdd_config_nr(&gNB->gNB_config, mu, 27, 6, 12, 4);
+  do_tdd_config_sim(gNB, mu);
+
   phy_init_nr_gNB(gNB);
   frame_parms->ssb_start_subcarrier = 12 * gNB->gNB_config.ssb_table.ssb_offset_point_a.value + ssb_subcarrier_offset;
   initFloatingCoresTpool(ssb_scan_threads, &nrUE_params.Tpool, false, "UE-tpool");
@@ -629,12 +614,12 @@ int main(int argc, char **argv)
   printf("txlev %d (%f)\n",txlev,10*log10(txlev));*/
 
   
-  for (SNR=snr0; SNR<snr1; SNR+=.2) {
+  for (SNR = snr0; SNR < snr1 && !stop; SNR+=.2) {
 
     n_errors = 0;
     n_errors_payload = 0;
 
-    for (trial=0; trial<n_trials; trial++) {
+    for (trial = 0; trial < n_trials && !stop; trial++) {
 
       for (i=0; i<frame_length_complex_samples; i++) {
         for (aa=0; aa<frame_parms->nb_antennas_tx; aa++) {
@@ -775,6 +760,7 @@ int main(int argc, char **argv)
 
     if (((float)n_errors/(float)n_trials <= target_error_rate) && (n_errors_payload==0)) {
       printf("PBCH test OK\n");
+      ret_test = 0;
       break;
     }
       
@@ -785,7 +771,7 @@ int main(int argc, char **argv)
 
   free_channel_desc_scm(gNB2UE);
 
-  int nb_slots_to_set = TDD_CONFIG_NB_FRAMES * (1 << mu) * NR_NUMBER_OF_SUBFRAMES_PER_FRAME;
+  int nb_slots_to_set = (1 << mu) * NR_NUMBER_OF_SUBFRAMES_PER_FRAME;
   for (int i = 0; i < nb_slots_to_set; ++i)
     free(gNB->gNB_config.tdd_table.max_tdd_periodicity_list[i].max_num_of_symbol_per_slot_list);
   free(gNB->gNB_config.tdd_table.max_tdd_periodicity_list);
@@ -820,6 +806,6 @@ int main(int argc, char **argv)
   loader_reset();
   logTerm();
 
-  return(n_errors);
+  return ret_test;
 
 }

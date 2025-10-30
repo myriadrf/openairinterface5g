@@ -1,5 +1,5 @@
-This tutorial explains how to perform handovers. For the moment, only F1
-handovers are supported.
+This tutorial explains how to perform handovers. It covers both F1 handovers
+(intra-gNB, within a single gNB between DUs) and N2 handovers (inter-gNB).
 
 [[_TOC_]]
 
@@ -12,6 +12,23 @@ handover of the UE from DU0 to DU1. Alternatively, a manual trigger can do the
 same.
 
 ![F1 Handover setup](./RRC/ho.png)
+
+# What is a gNB neighbor?
+
+Network continuity is a key aspect of 5G. In the 5G architecture, gNB neighbors
+play a central role in maintaining service continuity through mechanisms such
+as handover and load balancing. By definition, a gNB neighbor is another gNB
+that can be measured and linked by the UE. If the current serving gNB is no
+longer optimal, the UE may connect to a neighbor gNB.
+
+To support this behavior, the network configuration specifies additional frequencies
+and cells that the UE should measure. The UE reports these measurements to the
+network, which then decides whether or not to initiate a handover.
+
+Neighbor types include:
+- **Intra-gNB neighbors** - cells belonging to the same gNB
+- **Inter-gNB neighbors** - cells belonging to different gNBs
+- **Inter-RAT neighbors** - cells belonging to another RAT (e.g., LTE)
 
 # Steps to run F1 handover with OAI UE
 
@@ -48,15 +65,19 @@ done, follow below steps to trigger a handover:
 
 Start the CU including telnet support:
 
-    sudo ./nr-softmodem --sa -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu.sa.f1.conf --telnetsrv --telnetsrv.shrmod ci
+    sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu.sa.f1.conf --telnetsrv --telnetsrv.shrmod ci
 
 Start DU0:
 
-    sudo ./nr-softmodem --sa --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci0.conf --rfsimulator.serveraddr 127.0.0.1
+    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci0.conf --rfsimulator.serveraddr 127.0.0.1
 
-Start the UE, and let it connect completely:
+This will show an error `[HW]   connect() to 127.0.0.1:4043 failed,
+errno(111)`. _This is expected_, because the RFsim server is at the UE (to be
+able to serve two RFsim clients, one DU each; see below for more info). Proceed
+by starting the UE, and let it connect completely (this should make the error
+go away):
 
-    sudo ./nr-uesoftmodem --sa -C 3450720000 -r 106 --numerology 1 --ssb 516 -O <config>  --rfsim --rfsimulator.serveraddr server
+    sudo ./nr-uesoftmodem -C 3450720000 -r 106 --numerology 1 --ssb 516 -O <config>  --rfsim --rfsimulator.serveraddr server
 
 Note how the RFsimulator roles have been switched, and RFsim server is at the
 UE side; _this is important_. Replace `<config>` with the UE configuration
@@ -65,7 +86,7 @@ matching your core. If you followed the CN and oaiUE tutorials, you can remove
 
 Once the UE is connected, start DU1:
 
-    sudo ./nr-softmodem --sa --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci1.conf --rfsimulator.serveraddr 127.0.0.1
+    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci1.conf --rfsimulator.serveraddr 127.0.0.1
 
 Once DU1 is online, you can trigger a handover by issuing this command
 
@@ -119,7 +140,7 @@ You can do handover across DUs with a COTS UE. Note that these DUs should be
 separated by at least multiple meters to ensure that the UE will receive
 different signal strengths when moving between cells.
 
-We only support intra-frequency handovers yet. We have verified with USRPs
+We support both intra-frequency and inter-frequency handovers. We have verified with USRPs
 only, although other radios should work as well.
 
 For UEs, we verified Quectel modules and iPhones. Note, though, that not all
@@ -142,7 +163,7 @@ neighbour relation of the DUs at the CU. To do so, proceed as follows:
    ```
    cat nrRRC_stats.log
    ```
-1. Fill in the `neighbour-config.conf` configuration file as shown below, and
+1. Fill in the [`neighbour-config.conf`](../ci-scripts/conf_files/neighbour-config.conf) configuration file as shown below, and
    `@include` it in the CU file.
 1. Start the CU and both DUs.
 1. Bring the phone close to one cell, and leave flight mode. It should connect
@@ -157,7 +178,7 @@ triggered:
 - Make sure that both DUs use the same hardware.
 - Make sure that the UE sees both cells. For instance, you can switch to flight
   mode, go closer to the other DU, and switch off flight mode -- the UE should
-  connect to that second UE.
+  connect to that second DU.
 - We did not manage handover with every phone yet -- make sure you use one of
   the list provided above.
 
@@ -203,6 +224,7 @@ neighbour_list = (
         physical_cellId = 1;
         absoluteFrequencySSB = 643296;
         subcarrierSpacing = 1; #30 KHz
+        band = 78;
         plmn = { mcc = 001; mnc = 01; mnc_length = 2};
         tracking_area_code = 1;
       }
@@ -217,6 +239,7 @@ neighbour_list = (
         physical_cellId = 0;
         absoluteFrequencySSB = 643296;
         subcarrierSpacing = 1; #30 KHz
+        band = 78;
         plmn = { mcc = 001; mnc = 01; mnc_length = 2};
         tracking_area_code = 1;
       }
@@ -245,6 +268,15 @@ nr_measurement_configuration = {
     timeToTrigger = 1
   })
 };
+```
+`@include` this configuration file inside the gNB section of CU file as shown below.
+
+```
+    plmn_list = ({ mcc = 222; mnc = 01; mnc_length = 2; snssaiList = ({ sst = 1, sd = 0xffffff })});
+
+
+    @include "neighbour-config.conf"
+
 ```
 
 # Handovers triggers and NTN
@@ -326,4 +358,161 @@ while true; do
   echo ci trigger_f1_ho | nc -N 127.0.0.1 9090 && echo
   sleep 15
 done
+```
+
+# N2 Handover
+
+## Run the setup
+
+An N2 handover involves the transfer of a UE from one gNB to another via the 5G core network. Unlike F1 handover, where the CU handles the process internally between its DUs, N2 handover requires signaling through the AMF, making it a core-network-based handover.
+
+We assume:
+
+* Two independent gNBs connected to the same 5GC via N2 interface.
+* A UE initially connected to gNB-PCI0, which will be handed over to gNB-PCI1.
+* Handover is triggered by either a decision based measurement event (e.g. A3) or telnet command.
+
+## Steps to run N2 handover with OAI UE
+
+**Note for same-machine setup:** When running both gNBs on the same machine, you need to assign a unique IP address to the second gNB to avoid network conflicts. For example:
+
+```sh
+sudo ip addr add 192.168.71.180/24 dev rfsim5g-public
+```
+
+1. Similarly to F1 handover, UE does not support any measurement reporting and handover is triggered by
+telnet command. Therefore, ensure that both gNBs and UE are built with telnet support:
+
+```sh
+./build_oai --ninja --nrUE --gNB --build-lib telnetsrv
+```
+
+Run the 5G Core Network if not already running. See [OAI CN5G tutorial](./NR_SA_Tutorial_OAI_CN5G.md).
+
+2. Start the source gNB (gNB-PCI0) e.g.
+
+```sh
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.pci0.rfsim.conf --telnetsrv --telnetsrv.shrmod ci --gNBs.[0].min_rxtxtime 6 --rfsim --rfsimulator.serveraddr 127.0.0.1
+```
+
+3. Start the UE e.g.
+
+```sh
+sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --uicc0.imsi 001010000000001 -O ../../../ci-scripts/conf_files/nrue.uicc.conf --rfsimulator.serveraddr server
+```
+
+Ensure the UE successfully registers with the network.
+
+4. Start the target gNB (gNB-PCI1) e.g.
+
+```sh
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.pci1.rfsim.conf --rfsim --telnetsrv --telnetsrv.shrmod ci --gNBs.[0].min_rxtxtime 6 --rfsimulator.serveraddr 127.0.0.1
+```
+
+**Note for same-machine setup:** When running both gNBs on the same machine, add the following network interface options to the target gNB command, e.g.:
+
+```sh
+--gNBs.[0].NETWORK_INTERFACES.GNB_IPV4_ADDRESS_FOR_NG_AMF 192.168.71.180
+--gNBs.[0].NETWORK_INTERFACES.GNB_IPV4_ADDRESS_FOR_NGU 192.168.71.180
+```
+
+5. Trigger the N2 handover, e.g.
+
+From gNB-PCI0, trigger handover on target gNB with PCI 1 for UE ID 1:
+
+```sh
+echo ci trigger_n2_ho 1,1 | nc 127.0.0.1 9090 && echo
+```
+where the input parameters correspond to the PCI of the neighbor cell and the RRC ID of the UE.
+
+This will initiate the N2 handover on the source gNB.
+
+## Neighbour list and measurement configuration
+
+Make sure the configuration file contains a neighbour list and measurement configuration, e.g. [neighbour-config-rfsim.conf](../../ci-scripts/conf_files/neighbour-config.conf). This configuration can also be present in a different file and included in the gNB configuration file with `@include "neighbour-config-rfsim.conf"`.
+
+For each gNB there is a `neighbour_cell_configuration` linked to its serving cell ID.
+
+The measurement configuration is based on A2 and A3 measurement events in 5G NR. These events are used by the UE to report radio conditions to the gNB. The A2 Measurement Event indicates that the serving cell’s signal quality has degraded below a defined threshold and the UE shall initiate measurement of neighboring cells. The A3 Measurement Event indicates that a neighboring cell’s signal quality is better than that of the serving cell by a certain offset and the UE shall trigger handover to a stronger neighboring cell
+
+This is an example with comments on how to use the configuration file:
+
+```
+############################################################
+#  gNB-to-gNB neighbour list + measurement configuration   #
+#  for the 2-cell rfsim setup (gNB_ID 0xe00 & 0xb00)       #
+############################################################
+
+neighbour_list = (
+  ##########################################################
+  #  Entry USED BY gNB_ID = 0xe00  (nr_cellid = 12345678L) #
+  ##########################################################
+  {
+    nr_cellid = 12345678L;                      #  Serving cell of gNB 0xe00
+    neighbour_cell_configuration = (
+      {
+        gNB_ID              = 0xb00;
+        nr_cellid           = 720898;           #  Cell served by gNB 0xb00
+        physical_cellId     = 1;
+        absoluteFrequencySSB= 621312;
+        subcarrierSpacing   = 1;                # 30 kHz
+        band                = 78;
+        plmn                = { mcc = 208; mnc = 99; mnc_length = 2 };
+        tracking_area_code  = 1;
+      }
+    );
+  },
+
+  ##########################################################
+  #  Entry USED BY gNB_ID = 0xb00  (nr_cellid = 720898)    #
+  ##########################################################
+  {
+    nr_cellid = 720898;                           #  Serving cell of gNB 0xb00
+    neighbour_cell_configuration = (
+      {
+        gNB_ID              = 0xe00;
+        nr_cellid           = 12345678L;          #  Cell served by gNB 0xe00
+        physical_cellId     = 0;
+        absoluteFrequencySSB= 641280;
+        subcarrierSpacing   = 1;                  # 30 kHz
+        band                = 78;
+        plmn                = { mcc = 208; mnc = 99; mnc_length = 2 };
+        tracking_area_code  = 1;
+      }
+    );
+  }
+);
+
+############################################################
+#  Common NR measurement-event configuration               #
+############################################################
+
+nr_measurement_configuration = {
+  Periodical = {
+    enable                     = 1;
+    includeBeamMeasurements    = 1;
+    maxNrofRS_IndexesToReport  = 4;
+  };
+
+  A2 = {
+    enable        = 1;
+    threshold     = 60;
+    timeToTrigger = 1;
+  };
+
+  A3 = (
+    {
+      cell_id        = 720898;     # neighbour of gNB 0xe00
+      offset         = 10;
+      hysteresis     = 0;
+      timeToTrigger  = 1;
+    },
+    {
+      cell_id        = 12345678;   # neighbour of gNB 0xb00
+      offset         = 5;
+      hysteresis     = 1;
+      timeToTrigger  = 2;
+    }
+  );
+};
 ```

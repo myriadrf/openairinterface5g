@@ -25,7 +25,6 @@
 #include <stdint.h>
 #include "PHY/defs_nr_common.h"
 #include "PHY/defs_gNB.h"
-#include "PHY/NR_UE_TRANSPORT/nr_transport_ue.h"
 
 #define DMRS_MOD_ORDER 2
 /*Precoding matices: W[pmi][antenna_port][layer]*/
@@ -60,8 +59,7 @@ void nr_layer_mapping(int nbCodes,
                       uint8_t n_layers,
                       int layerSz,
                       uint32_t n_symbs,
-                      c16_t tx_layers[layerSz],
-                      int l);
+                      c16_t tx_layers[][layerSz]);
 
 /*! \brief Perform NR layer mapping. TS 38.211 V15.4.0 subclause 7.3.1.3
   @param[in] ulsch_ue, double Pointer to NR_UE_ULSCH_t struct
@@ -119,14 +117,12 @@ void init_symbol_rotation(NR_DL_FRAME_PARMS *fp);
 
 void init_timeshift_rotation(NR_DL_FRAME_PARMS *fp);
 
-void apply_nr_rotation_RX(const NR_DL_FRAME_PARMS *frame_parms,
-                          c16_t *rxdataF,
-                          const c16_t *rot,
-                          int slot,
-                          int nb_rb,
-                          int soffset,
-                          int first_symbol,
-                          int nsymb);
+void apply_nr_rotation_symbol_RX(const NR_DL_FRAME_PARMS *frame_parms,
+                                 c16_t *rxdataF,
+                                 const c16_t *rot,
+                                 int nb_rb,
+                                 int slot,
+                                 int symbol);
 
 /*! \brief Perform NR precoding. TS 38.211 V15.4.0 subclause 6.3.1.5
   @param[in] datatx_F_precoding, Pointer to n_layers*re data array
@@ -136,12 +132,10 @@ void apply_nr_rotation_RX(const NR_DL_FRAME_PARMS *frame_parms,
 c16_t nr_layer_precoder(int sz, c16_t datatx_F_precoding[][sz], const char *prec_matrix, uint8_t n_layers, int32_t re_offset);
 
 c16_t nr_layer_precoder_cm(int n_layers,
-                           int n_symbols,
                            int symSz,
-                           c16_t datatx_F_precoding[n_layers][n_symbols][symSz],
+                           c16_t datatx_F_precoding[n_layers][symSz],
                            int ap,
                            nfapi_nr_pm_pdu_t *pmi_pdu,
-                           int symbol,
                            int offset);
 
 /*! \brief Precoding with SIMDe, txdataF_precoded[] = prec_matrix[] * txdataF_res_mapped[]
@@ -151,13 +145,11 @@ c16_t nr_layer_precoder_cm(int n_layers,
   @param[out] txdataF_precoded   Precoded antenna data
 */
 void nr_layer_precoder_simd(const int n_layers,
-                           const int n_symbols,
-                           const int symSz,
-                           const c16_t txdataF_res_mapped[n_layers][n_symbols][symSz],
-                           const int ant,
-                           const nfapi_nr_pm_pdu_t *pmi_pdu,
-                           const int symbol,
-                           const int sc_offset,
-                           const int re_cnt,
-                           c16_t *txdataF_precoded);
+                            const int symSz,
+                            const c16_t txdataF_res_mapped[n_layers][symSz],
+                            const int ant,
+                            const nfapi_nr_pm_pdu_t *pmi_pdu,
+                            const int sc_offset,
+                            const int re_cnt,
+                            c16_t *txdataF_precoded);
 #endif

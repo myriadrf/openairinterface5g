@@ -26,7 +26,6 @@
 #include <netinet/sctp.h>
 #include <stdint.h>
 #include <stdio.h>
-
 struct f1ap_setup_req_s;
 struct f1ap_lost_connection_t;
 struct gNB_RRC_INST_s;
@@ -60,5 +59,7 @@ struct nr_rrc_du_container_t *find_target_du(struct gNB_RRC_INST_s *rrc, sctp_as
       return;                                                              \
     }                                                                      \
   }
+
+void trigger_f1_reset(struct gNB_RRC_INST_s *rrc, sctp_assoc_t du_assoc_id);
 
 #endif /* RRC_GNB_DU_H_ */

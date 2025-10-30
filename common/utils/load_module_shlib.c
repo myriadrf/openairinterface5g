@@ -43,6 +43,8 @@
 
 #include "common/config/config_userapi.h"
 #include "load_module_shlib.h"
+loader_data_t loader_data;
+
 void loader_init(void) {
   paramdef_t LoaderParams[] = LOADER_PARAMS_DESC;
 

@@ -93,6 +93,11 @@ void dft_lte(int32_t *z,struct complex16 *input, int32_t Msc_PUSCH, uint8_t Nsym
 
   //  printf("\n");
   dft_size_idx_t dftsize = get_dft(Msc_PUSCH);
+  if (dftsize == DFT_SIZE_IDXTABLESIZE) {
+    LOG_E(PHY, "Internal error, not modulating the slot, Msc_PUSCH = %d\n", Msc_PUSCH);
+    return;
+  }
+
   switch (Msc_PUSCH) {
   case 12:
     dft(dftsize, (int16_t *)dft_in0, (int16_t *)dft_out0, 0);

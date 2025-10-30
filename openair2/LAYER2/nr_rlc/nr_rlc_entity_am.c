@@ -111,19 +111,17 @@ nr_rlc_sdu_segment_t *nr_rlc_tx_sdu_segment_list_add(nr_rlc_entity_am_t *entity,
 static int segment_already_received(nr_rlc_entity_am_t *entity,
     int sn, int so, int size)
 {
-  nr_rlc_pdu_t *l = entity->rx_list;
+  nr_rlc_pdu_t *l = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
   int covered;
 
   while (l != NULL && size > 0) {
-    if (l->sn == sn) {
-      if (l->so <= so && so < l->so + l->size) {
-        covered = l->size - (so - l->so);
-        size -= covered;
-        so += covered;
-      } else if (l->so <= so+size-1 && so+size-1 < l->so + l->size) {
-        covered = size - (l->so - so);
-        size -= covered;
-      }
+    if (l->so <= so && so < l->so + l->size) {
+      covered = l->size - (so - l->so);
+      size -= covered;
+      so += covered;
+    } else if (l->so <= so+size-1 && so+size-1 < l->so + l->size) {
+      covered = size - (l->so - so);
+      size -= covered;
     }
     l = l->next;
   }
@@ -136,27 +134,20 @@ static int segment_already_received(nr_rlc_entity_am_t *entity,
  */
 static int sdu_full(nr_rlc_entity_am_t *entity, int sn)
 {
-  nr_rlc_pdu_t *l = entity->rx_list;
-  int last_byte;
-  int new_last_byte;
+  nr_rlc_pdu_t *l = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
 
-  last_byte = -1;
-  while (l != NULL) {
-    if (l->sn == sn)
-      break;
-    l = l->next;
-  }
+  int last_byte = -1;
 
   /* check if the data has already been processed */
   if (l != NULL && l->data == NULL)
     return 0;
 
-  while (l != NULL && l->sn == sn) {
+  while (l != NULL) {
     if (l->so > last_byte + 1)
       return 0;
     if (l->is_last)
       return 1;
-    new_last_byte = l->so + l->size - 1;
+    int new_last_byte = l->so + l->size - 1;
     if (new_last_byte > last_byte)
       last_byte = new_last_byte;
     l = l->next;
@@ -168,14 +159,7 @@ static int sdu_full(nr_rlc_entity_am_t *entity, int sn)
 /* checks that an SDU has already been delivered */
 static int sdu_delivered(nr_rlc_entity_am_t *entity, int sn)
 {
-  nr_rlc_pdu_t *l = entity->rx_list;
-
-  while (l != NULL) {
-    if (l->sn == sn)
-      break;
-    l = l->next;
-  }
-
+  nr_rlc_pdu_t *l = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
   return l != NULL && l->data == NULL;
 }
 
@@ -185,22 +169,17 @@ static int sdu_delivered(nr_rlc_entity_am_t *entity, int sn)
  */
 static int sdu_has_missing_bytes(nr_rlc_entity_am_t *entity, int sn)
 {
-  nr_rlc_pdu_t *l = entity->rx_list;
+  nr_rlc_pdu_t *l = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
   int last_byte;
   int new_last_byte;
 
   last_byte = -1;
-  while (l != NULL) {
-    if (l->sn == sn)
-      break;
-    l = l->next;
-  }
 
   /* check if the data has already been processed */
   if (l != NULL && l->data == NULL)
     return 0;                    /* data already processed: no missing byte */
 
-  while (l != NULL && l->sn == sn) {
+  while (l != NULL) {
     if (l->so > last_byte + 1)
       return 1;
     new_last_byte = l->so + l->size - 1;
@@ -219,13 +198,10 @@ static void reassemble_and_deliver(nr_rlc_entity_am_t *entity, int sn)
   int so = 0;
   int bad_sdu = 0;
 
-  /* go to first segment of sn */
-  pdu = entity->rx_list;
-  while (pdu->sn != sn)
-    pdu = pdu->next;
+  pdu = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
 
   /* reassemble - free 'data' of each segment after processing */
-  while (pdu != NULL && pdu->sn == sn) {
+  while (pdu != NULL) {
     int len = pdu->size - (so - pdu->so);
     if (so + len > NR_SDU_MAX && !bad_sdu) {
       LOG_E(RLC, "%s:%d:%s: bad SDU, too big, discarding\n",
@@ -262,7 +238,6 @@ static void reception_actions(nr_rlc_entity_am_t *entity, nr_rlc_pdu_t *pdu)
   if (sn_compare_rx(entity, x, entity->rx_next_highest) >= 0)
     entity->rx_next_highest = (x + 1) % entity->sn_modulus;
 
-  /* todo: room for optimization: we can run through rx_list only once */
   if (sdu_full(entity, x)) {
     reassemble_and_deliver(entity, x);
 
@@ -275,21 +250,26 @@ static void reception_actions(nr_rlc_entity_am_t *entity, nr_rlc_pdu_t *pdu)
 
     if (x == entity->rx_next) {
       /* update rx_next and free all delivered SDUs at the head of the
-       * rx_list
+       * RX list
        */
       int rx_next = entity->rx_next;
-      while (entity->rx_list != NULL && entity->rx_list->data == NULL &&
-             entity->rx_list->sn == rx_next) {
+      int count = 0;
+      nr_rlc_pdu_t *l = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, rx_next);
+      while (l != NULL && l->data == NULL) {
         /* free all segments of this SDU */
         do {
-          nr_rlc_pdu_t *p = entity->rx_list;
-          entity->rx_list = p->next;
+          nr_rlc_pdu_t *p = l;
+          l = l->next;
           free(p);
-        } while (entity->rx_list != NULL &&
-                 entity->rx_list->sn == rx_next);
+        } while (l != NULL);
+        nr_rlc_rx_manager_clear_pdu(entity->rx, rx_next);
+        count++;
         rx_next = (rx_next + 1) % entity->sn_modulus;
+        l = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, rx_next);
       }
       entity->rx_next = rx_next;
+      nr_rlc_rx_manager_advance(entity->rx, count);
+      nr_rlc_rx_manager_set_start(entity->rx, rx_next);
     }
   }
 
@@ -833,7 +813,7 @@ void nr_rlc_entity_am_recv_pdu(nr_rlc_entity_t *_entity,
 
   /* dicard PDU if rx buffer is full */
   if (entity->rx_size + data_size > entity->rx_maxsize) {
-    LOG_D(RLC, "%s:%d:%s: warning: discard PDU, RX buffer full\n",
+    LOG_W(RLC, "%s:%d:%s: warning: discard PDU, RX buffer full\n",
           __FILE__, __LINE__, __FUNCTION__);
     goto discard;
   }
@@ -864,8 +844,7 @@ void nr_rlc_entity_am_recv_pdu(nr_rlc_entity_t *_entity,
   entity->rx_size += data_size;
   pdu = nr_rlc_new_pdu(sn, so, is_first, is_last,
                        buffer + size - data_size, data_size);
-  entity->rx_list = nr_rlc_pdu_list_add(sn_compare_rx, entity,
-                                        entity->rx_list, pdu);
+  nr_rlc_rx_manager_add_pdu(entity->rx, pdu);
 
   /* do reception actions (38.322 5.2.3.2.3) */
   LOG_D(RLC, "RLC received PDU sn %d so %d is_first %d is_last %d data_size = %d \n", sn, so, is_first, is_last, data_size);
@@ -1037,6 +1016,55 @@ typedef struct {
   nr_rlc_pdu_t *next;
 } missing_data_t;
 
+/* returns the first RX PDU with rx_next <= sn <= rx_highest_status
+ * returns NULL if none is found
+ */
+static nr_rlc_pdu_t *get_first_rx_pdu(nr_rlc_entity_am_t *entity)
+{
+  int first_sn = entity->rx_next;
+  int last_sn = entity->rx_highest_status;
+  int sn = first_sn;
+
+  while (sn != last_sn) {
+    nr_rlc_pdu_t *ret = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
+    if (ret)
+      return ret;
+    sn = (sn + 1) % entity->sn_modulus;
+  }
+
+  return nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
+}
+
+/* find the next RX PDU coming after 'cur'
+ * two cases:
+ * - there is a PDU with same SN, return it
+ * - find PDU with SN <= rx_highest_status if any
+ * limit search to rx_highest_status
+ */
+static nr_rlc_pdu_t *get_next_rx_pdu(nr_rlc_entity_am_t *entity,
+                                     nr_rlc_pdu_t *cur)
+{
+  if (cur->next)
+    return cur->next;
+
+  /* don't process past rx_highest_status */
+  if (cur->sn == entity->rx_highest_status)
+    return NULL;
+
+  int first_sn = (cur->sn + 1) % entity->sn_modulus;
+  int last_sn = entity->rx_highest_status;
+  int sn = first_sn;
+
+  while (sn != last_sn) {
+    nr_rlc_pdu_t *ret = nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
+    if (ret)
+      return ret;
+    sn = (sn + 1) % entity->sn_modulus;
+  }
+
+  return nr_rlc_rx_manager_get_pdu_from_sn(entity->rx, sn);
+}
+
 /* todo: rewrite this function, too messy */
 static missing_data_t next_missing(nr_rlc_entity_am_t *entity,
                                         nr_rlc_pdu_t *cur, int check_head)
@@ -1076,8 +1104,10 @@ next_pdu:
     max_so = cur_max_so;
   last_reached = last_reached | cur->is_last;
 
+  nr_rlc_pdu_t *cur_next = get_next_rx_pdu(entity, cur);
+
   /* no next? */
-  if (cur->next == NULL) {
+  if (cur_next == NULL) {
     /* inform the caller that work is over */
     ret.next = NULL;
 
@@ -1118,7 +1148,7 @@ next_pdu:
     return ret;
   }
 
-  cur = cur->next;
+  cur = cur_next;
 
   /* no discontinuity in data => process to next PDU */
   if (cur->sn == sn && max_so >= cur->so - 1)
@@ -1374,7 +1404,7 @@ static int generate_status(nr_rlc_entity_am_t *entity, char *buffer, int size)
   /* first 3 bytes, ack_sn and e1 will be set later */
   nr_rlc_pdu_encoder_put_bits(&encoder, 0, 8*3);
 
-  cur = entity->rx_list;
+  cur = get_first_rx_pdu(entity);
 
   /* store the position of the e1 bit to be set if
    * there is a nack following
@@ -1538,7 +1568,7 @@ static int status_size(nr_rlc_entity_am_t *entity, int maxsize)
   /* minimum 3 bytes */
   size = 3;
 
-  cur = entity->rx_list;
+  cur = get_first_rx_pdu(entity);
 
   while (cur != NULL) {
     m = next_missing(entity, cur, nack_count == 0);
@@ -1811,6 +1841,8 @@ void nr_rlc_entity_am_recv_sdu(nr_rlc_entity_t *_entity,
 
   if (entity->tx_size + size > entity->tx_maxsize) {
     entity->sdu_rejected++;
+    entity->common.stats.txpdu_dd_pkts++;
+    entity->common.stats.txpdu_dd_bytes += size;
     return;
   }
 
@@ -2020,8 +2052,6 @@ void nr_rlc_entity_am_discard_sdu(nr_rlc_entity_t *_entity, int sdu_id)
 
 static void clear_entity(nr_rlc_entity_am_t *entity)
 {
-  nr_rlc_pdu_t *cur_rx;
-
   entity->rx_next                = 0;
   entity->rx_next_status_trigger = 0;
   entity->rx_highest_status      = 0;
@@ -2045,13 +2075,7 @@ static void clear_entity(nr_rlc_entity_am_t *entity)
   entity->t_reassembly_start      = 0;
   entity->t_status_prohibit_start = 0;
 
-  cur_rx = entity->rx_list;
-  while (cur_rx != NULL) {
-    nr_rlc_pdu_t *p = cur_rx;
-    cur_rx = cur_rx->next;
-    nr_rlc_free_pdu(p);
-  }
-  entity->rx_list = NULL;
+  nr_rlc_clear_rx_manager(entity->rx);
   entity->rx_size = 0;
 
   nr_rlc_free_sdu_segment_list(entity->tx_list);
@@ -2081,6 +2105,7 @@ void nr_rlc_entity_am_delete(nr_rlc_entity_t *_entity)
 {
   nr_rlc_entity_am_t *entity = (nr_rlc_entity_am_t *)_entity;
   clear_entity(entity);
+  nr_rlc_free_rx_manager(entity->rx);
   time_average_free(entity->common.txsdu_avg_time_to_tx);
   free(entity);
 }
@@ -2091,3 +2116,8 @@ int nr_rlc_entity_am_available_tx_space(nr_rlc_entity_t *_entity)
   return entity->tx_maxsize - entity->tx_size;
 }
 
+int nr_rlc_entity_am_tx_list_occupancy(nr_rlc_entity_t *_entity)
+{
+  nr_rlc_entity_am_t *entity = (nr_rlc_entity_am_t *)_entity;
+  return entity->tx_size;
+}

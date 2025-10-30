@@ -31,6 +31,7 @@
 
 #include <LTE_DRX-Config.h>
 #include "OCTET_STRING.h"
+#include "NR_MAC_gNB/mac_config.h"
 
 //-------------------------------------------------------------------------------------------//
 // Defines to access message fields.
@@ -42,6 +43,8 @@
 #define RRC_MAC_BCCH_DATA_IND(mSGpTR)           (mSGpTR)->ittiMsg.rrc_mac_bcch_data_ind
 #define NR_RRC_MAC_BCCH_DATA_IND(mSGpTR)        (mSGpTR)->ittiMsg.nr_rrc_mac_bcch_data_ind
 #define NR_RRC_MAC_SBCCH_DATA_IND(mSGpTR)       (mSGpTR)->ittiMsg.nr_rrc_mac_sbcch_data_ind
+
+#define NR_RRC_MAC_MEAS_DATA_IND(mSGpTR)        (mSGpTR)->ittiMsg.nr_rrc_mac_meas_data_ind
 
 #define RRC_MAC_BCCH_MBMS_DATA_REQ(mSGpTR)      (mSGpTR)->ittiMsg.rrc_mac_bcch_mbms_data_req
 #define RRC_MAC_BCCH_MBMS_DATA_IND(mSGpTR)      (mSGpTR)->ittiMsg.rrc_mac_bcch_mbms_data_ind
@@ -61,6 +64,8 @@
 
 #define RRC_MAC_DRX_CONFIG_REQ(mSGpTR)          (mSGpTR)->ittiMsg.rrc_mac_drx_config_req
 
+#define GNB_SAT_POSITION_UPDATE(mSGpTR)         (mSGpTR)->ittiMsg.gnb_sat_position_update
+
 // Some constants from "LAYER2/MAC/defs.h"
 #define BCCH_SDU_SIZE                           (512)
 #define BCCH_SDU_MBMS_SIZE                      (512)
@@ -72,13 +77,13 @@
 // Messages between RRC and MAC layers
 
 typedef struct NRRrcMacRaInd_s {
-  uint32_t frame;
   bool RA_succeeded;
 } NRRrcMacRaInd;
 
 typedef struct NRRrcMacMsg3Ind_s {
   uint16_t rnti;
   int gnb_id;
+  bool prepare_payload;
 } NRRrcMacMsg3Ind;
 
 typedef struct NRRrcMacInacInd_s {
@@ -138,6 +143,14 @@ typedef struct NRRrcMacSBcchDataInd_s {
   uint8_t   rsrq;
   uint8_t   rsrp;
 } NRRrcMacSBcchDataInd;
+
+typedef struct NRRrcMacMeasDataInd_s {
+  uint8_t gnb_index;
+  int rsrp_dBm;
+  uint16_t Nid_cell;
+  bool is_csi_meas;
+  bool is_neighboring_cell;
+} NRRrcMacMeasDataInd;
 
 typedef struct RrcMacBcchMbmsDataReq_s {
   uint32_t  frame;

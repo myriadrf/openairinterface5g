@@ -136,10 +136,10 @@ static void nr_pdcp_entity_recv_pdu(nr_pdcp_entity_t *entity,
   }
 
   if (entity->has_ciphering)
-    entity->cipher(entity->security_context,
-                   buffer + header_size + sdap_header_size,
-                   size - (header_size + sdap_header_size),
-                   entity->rb_id, rcvd_count, entity->is_gnb ? 0 : 1);
+    entity->decipher(entity->security_context,
+                     buffer + header_size + sdap_header_size,
+                     size - (header_size + sdap_header_size),
+                     entity->rb_id, rcvd_count, entity->is_gnb ? 0 : 1);
 
   if (entity->has_integrity) {
     unsigned char integrity[PDCP_INTEGRITY_SIZE] = {0};
@@ -380,10 +380,12 @@ static void nr_pdcp_entity_set_security(struct nr_pdcp_entity_t *entity,
     if (parameters->ciphering_algorithm == 2) {
       entity->security_context = nr_pdcp_security_nea2_init(entity->security_keys_and_algos.ciphering_key);
       entity->cipher = nr_pdcp_security_nea2_cipher;
+      entity->decipher = nr_pdcp_security_nea2_cipher;
       entity->free_security = nr_pdcp_security_nea2_free_security;
     } else if (parameters->ciphering_algorithm == 1) {
       entity->security_context = nr_pdcp_security_nea1_init(entity->security_keys_and_algos.ciphering_key);
       entity->cipher = nr_pdcp_security_nea1_cipher;
+      entity->decipher = nr_pdcp_security_nea1_cipher;
       entity->free_security = nr_pdcp_security_nea1_free_security;
     } else {
       LOG_E(PDCP, "FATAL: only nea1 and nea2 supported for the moment\n");
@@ -599,6 +601,94 @@ static void nr_pdcp_entity_get_stats(nr_pdcp_entity_t *entity,
   *out = entity->stats;
 }
 
+/** @note: this function applies to the gNB only */
+static nr_pdcp_count_t nr_pdcp_entity_get_count_dl(nr_pdcp_entity_t *entity)
+{
+  nr_pdcp_count_t count = {0};
+  const int sn_bits = entity->sn_size;
+  const uint32_t sn_mask = entity->sn_max;
+  count.hfn = entity->rx_deliv >> sn_bits;
+  count.sn = entity->rx_deliv & sn_mask;
+  return count;
+}
+
+/** @note: this function applies to the gNB only */
+static nr_pdcp_count_t nr_pdcp_entity_get_count_ul(nr_pdcp_entity_t *entity)
+{
+  nr_pdcp_count_t count = {0};
+  const int sn_bits = entity->sn_size;
+  const uint32_t sn_mask = entity->sn_max;
+  count.hfn = entity->tx_next >> sn_bits;
+  count.sn = entity->tx_next & sn_mask;
+  return count;
+}
+
+/** @note: this function applies to the gNB only */
+static void nr_pdcp_entity_set_count_dl(nr_pdcp_entity_t *entity, nr_pdcp_count_t pdcp_count, int sn_size)
+{
+  // SN length in bits
+  const uint32_t sn_mask = (1 << sn_size) - 1;
+
+  // Compose COUNT values for tx_next (DL) and rx_next (UL)
+  uint32_t count = (pdcp_count.hfn << sn_size) | (pdcp_count.sn & sn_mask);
+
+  // Apply the COUNT values
+  entity->rx_next = count + 1;
+  entity->rx_deliv = count;
+
+  LOG_I(PDCP,
+        "DRB %d: Applied PDCP Count\n"
+        "  DL COUNT - SN: %d HFN: %d (COUNT=%u)\n"
+        "  SN length: %s\n"
+        "   PDCP entity state after update:\n"
+        "     rx_next  = %u\n"
+        "     rx_deliv = %u\n"
+        "     sn_size  = %d\n"
+        "     sn_max   = %d\n"
+        "     window   = %d\n",
+        entity->rb_id,
+        pdcp_count.sn,
+        pdcp_count.hfn,
+        count,
+        sn_size == LONG_SN_SIZE ? "18-bit" : "12-bit",
+        entity->rx_next,
+        entity->rx_deliv,
+        entity->sn_size,
+        entity->sn_max,
+        entity->window_size);
+}
+
+/** @note: this function applies to the gNB only */
+static void nr_pdcp_entity_set_count_ul(nr_pdcp_entity_t *entity, nr_pdcp_count_t pdcp_count, int sn_size)
+{
+  // SN length in bits
+  const uint32_t sn_mask = (1 << sn_size) - 1;
+
+  // Compose COUNT values for tx_next (DL) and rx_next (UL)
+  uint32_t count = (pdcp_count.hfn << sn_size) | (pdcp_count.sn & sn_mask);
+
+  // Apply the COUNT values
+  entity->tx_next = count;
+
+  LOG_I(PDCP,
+        "DRB %d: Applied PDCP Count\n"
+        "  UL COUNT - SN: %d HFN: %d (COUNT=%u)\n"
+        "  SN length: %s\n"
+        "   PDCP entity state after update:\n"
+        "     tx_next  = %u\n"
+        "     sn_size  = %d\n"
+        "     sn_max   = %d\n"
+        "     window   = %d\n",
+        entity->rb_id,
+        pdcp_count.sn,
+        pdcp_count.hfn,
+        count,
+        sn_size == LONG_SN_SIZE ? "18-bit" : "12-bit",
+        entity->tx_next,
+        entity->sn_size,
+        entity->sn_max,
+        entity->window_size);
+}
 
 nr_pdcp_entity_t *new_nr_pdcp_entity(
     nr_pdcp_entity_type_t type,
@@ -672,6 +762,12 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
   ret->is_gnb = is_gnb;
 
   nr_pdcp_entity_set_security(ret, security_parameters);
+
+  /* PDCP Count API */
+  ret->get_pdcp_count_dl = nr_pdcp_entity_get_count_dl;
+  ret->get_pdcp_count_ul = nr_pdcp_entity_get_count_ul;
+  ret->set_pdcp_count_dl = nr_pdcp_entity_set_count_dl;
+  ret->set_pdcp_count_ul = nr_pdcp_entity_set_count_ul;
 
   return ret;
 }

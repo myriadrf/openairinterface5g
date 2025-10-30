@@ -10,7 +10,7 @@ services:
             CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
         healthcheck:
             test: /bin/bash -c "nodetool status"
-            interval: 10s
+            interval: 20s
             timeout: 5s
             retries: 5
 

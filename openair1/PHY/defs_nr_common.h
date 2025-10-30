@@ -34,13 +34,9 @@
 #define __PHY_DEFS_NR_COMMON__H__
 
 #include "PHY/impl_defs_top.h"
-#include "defs_common.h"
 #include "nfapi_nr_interface_scf.h"
 #include "impl_defs_nr.h"
 #include "PHY/CODING/nrPolar_tools/nr_polar_defs.h"
-
-#define nr_subframe_t lte_subframe_t
-#define nr_slot_t lte_subframe_t
 
 #define MAX_NUM_SUBCARRIER_SPACING 5
 #define NR_MAX_OFDM_SYMBOL_SIZE 8192
@@ -52,7 +48,6 @@
 
 #define NR_MOD_TABLE_SIZE_SHORT 686
 #define NR_MOD_TABLE_BPSK_OFFSET 1
-#define NR_MOD_TABLE_QPSK_OFFSET 3
 #define NR_MOD_TABLE_QAM16_OFFSET 7
 #define NR_MOD_TABLE_QAM64_OFFSET 23
 #define NR_MOD_TABLE_QAM256_OFFSET 87
@@ -96,6 +91,8 @@
 
 #define PBCH_MAX_RE_PER_SYMBOL (20 * 12)
 
+#define NR_PUCCH_DMRS_RB 4
+
 typedef enum {
   NR_MU_0=0,
   NR_MU_1,
@@ -116,7 +113,24 @@ typedef struct {
   uint8_t k_0_p[MAX_NUM_NR_SRS_AP][MAX_NUM_NR_SRS_SYMBOLS];
   uint8_t srs_generated_signal_bits;
   c16_t **srs_generated_signal;
-  nfapi_nr_srs_pdu_t srs_pdu;
+  bool is_signal_generated;
+  int B_SRS;
+  int C_SRS;
+  int b_hop;
+  int comb_size;
+  int K_TC_overbar;
+  int n_SRS_cs;
+  int n_ID_SRS;
+  int n_shift;
+  int n_RRC;
+  int groupOrSequenceHopping;
+  int l_offset;
+  int T_SRS;
+  int T_offset;
+  int R;
+  int N_symb_SRS;
+  int n_srs_ports;
+  int resource_type;
 } nr_srs_info_t;
 
 typedef struct NR_DL_FRAME_PARMS NR_DL_FRAME_PARMS;
@@ -217,16 +231,10 @@ struct NR_DL_FRAME_PARMS {
   c16_t timeshift_symbol_rotation[4096*2] __attribute__ ((aligned (16)));
   /// Table used to apply the delay compensation in DL/UL
   c16_t delay_table[2 * MAX_DELAY_COMP + 1][NR_MAX_OFDM_SYMBOL_SIZE];
-  /// SRS configuration from TS 38.331 RRC
-  SRS_NR srs_nr;
+  /// Table used to apply the delay compensation in PUCCH2
+  c16_t delay_table128[2 * MAX_DELAY_COMP + 1][128];
   /// Power used by SSB in order to estimate signal strength and path loss
   int ss_PBCH_BlockPower;
-  /// for NR TDD management
-  TDD_UL_DL_configCommon_t  *p_tdd_UL_DL_Configuration;
-
-  TDD_UL_DL_configCommon_t  *p_tdd_UL_DL_ConfigurationCommon2;
-
-  TDD_UL_DL_SlotConfig_t *p_TDD_UL_DL_ConfigDedicated;
 
   /// TDD configuration
   uint16_t tdd_uplink_nr[2*NR_MAX_SLOTS_PER_FRAME]; /* this is a bitmap of symbol of each slot given for 2 frames */

@@ -25,9 +25,9 @@
 #include "OCTET_STRING.h"
 #include "common/utils/utils.h"
 #include "common/utils/assertions.h"
-#include "common/utils/utils.h"
+#include "common/utils/oai_asn1.h"
 
-bool eq_f1ap_plmn(const f1ap_plmn_t *a, const f1ap_plmn_t *b)
+bool eq_f1ap_plmn(const plmn_id_t *a, const plmn_id_t *b)
 {
   _F1_EQ_CHECK_INT(a->mcc, b->mcc);
   _F1_EQ_CHECK_INT(a->mnc, b->mnc);
@@ -53,7 +53,15 @@ bool eq_f1ap_cell_info(const f1ap_served_cell_info_t *a, const f1ap_served_cell_
 {
   _F1_EQ_CHECK_LONG(a->nr_cellid, b->nr_cellid);
   _F1_EQ_CHECK_INT(a->nr_pci, b->nr_pci);
-  _F1_EQ_CHECK_INT(*a->tac, *b->tac);
+  if ((!a->tac) ^ (!b->tac))
+    return false;
+  if (a->tac)
+    _F1_EQ_CHECK_INT(*a->tac, *b->tac);
+  _F1_EQ_CHECK_INT(a->num_ssi, b->num_ssi);
+  for (int i = 0; i < a->num_ssi; ++i) {
+    _F1_EQ_CHECK_INT(a->nssai[i].sst, b->nssai[i].sst);
+    _F1_EQ_CHECK_INT(a->nssai[i].sd, b->nssai[i].sd);
+  }
   _F1_EQ_CHECK_INT(a->mode, b->mode);
   if (a->mode == F1AP_MODE_TDD) {
     /* TDD */
@@ -81,6 +89,13 @@ bool eq_f1ap_cell_info(const f1ap_served_cell_info_t *a, const f1ap_served_cell_
 
 bool eq_f1ap_sys_info(const f1ap_gnb_du_system_info_t *a, const f1ap_gnb_du_system_info_t *b)
 {
+  if (!a && !b)
+    return true;
+
+  /* will fail if not both a/b NULL or set */
+  if ((!a) ^ (!b))
+    return false;
+
   /* MIB */
   _F1_EQ_CHECK_INT(a->mib_length, b->mib_length);
   for (int i = 0; i < a->mib_length; i++)
@@ -98,4 +113,81 @@ uint8_t *cp_octet_string(const OCTET_STRING_t *os, int *len)
   memcpy(buf, os->buf, os->size);
   *len = os->size;
   return buf;
+}
+
+F1AP_SNSSAI_t encode_nssai(const nssai_t *nssai)
+{
+  F1AP_SNSSAI_t enc = {0};
+  INT8_TO_OCTET_STRING(nssai->sst, &enc.sST);
+  // see 23.003 sec. 28.4.2: 0xffffff means "no SD"
+  if (nssai->sd != 0xffffff) {
+    asn1cCalloc(enc.sD, tmp);
+    INT24_TO_OCTET_STRING(nssai->sd, tmp);
+  }
+  return enc;
+}
+
+nssai_t decode_nssai(const F1AP_SNSSAI_t *nssai)
+{
+  // see 23.003 sec. 28.4.2: 0xffffff means "no SD"
+  nssai_t dec = { .sd = 0xffffff, };
+  OCTET_STRING_TO_INT8(&nssai->sST, dec.sst);
+  if (nssai->sD != NULL)
+    OCTET_STRING_TO_INT24(nssai->sD, dec.sd);
+  return dec;
+}
+
+F1AP_Cause_t encode_f1ap_cause(f1ap_Cause_t cause, long cause_value)
+{
+  F1AP_Cause_t f1_cause = {0};
+  switch (cause) {
+    case F1AP_CAUSE_RADIO_NETWORK:
+      f1_cause.present = F1AP_Cause_PR_radioNetwork;
+      f1_cause.choice.radioNetwork = cause_value;
+      break;
+    case F1AP_CAUSE_TRANSPORT:
+      f1_cause.present = F1AP_Cause_PR_transport;
+      f1_cause.choice.transport = cause_value;
+      break;
+    case F1AP_CAUSE_PROTOCOL:
+      f1_cause.present = F1AP_Cause_PR_protocol;
+      f1_cause.choice.protocol = cause_value;
+      break;
+    case F1AP_CAUSE_MISC:
+      f1_cause.present = F1AP_Cause_PR_misc;
+      f1_cause.choice.misc = cause_value;
+      break;
+    case F1AP_CAUSE_NOTHING:
+    default:
+      AssertFatal(false, "unknown cause value %d\n", cause);
+      break;
+  }
+  return f1_cause;
+}
+
+bool decode_f1ap_cause(F1AP_Cause_t f1_cause, f1ap_Cause_t *cause, long *cause_value)
+{
+  switch (f1_cause.present) {
+    case F1AP_Cause_PR_radioNetwork:
+      *cause = F1AP_CAUSE_RADIO_NETWORK;
+      *cause_value = f1_cause.choice.radioNetwork;
+      break;
+    case F1AP_Cause_PR_transport:
+      *cause = F1AP_CAUSE_TRANSPORT;
+      *cause_value = f1_cause.choice.transport;
+      break;
+    case F1AP_Cause_PR_protocol:
+      *cause = F1AP_CAUSE_PROTOCOL;
+      *cause_value = f1_cause.choice.protocol;
+      break;
+    case F1AP_Cause_PR_misc:
+      *cause = F1AP_CAUSE_MISC;
+      *cause_value = f1_cause.choice.radioNetwork;
+      break;
+    case F1AP_Cause_PR_NOTHING:
+    default:
+      PRINT_ERROR("received illegal F1AP cause %d\n", f1_cause.present);
+      return false;
+  }
+  return true;
 }

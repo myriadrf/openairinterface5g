@@ -60,6 +60,7 @@
 //#include <complex.h>
 #include "time_meas.h"
 #include "common/platform_types.h"
+#include "softmodem-common.h"
 #define MAX_NUM_RU_PER_eNB 64
 
 #include <pthread.h>
@@ -84,7 +85,6 @@
 #define LTE_CE_OFFSET LTE_CE_FILTER_LENGTH
 #define TX_RX_SWITCH_SYMBOL (NUMBER_OF_SYMBOLS_PER_FRAME>>1)
 #define PBCH_PDU_SIZE 3 //bytes
-#define NR_NUMBER_OF_SYMBOLS_PER_SLOT 14
 
 #define PRACH_SYMBOL 3 //position of the UL PSS wrt 2nd slot of special subframe
 
@@ -99,8 +99,6 @@
 #define NB_RX_ANTENNAS_MAX 64
 
 #define TC_NSEC_x32768 16667
-
-typedef enum {TDD=1,FDD=0} frame_type_t;
 
 typedef enum {EXTENDED=1,NORMAL=0} lte_prefix_type_t;
 
@@ -1047,8 +1045,6 @@ typedef uint8_t(encoder_if_t)(uint8_t *input,
                               uint16_t input_length_bytes,
                               uint8_t *output,
                               uint8_t F);
-
-extern int oai_exit;
 
 static inline void wait_sync(char *thread_name)
 {

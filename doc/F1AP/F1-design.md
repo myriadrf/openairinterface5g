@@ -2,7 +2,7 @@
   <tr style="border-collapse: collapse; border: none;">
     <td style="border-collapse: collapse; border: none;">
       <a href="http://www.openairinterface.org/">
-         <img src="./images/oai_final_logo.png" alt="" border=3 height=50 width=150>
+         <img src="../images/oai_final_logo.png" alt="" border=3 height=50 width=150>
          </img>
       </a>
     </td>
@@ -14,7 +14,7 @@
 
 [[_TOC_]]
 
-# Introduction
+## Introduction
 
 The F1 interface is the functional split of 3GPP between the CU (centralized
 unit: PDCP, RRC, SDAP) and the DU (distributed unit: RLC, MAC, PHY). It is
@@ -33,17 +33,17 @@ F1-U:
 
 No equivalent for 4G exists.
 
-## Control plane (F1-C)
+### Control plane (F1-C)
 
 The interface F1-C is designed for the exchange of signalling messages between the
 Radio Network Layer (RNL) and the Transport Network Layer (TNL). It
 consists of F1 Application Protocol messages (F1-AP) exchanged over SCTP.
 
-## Data plane (F1-U)
+### Data plane (F1-U)
 
 F1-U uses GTP-U for information exchange.
 
-# OAI Implementation Status
+## OAI Implementation Status
 
 The implementation of F1AP messages is seamlessly integrated into OAI, supporting both Monolithic SA
 and CU/DU functional split modes. The F1 code is therefore always compiled with nr-softmodem.
@@ -59,17 +59,17 @@ This is the current status:
   * SA
   * Single cell per DU
   * Multiple DUs connected to one CU (both CP and UP)
-  * Mobility between DUs connected to a single CU
+  * [Mobility between DUs connected to a single CU](../handover-tutorial.md)
 - Not supported:
   * NSA
 
-## F1-C
+### F1-C
 
-### F1AP messages
+#### F1AP messages
 
-Refer to [FEATURE_SET.md](FEATURE_SET.md#gNB-F1AP) to learn about the current F1AP implementation status.
+Refer to [FEATURE_SET.md](../FEATURE_SET.md#gnb-f1ap) to learn about the current F1AP implementation status.
 
-### High-level F1-C code structure
+#### High-level F1-C code structure
 
 The F1 interface is used internally between CU (mostly RRC) and DU (mostly MAC)
 to exchange information. In DL, the CU sends messages as defined by the
@@ -170,7 +170,7 @@ sequenceDiagram
     TASK_MAC_GNB->>+TASK_RRC_GNB: raw F1AP message (ITTI)
 ```
 
-## F1-U
+### F1-U
 
 Current status:
 
@@ -178,19 +178,19 @@ Current status:
 * Each packet is acknowledged individually
 * Support of multiple DUs per CU
 
-# How to run
+## How to run
 
 As mentioned earlier, OAI uses F1 internally. It is always compiled in.
 To start CU/DU, you use `./nr-softmodem` with the appropriate configuration
 files, for instance:
 
 ```
-sudo cmake_targets/ran_build/build/nr-softmodem --sa -O ci-scripts/conf_files/gnb-cu.sa.band78.106prb.conf
-sudo cmake_targets/ran_build/build/nr-softmodem --sa -O ci-scripts/conf_files/gnb-du.sa.band78.106prb.rfsim.conf
+sudo cmake_targets/ran_build/build/nr-softmodem -O ci-scripts/conf_files/gnb-cu.sa.band78.106prb.conf
+sudo cmake_targets/ran_build/build/nr-softmodem -O ci-scripts/conf_files/gnb-du.sa.band78.106prb.rfsim.conf
 ```
 
 These files are tested in the CI, and are configured for use in docker,
-see [this `docker-compose` file](../ci-scripts/yaml_files/5g_f1_rfsimulator/docker-compose.yaml).
+see [this `docker-compose` file](../../ci-scripts/yaml_files/5g_f1_rfsimulator/docker-compose.yaml).
 
 The rules to decide if a config triggers a start of a DU, CU, or monolithic
 gNB, are, in order:
@@ -200,7 +200,7 @@ gNB, are, in order:
    (`tr_s_preference`), it is a CU.
 3. It is a (monolithic) gNB.
 
-## F1 IP configuration for Local network deployment of F1
+### F1 IP configuration for Local network deployment of F1
 
 The following paragraphs explain the IP configuration for F1 in the OAI config
 files on the example of a a local deployment.  We assume that the CU will bind
@@ -221,9 +221,7 @@ In the CU file:
   ignored, but we recommend to put `0.0.0.0` ("any")
 - Ports should match the ones in the DU config, but for simplicity and
   standards-conformity, simply set all to 2152:
-  - `local_s_portc` in CU should match `remote_n_portc` in DU
   - `local_s_portd` in CU should match `remote_n_portd` in DU
-  - `remote_s_portc` in CU should match `local_n_portc` in DU
   - `remote_s_portd` in CU should match `local_n_portd` in DU
 
 In the DU file:
@@ -244,7 +242,7 @@ the options `MACRLCs.[0].local_n_address` and
 `MACRLCs.[0].local_n_address_f1u`, respectively. Note that this is not foreseen
 for the CU; in the case of the CU, please use separate CU-UP and CU-CP.
 
-## Configuration of multiple DUs
+### Configuration of multiple DUs
 
 Upon F1 Setup Request of a new DU, the CU cross-checks that
 
@@ -262,9 +260,9 @@ You have to of course make sure that the local interface of the DU
 Assuming you use RFsim, you should make the RFsimulator server side (typically
 the gNB) bind on different hosts (`rfsimulator.serverport`).
 
-# Code documentation
+## Code documentation
 
-## Common multi-threading architecture
+### Common multi-threading architecture
 
 The CU and DU interfaces are based on ITTI threads (see `common/utils/ocp_itti/itti.md`)
 adopted by all OAI upper layers to run isolated threads dedicated to one feature.
@@ -303,7 +301,7 @@ All GTP-U tunnels are managed in a Linux Thread, that have partially ITTI design
 3. incoming packets are sent to the tunnel creator using a C callback (the callback function is given in tunnel creation order). The callback should not block
 
 
-## F1-C messages towards the CU
+### F1-C messages towards the CU
 
 The CU thread starts when the CU starts. It opens listening socket on the
 configuration-specified IP/port by sending the appropriate message to
@@ -334,7 +332,7 @@ You might also want to consult TS 38.401 regarding the message exchange.
 | UE Context Release Request | `F1AP_UE_CONTEXT_RELEASE_REQ` | `rrc_CU_process_ue_context_release_request()` | RRC will trigger UE release |
 | UE Context Release Complete | `F1AP_UE_CONTEXT_RELEASE_COMPLETE` | `rrc_CU_process_ue_context_release_complete()` | frees UE Context, signals to NGAP |
 
-## F1-C Messages towards the DU
+### F1-C Messages towards the DU
 
 The task "gNB app", after reading the configuration file, sends a message
 `F1AP_DU_REGISTER_REQ` to the DU task. This message contains network
@@ -373,26 +371,26 @@ You might also want to consult TS 38.401 regarding the message exchange.
   a reconfiguration has to be triggered if the CU receives a CellGroupConfig,
   originating at the DU. See also flag `expect_reconfiguration`.
 
-## F1-U messages
+### F1-U messages
 
-### General
+#### General
 
 In the DU in UL, RLC checks in `deliver_sdu()` if we are operating in split
-mode, and either (direct) calls `pdcp_data_ind` (DRB) or (f1ap) sends an
-`GTPV1U_TUNNEL_DATA_REQ` ITTI message to the GTP task.
+mode, and either (direct) calls `pdcp_data_ind` (DRB) or (f1ap) sends a GTP
+message through the GTP API.
 
 In the CU in UL, assuming the tunnel is in place, GTP decapsulates the packet
 and calls the callback `cu_f1u_data_req()`, which calls `pdcp_data_ind()` in CU.
 
 In the CU in DL, the PDCP function `deliver_pdu_drb_gnb()` either (direct) calls
-into the RLC via `enqueue_rlc_data_req()`, or (f1ap) sends a
-`GTPV1U_TUNNEL_DATA_REQ` ITTI message to the GTP task.
+into the RLC via `enqueue_rlc_data_req()`, or (f1ap) sends a GTP message
+through the GTP API.
 
 In the DU in DL, assuming the GTP-U tunnel exists, GTP decapsulates the packet
-and calls the reception call back `du_rlc_data_req()`, which calls
-`enqueue_rlc_data_req()` in turn.
+and calls the reception call back `nr_rlc_data_req()`, which enqueues the
+packet into the UE's RLC buffer.
 
-## Tunnel Setup
+### Tunnel Setup
 
 In GTP-U, TS 29.281 specifies a optional header (NR RAN Container). This
 extension header may be transmitted in a G-PDU over the X2-U, Xn-U and F1-U user

@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "LOG/log.h"
+#include "common/utils/assertions.h"
 
 nr_rlc_sdu_segment_t *nr_rlc_new_sdu(
     char *buffer, int size,
@@ -32,12 +33,13 @@ nr_rlc_sdu_segment_t *nr_rlc_new_sdu(
 {
   /* allocate sdu header and data together */
   nr_rlc_sdu_t *sdu = malloc(sizeof(nr_rlc_sdu_t) + size);
+  nr_rlc_sdu_segment_t *ret = calloc(1, sizeof(nr_rlc_sdu_segment_t));
+
+  DevAssert(sdu != NULL);
+  DevAssert(ret != NULL);
+
   /* only memset the header */
   memset(sdu, 0 , sizeof(*sdu));
-
-  nr_rlc_sdu_segment_t *ret = calloc(1, sizeof(nr_rlc_sdu_segment_t));
-  if (sdu == NULL || ret == NULL)
-    goto oom;
 
   sdu->ref_count      = 1;
   sdu->sn             = -1;                 /* set later */
@@ -54,10 +56,6 @@ nr_rlc_sdu_segment_t *nr_rlc_new_sdu(
   ret->is_last  = 1;
 
   return ret;
-
-oom:
-  LOG_E(RLC, "%s:%d:%s: out of memory\n", __FILE__, __LINE__,  __FUNCTION__);
-  exit(1);
 }
 
 int nr_rlc_free_sdu_segment(nr_rlc_sdu_segment_t *sdu)

@@ -20,20 +20,32 @@
  */
 
 #include "cucp_cuup_handler.h"
-
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include "NR_DRB-ToAddMod.h"
 #include "NR_DRB-ToAddModList.h"
-
-#include "common/platform_types.h"
-#include "intertask_interface.h"
-#include "openair2/COMMON/e1ap_messages_types.h"
-#include "openair3/ocp-gtpu/gtp_itf.h"
-#include "openair2/F1AP/f1ap_ids.h"
-#include "nr_pdcp_oai_api.h"
-#include "cuup_cucp_if.h"
+#include "NR_PDCP-Config.h"
+#include "NR_QFI.h"
+#include "NR_SDAP-Config.h"
+#include "RRC/NR/nr_rrc_common.h"
+#include "SDAP/nr_sdap/nr_sdap_entity.h"
+#include "asn_internal.h"
+#include "assertions.h"
+#include "common/utils/T/T.h"
 #include "common/utils/oai_asn1.h"
-#include "openair2/SDAP/nr_sdap/nr_sdap.h"
+#include "constr_TYPE.h"
+#include "cuup_cucp_if.h"
+#include "gtpv1_u_messages_types.h"
+#include "nr_pdcp/nr_pdcp_entity.h"
+#include "nr_pdcp_oai_api.h"
+#include "openair2/COMMON/e1ap_messages_types.h"
 #include "openair2/E1AP/e1ap_common.h"
 #include "openair2/F1AP/f1ap_common.h"
+#include "openair2/F1AP/f1ap_ids.h"
+#include "openair2/SDAP/nr_sdap/nr_sdap.h"
+#include "openair3/ocp-gtpu/gtp_itf.h"
 
 static void fill_DRB_configList_e1(NR_DRB_ToAddModList_t *DRB_configList, const pdu_session_to_setup_t *pdu)
 {
@@ -75,11 +87,12 @@ static void fill_DRB_configList_e1(NR_DRB_ToAddModList_t *DRB_configList, const 
     pdcp_config->t_Reordering = calloc(1, sizeof(*pdcp_config->t_Reordering));
     *pdcp_config->t_Reordering = drb->pdcp_config.reorderingTimer;
     pdcp_config->ext1 = NULL;
-    if (pdu->integrityProtectionIndication == 0 || // Required
-        pdu->integrityProtectionIndication == 1) { // Preferred
-        asn1cCallocOne(drbCfg->integrityProtection, NR_PDCP_Config__drb__integrityProtection_enabled);
+    const security_indication_t *sec = &pdu->securityIndication;
+    if (sec->integrityProtectionIndication == SECURITY_REQUIRED ||
+        sec->integrityProtectionIndication == SECURITY_PREFERRED) {
+      asn1cCallocOne(drbCfg->integrityProtection, NR_PDCP_Config__drb__integrityProtection_enabled);
     }
-    if (pdu->confidentialityProtectionIndication == 2) { // Not Needed
+    if (sec->confidentialityProtectionIndication == SECURITY_NOT_NEEDED) {
       asn1cCalloc(pdcp_config->ext1, ext1);
       asn1cCallocOne(ext1->cipheringDisabled, NR_PDCP_Config__ext1__cipheringDisabled_true);
     }
@@ -128,6 +141,24 @@ static instance_t get_f1_gtp_instance(void)
   return inst->gtpInst;
 }
 
+/** @brief Add bearer in PDCP/SDAP for 5GC association (SA) */
+static void e1_add_bearers(const int ue_id, const NR_DRB_ToAddModList_t *addMod, const nr_pdcp_entity_security_keys_and_algos_t *sp)
+{
+  for (int i = 0; i < addMod->list.count; i++) {
+    NR_DRB_ToAddMod_t *drb = addMod->list.array[i];
+    DevAssert(drb->cnAssociation);
+    DevAssert(drb->cnAssociation->present != NR_DRB_ToAddMod__cnAssociation_PR_NOTHING);
+    DevAssert(drb->cnAssociation->present == NR_DRB_ToAddMod__cnAssociation_PR_sdap_Config);
+    DevAssert(drb->cnAssociation->choice.sdap_Config);
+    // get SDAP config
+    sdap_config_t sdap = nr_sdap_get_config(GNB_FLAG_YES, drb->cnAssociation->choice.sdap_Config, drb->drb_Identity);
+    // add SDAP entity
+    nr_sdap_addmod_entity(GNB_FLAG_YES, ue_id, sdap);
+    // add PDCP entity
+    nr_pdcp_add_drb(GNB_FLAG_YES, ue_id, drb->pdcp_Config, &sdap, sp);
+  }
+}
+
 void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
 {
   bool need_ue_id_mgmt = e1_used();
@@ -135,8 +166,9 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
   /* mirror the CU-CP UE ID for CU-UP */
   uint32_t cu_up_ue_id = req->gNB_cu_cp_ue_id;
   f1_ue_data_t ued = {.secondary_ue = req->gNB_cu_cp_ue_id};
-  if (need_ue_id_mgmt) {
-    cu_add_f1_ue_data(cu_up_ue_id, &ued);
+  if (need_ue_id_mgmt && !cu_exists_f1_ue_data(cu_up_ue_id)) {
+    bool success = cu_add_f1_ue_data(cu_up_ue_id, &ued);
+    DevAssert(success);
     LOG_I(E1AP, "adding UE with CU-CP UE ID %d and CU-UP UE ID %d\n", req->gNB_cu_cp_ue_id, cu_up_ue_id);
   }
 
@@ -149,11 +181,12 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
   };
   resp.numPDUSessions = req->numPDUSessions;
   for (int i = 0; i < resp.numPDUSessions; ++i) {
-    pdu_session_setup_t *resp_pdu = resp.pduSession + i;
     const pdu_session_to_setup_t *req_pdu = req->pduSession + i;
+    LOG_I(E1AP, "UE %d: add PDU session ID %ld (%d bearers)\n", cu_up_ue_id, req_pdu->sessionId, req_pdu->numDRB2Setup);
+
+    pdu_session_setup_t *resp_pdu = resp.pduSession + i;
     resp_pdu->id = req_pdu->sessionId;
 
-    AssertFatal(req_pdu->numDRB2Modify == 0, "DRB modification not implemented\n");
     AssertFatal(req_pdu->numDRB2Setup == 1, "can only handle one DRB per PDU session\n");
     resp_pdu->numDRBSetup = req_pdu->numDRB2Setup;
     const DRB_nGRAN_to_setup_t *req_drb = &req_pdu->DRBnGRanList[0];
@@ -163,7 +196,7 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
     resp_drb->numQosFlowSetup = req_drb->numQosFlow2Setup;
     for (int k = 0; k < resp_drb->numQosFlowSetup; k++) {
       const qos_flow_to_setup_t *qosflow2Setup = &req_drb->qosFlows[k];
-      qos_flow_setup_t *qosflowSetup = &resp_drb->qosFlows[k];
+      qos_flow_list_t *qosflowSetup = &resp_drb->qosFlows[k];
       qosflowSetup->qfi = qosflow2Setup->qfi;
     }
 
@@ -175,29 +208,28 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
                               req_drb->id,
                               req_pdu->sessionId,
                               qfi,
-                              req_pdu->tlAddress,
-                              req_pdu->teId,
+                              req_pdu->UP_TL_information.tlAddress,
+                              req_pdu->UP_TL_information.teId,
                               nr_pdcp_data_req_drb,
                               sdap_data_req,
                               &resp_n3);
     AssertFatal(ret >= 0, "Unable to create GTP Tunnel for NG-U\n");
     AssertFatal(resp_n3.num_tunnels == req_pdu->numDRB2Setup, "could not create all tunnels\n");
-    resp_pdu->teId = resp_n3.gnb_NGu_teid[0];
-    memcpy(&resp_pdu->tlAddress, &resp_n3.gnb_addr.buffer, 4);
+    resp_pdu->tl_info.teId = resp_n3.gnb_NGu_teid[0];
+    memcpy(&resp_pdu->tl_info.tlAddress, &resp_n3.gnb_addr.buffer, 4);
 
     // create PDCP bearers. This will also create SDAP bearers
     NR_DRB_ToAddModList_t DRB_configList = {0};
     fill_DRB_configList_e1(&DRB_configList, req_pdu);
     nr_pdcp_entity_security_keys_and_algos_t security_parameters;
-    security_parameters.ciphering_algorithm = req->cipheringAlgorithm;
-    security_parameters.integrity_algorithm = req->integrityProtectionAlgorithm;
-    memcpy(security_parameters.ciphering_key, req->encryptionKey, NR_K_KEY_SIZE);
-    memcpy(security_parameters.integrity_key, req->integrityProtectionKey, NR_K_KEY_SIZE);
-    nr_pdcp_add_drbs(true, // set this to notify PDCP that his not UE
-                     cu_up_ue_id,
-                     &DRB_configList,
-                     &security_parameters);
+    security_parameters.ciphering_algorithm = req->secInfo.cipheringAlgorithm;
+    security_parameters.integrity_algorithm = req->secInfo.integrityProtectionAlgorithm;
+    memcpy(security_parameters.ciphering_key, req->secInfo.encryptionKey, NR_K_KEY_SIZE);
+    memcpy(security_parameters.integrity_key, req->secInfo.integrityProtectionKey, NR_K_KEY_SIZE);
+
+    e1_add_bearers(cu_up_ue_id, &DRB_configList, &security_parameters);
     ASN_STRUCT_RESET(asn_DEF_NR_DRB_ToAddModList, &DRB_configList.list);
+
     if (f1inst >= 0) { /* we have F1(-U) */
       teid_t dummy_teid = 0xffff; // we will update later with answer from DU
       in_addr_t dummy_address = {0}; // IPv4, updated later with answer from DU
@@ -215,8 +247,8 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
                                 &resp_f1);
       resp_drb->numUpParam = 1;
       AssertFatal(ret >= 0, "Unable to create GTP Tunnel for F1-U\n");
-      memcpy(&resp_drb->UpParamList[0].tlAddress, &resp_f1.gnb_addr.buffer, 4);
-      resp_drb->UpParamList[0].teId = resp_f1.gnb_NGu_teid[0];
+      memcpy(&resp_drb->UpParamList[0].tl_info.tlAddress, &resp_f1.gnb_addr.buffer, 4);
+      resp_drb->UpParamList[0].tl_info.teId = resp_f1.gnb_NGu_teid[0];
     }
 
     // We assume all DRBs to setup have been setup successfully, so we always
@@ -258,16 +290,48 @@ void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req)
       DRB_nGRAN_modified_t *modified = &modif.pduSessionMod[i].DRBnGRanModList[j];
       modified->id = to_modif->id;
 
-      if (to_modif->pdcp_config.pDCP_Reestablishment) {
+      if (to_modif->pdcp_config && to_modif->pdcp_config->pDCP_Reestablishment) {
         nr_pdcp_entity_security_keys_and_algos_t security_parameters;
-        security_parameters.ciphering_algorithm = req->cipheringAlgorithm;
-        security_parameters.integrity_algorithm = req->integrityProtectionAlgorithm;
-        memcpy(security_parameters.ciphering_key, req->encryptionKey, NR_K_KEY_SIZE);
-        memcpy(security_parameters.integrity_key, req->integrityProtectionKey, NR_K_KEY_SIZE);
+        if (req->secInfo) {
+          security_parameters.ciphering_algorithm = req->secInfo->cipheringAlgorithm;
+          security_parameters.integrity_algorithm = req->secInfo->integrityProtectionAlgorithm;
+          memcpy(security_parameters.ciphering_key, req->secInfo->encryptionKey, NR_K_KEY_SIZE);
+          memcpy(security_parameters.integrity_key, req->secInfo->integrityProtectionKey, NR_K_KEY_SIZE);
+        } else {
+          /* don't change security settings if not present in the Bearer Context Modification Request */
+          security_parameters.ciphering_algorithm = -1;
+          security_parameters.integrity_algorithm = -1;
+        }
         nr_pdcp_reestablishment(req->gNB_cu_up_ue_id,
                                 to_modif->id,
                                 false,
                                 &security_parameters);
+      }
+
+      // PDCP Status Information requested
+      if (to_modif->pdcp_sn_status_requested) {
+        modified->pdcp_status = malloc_or_fail(sizeof(*modified->pdcp_status));
+        nr_pdcp_count_t dl_count = {0};
+        nr_pdcp_count_t ul_count = {0};
+        nr_pdcp_get_drb_count_values(req->gNB_cu_cp_ue_id, to_modif->id, &ul_count, &dl_count);
+        modified->pdcp_status->dl_count.hfn = dl_count.hfn;
+        modified->pdcp_status->dl_count.sn = dl_count.sn;
+        modified->pdcp_status->ul_count.hfn = ul_count.hfn;
+        modified->pdcp_status->ul_count.sn = ul_count.sn;
+      }
+
+      // PDCP Status received (from source CU-UP)
+      if (to_modif->pdcp_status) {
+        DevAssert(to_modif->pdcp_config);
+        DevAssert(to_modif->pdcp_config->pDCP_SN_Size_DL == to_modif->pdcp_config->pDCP_SN_Size_UL);
+        bool is_sn_len_18 = to_modif->pdcp_config->pDCP_SN_Size_DL == NR_PDCP_Config__drb__pdcp_SN_SizeDL_len18bits;
+        nr_pdcp_count_t dl_count = { .hfn = to_modif->pdcp_status->dl_count.hfn, .sn = to_modif->pdcp_status->dl_count.sn};
+        nr_pdcp_count_t ul_count = { .hfn = to_modif->pdcp_status->ul_count.hfn, .sn = to_modif->pdcp_status->ul_count.sn};
+        nr_pdcp_count_update(req->gNB_cu_cp_ue_id,
+                             to_modif->id,
+                             dl_count,
+                             ul_count,
+                             is_sn_len_18 ? LONG_SN_SIZE : SHORT_SN_SIZE);
       }
 
       if (f1inst < 0) // no F1-U?
@@ -276,33 +340,38 @@ void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req)
       /* Loop through DL UP Transport Layer params list
        * and update GTP tunnel outgoing addr and TEID */
       for (int k = 0; k < to_modif->numDlUpParam; k++) {
-        in_addr_t addr = to_modif->DlUpParamList[k].tlAddress;
-        GtpuUpdateTunnelOutgoingAddressAndTeid(f1inst, req->gNB_cu_cp_ue_id, to_modif->id, addr, to_modif->DlUpParamList[k].teId);
+        in_addr_t addr = to_modif->DlUpParamList[k].tl_info.tlAddress;
+        GtpuUpdateTunnelOutgoingAddressAndTeid(f1inst, req->gNB_cu_cp_ue_id, to_modif->id, addr, to_modif->DlUpParamList[k].tl_info.teId);
       }
+
     }
   }
 
   get_e1_if()->bearer_modif_response(&modif);
 }
 
-void e1_bearer_release_cmd(const e1ap_bearer_release_cmd_t *cmd)
+static void remove_ue_e1(const uint32_t ue_id)
 {
   bool need_ue_id_mgmt = e1_used();
 
   instance_t n3inst = get_n3_gtp_instance();
   instance_t f1inst = get_f1_gtp_instance();
 
-  LOG_I(E1AP, "releasing UE %d\n", cmd->gNB_cu_up_ue_id);
-
-  newGtpuDeleteAllTunnels(n3inst, cmd->gNB_cu_up_ue_id);
+  newGtpuDeleteAllTunnels(n3inst, ue_id);
   if (f1inst >= 0)  // is there F1-U?
-    newGtpuDeleteAllTunnels(f1inst, cmd->gNB_cu_up_ue_id);
+    newGtpuDeleteAllTunnels(f1inst, ue_id);
   if (need_ue_id_mgmt) {
     // see issue #706: in monolithic, gNB will free PDCP of UE
-    nr_pdcp_remove_UE(cmd->gNB_cu_up_ue_id);
-    cu_remove_f1_ue_data(cmd->gNB_cu_up_ue_id);
+    nr_pdcp_remove_UE(ue_id);
+    cu_remove_f1_ue_data(ue_id);
   }
-  nr_sdap_delete_ue_entities(cmd->gNB_cu_up_ue_id);
+  nr_sdap_delete_ue_entities(ue_id);
+}
+
+void e1_bearer_release_cmd(const e1ap_bearer_release_cmd_t *cmd)
+{
+  LOG_I(E1AP, "releasing UE %d\n", cmd->gNB_cu_up_ue_id);
+  remove_ue_e1(cmd->gNB_cu_up_ue_id);
 
   e1ap_bearer_release_cplt_t cplt = {
     .gNB_cu_cp_ue_id = cmd->gNB_cu_cp_ue_id,
@@ -310,4 +379,16 @@ void e1_bearer_release_cmd(const e1ap_bearer_release_cmd_t *cmd)
   };
 
   get_e1_if()->bearer_release_complete(&cplt);
+}
+
+void e1_reset(void)
+{
+  /* we get the list of all UEs from the PDCP, which maintains a list */
+  ue_id_t ue_ids[MAX_MOBILES_PER_GNB];
+  int num = nr_pdcp_get_num_ues(ue_ids, MAX_MOBILES_PER_GNB);
+  for (uint32_t i = 0; i < num; ++i) {
+    ue_id_t ue_id = ue_ids[i];
+    LOG_W(E1AP, "releasing UE %ld\n", ue_id);
+    remove_ue_e1(ue_id);
+  }
 }

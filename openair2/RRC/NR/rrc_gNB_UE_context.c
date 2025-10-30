@@ -28,15 +28,19 @@
  * \email: lionel.gauthier@eurecom.fr
  */
 
+#include "rrc_gNB_UE_context.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <limits.h>
 #include <time.h>
-
+#include "RRC/NR/nr_rrc_defs.h"
+#include "T.h"
+#include "assertions.h"
+#include "common/platform_constants.h"
 #include "common/utils/LOG/log.h"
-#include "rrc_gNB_UE_context.h"
+#include "linear_alloc.h"
 #include "openair2/F1AP/f1ap_ids.h"
+#include "tree.h"
+#include "rrc_gNB_radio_bearers.h"
 
 static void rrc_gNB_ue_context_update_time(rrc_gNB_ue_context_t *ctxt)
 {
@@ -74,9 +78,6 @@ rrc_gNB_ue_context_t *rrc_gNB_allocate_new_ue_context(gNB_RRC_INST *rrc_instance
   }
   new_p->ue_context.rrc_ue_id = uid_linear_allocator_new(&rrc_instance_pP->uid_allocator) + 1;
   rrc_gNB_ue_context_update_time(new_p);
-
-  for(int i = 0; i < NB_RB_MAX; i++)
-    new_p->ue_context.pduSession[i].xid = -1;
 
   LOG_D(NR_RRC, "Returning new RRC UE context RRC ue id: %d\n", new_p->ue_context.rrc_ue_id);
   return(new_p);
@@ -118,6 +119,18 @@ rrc_gNB_ue_context_t *rrc_gNB_get_ue_context_by_rnti_any_du(gNB_RRC_INST *rrc_in
     }
   }
   LOG_W(NR_RRC, "search by rnti not found %04x\n", rntiP);
+  return NULL;
+}
+
+/** @brief Fetch UE Context by the unique AMF UE NGAP ID */
+rrc_gNB_ue_context_t *rrc_gNB_get_ue_context_by_amf_ue_ngap_id(gNB_RRC_INST *rrc_instance_pP, uint64_t amf_ue_ngap_id)
+{
+  rrc_gNB_ue_context_t *ue_context_p;
+  RB_FOREACH (ue_context_p, rrc_nr_ue_tree_s, &(rrc_instance_pP->rrc_ue_head)) {
+    if (ue_context_p->ue_context.amf_ue_ngap_id == amf_ue_ngap_id) {
+      return ue_context_p;
+    }
+  }
   return NULL;
 }
 
@@ -197,11 +210,21 @@ rrc_gNB_ue_context_t *rrc_gNB_create_ue_context(sctp_assoc_t assoc_id,
   gNB_RRC_UE_t *ue = &ue_context_p->ue_context;
   ue->rnti = rnti;
   ue->random_ue_identity = ue_identityP;
+  // signal "no AMF UE NGAP ID" because valid range is 0..2^40-1
+  ue->amf_ue_ngap_id = INT64_MAX;
   f1_ue_data_t ue_data = {.secondary_ue = du_ue_id, .du_assoc_id = assoc_id};
   AssertFatal(!cu_exists_f1_ue_data(ue->rrc_ue_id),
               "UE F1 Context for ID %d already exists, logic bug\n",
               ue->rrc_ue_id);
-  cu_add_f1_ue_data(ue->rrc_ue_id, &ue_data);
+  bool success = cu_add_f1_ue_data(ue->rrc_ue_id, &ue_data);
+  DevAssert(success);
+  ue->max_delays_pdu_session = 20; /* see rrc_gNB_process_NGAP_PDUSESSION_SETUP_REQ() */
+  ue->ongoing_pdusession_setup_request = false;
+
+  // Initialise setup PDU Sessions list
+  seq_arr_init(&ue->pduSessions, sizeof(rrc_pdu_session_param_t));
+  // Initialise setup DRBs list
+  seq_arr_init(&ue->drbs, sizeof(drb_t));
 
   RB_INSERT(rrc_nr_ue_tree_s, &rrc_instance_pP->rrc_ue_head, ue_context_p);
   LOG_UE_EVENT(ue,

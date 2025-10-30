@@ -356,7 +356,7 @@ int config_libconfig_get(configmodule_interface_t *cfg, paramdef_t *cfgoptions, 
           snprintf( *cfgoptions[i].strptr , cfgoptions[i].numelt, "%s", str);
           printf_params(cfg, "[LIBCONFIG] %s: \"%s\"\n", cfgpath, *cfgoptions[i].strptr);
         } else {
-          defval = config_setdefault_string(cfg, &cfgoptions[i], prefix);
+          defval = config_common_getdefault(cfg, &cfgoptions[i], prefix);
         }
 
         break;
@@ -367,7 +367,7 @@ int config_libconfig_get(configmodule_interface_t *cfg, paramdef_t *cfgoptions, 
         if ( setting != NULL) {
           read_strlist(cfg, &cfgoptions[i], setting, cfgpath);
         } else {
-          defval = config_setdefault_stringlist(cfg, &(cfgoptions[i]), prefix);
+          defval = config_common_getdefault(cfg, &(cfgoptions[i]), prefix);
         }
 
         break;
@@ -383,7 +383,7 @@ int config_libconfig_get(configmodule_interface_t *cfg, paramdef_t *cfgoptions, 
           config_check_valptr(cfg, &(cfgoptions[i]), sizeof(*cfgoptions[i].iptr), 1);
           config_assign_int(cfg, &(cfgoptions[i]), cfgpath, u);
         } else {
-          defval = config_setdefault_int(cfg, &(cfgoptions[i]), prefix);
+          defval = config_common_getdefault(cfg, &(cfgoptions[i]), prefix);
         }
 
         break;
@@ -401,7 +401,7 @@ int config_libconfig_get(configmodule_interface_t *cfg, paramdef_t *cfgoptions, 
             printf_params(cfg, "[LIBCONFIG] %s: %ld\n", cfgpath, *cfgoptions[i].i64ptr);
           }
         } else {
-          defval = config_setdefault_int64(cfg, &(cfgoptions[i]), prefix);
+          defval = config_common_getdefault(cfg, &(cfgoptions[i]), prefix);
         }
 
         break;
@@ -413,7 +413,7 @@ int config_libconfig_get(configmodule_interface_t *cfg, paramdef_t *cfgoptions, 
         if ( setting != NULL) {
           read_intarray(cfg, &cfgoptions[i], setting, cfgpath);
         } else {
-          defval = config_setdefault_intlist(cfg, &(cfgoptions[i]), prefix);
+          defval = config_common_getdefault(cfg, &(cfgoptions[i]), prefix);
         }
 
         break;
@@ -424,14 +424,14 @@ int config_libconfig_get(configmodule_interface_t *cfg, paramdef_t *cfgoptions, 
           *cfgoptions[i].dblptr = dbl;
           printf_params(cfg, "[LIBCONFIG] %s: %lf\n", cfgpath, *(cfgoptions[i].dblptr));
         } else {
-          defval = config_setdefault_double(cfg, &(cfgoptions[i]), prefix);
+          defval = config_common_getdefault(cfg, &(cfgoptions[i]), prefix);
         }
 
         break;
 
       case TYPE_IPV4ADDR:
         if ( !config_lookup_string(&(libconfig_privdata.cfg),cfgpath, (const char **)&str)) {
-          defval = config_setdefault_ipv4addr(cfg, &(cfgoptions[i]), prefix);
+          defval = config_common_getdefault(cfg, &(cfgoptions[i]), prefix);
         } else {
           int rst = config_assign_ipv4addr(cfg, cfgoptions, str);
 

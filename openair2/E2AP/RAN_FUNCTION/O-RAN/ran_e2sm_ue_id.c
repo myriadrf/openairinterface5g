@@ -30,16 +30,19 @@ ue_id_e2sm_t fill_e2sm_gnb_ue_id_data(const gNB_RRC_UE_t *rrc_ue_context, __attr
   // 6.2.3.16
   // Mandatory
   // AMF UE NGAP ID
-  ue_id.gnb.amf_ue_ngap_id = rrc_ue_context->amf_ue_ngap_id;
+  // it seems that certain messages can be triggered before the ue has an AMF
+  // UE NGAP ID (e.g., RRC setup). In that case, the AMF UE NGAP ID is set to
+  // an invalid value. Below, check for this, and set 0 in that case (which
+  // historically used to be in amf_ue_ngap_id).
+  uint64_t auni = rrc_ue_context->amf_ue_ngap_id;
+  ue_id.gnb.amf_ue_ngap_id = auni < (1LL << 40) ? auni : 0;
 
   // Mandatory
-  //GUAMI 6.2.3.17 
-  ue_id.gnb.guami.plmn_id = (e2sm_plmn_t) {
-                                    .mcc = rrc_ue_context->ue_guami.mcc,
-                                    .mnc = rrc_ue_context->ue_guami.mnc,
-                                    .mnc_digit_len = rrc_ue_context->ue_guami.mnc_len
-                                    };
-  
+  //GUAMI 6.2.3.17
+  ue_id.gnb.guami.plmn_id = (e2sm_plmn_t){.mcc = rrc_ue_context->ue_guami.plmn.mcc,
+                                          .mnc = rrc_ue_context->ue_guami.plmn.mnc,
+                                          .mnc_digit_len = rrc_ue_context->ue_guami.plmn.mnc_digit_length};
+
   ue_id.gnb.guami.amf_region_id = rrc_ue_context->ue_guami.amf_region_id;
   ue_id.gnb.guami.amf_set_id = rrc_ue_context->ue_guami.amf_set_id;
   ue_id.gnb.guami.amf_ptr = rrc_ue_context->ue_guami.amf_pointer;

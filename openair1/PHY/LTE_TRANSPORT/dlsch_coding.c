@@ -42,7 +42,6 @@
 #include "common/utils/LOG/log.h"
 #include "executables/lte-softmodem.h"
 #include <syscall.h>
-#include <common/utils/threadPool/thread-pool.h>
 
 //#define DEBUG_DLSCH_CODING
 //#define DEBUG_DLSCH_FREE 1
@@ -58,8 +57,6 @@
   uint64_t runtime,
   uint64_t deadline,
   uint64_t period);*/
-
-extern int oai_exit;
 
 void free_eNB_dlsch(LTE_eNB_DLSCH_t *dlsch) {
   int i, r, aa, layer;
@@ -284,6 +281,9 @@ static void TPencode(void * arg) {
 			  rdata->r,
 			  hadlsch->nb_rb);
     stop_meas(rdata->rm_stats);
+
+    // Task completed in parallel
+    completed_task_ans(rdata->ans);
 }
 
 int dlsch_encoding(PHY_VARS_eNB *eNB,
@@ -321,8 +321,6 @@ int dlsch_encoding(PHY_VARS_eNB *eNB,
 	    num_pdcch_symbols,
 	    frame,subframe,beamforming_mode);
 
-  int nbEncode = 0;
-
   //  if (hadlsch->Ndi == 1) {  // this is a new packet
   if (hadlsch->round == 0) {  // this is a new packet
     // Add 24-bit crc (polynomial A) to payload
@@ -349,13 +347,14 @@ int dlsch_encoding(PHY_VARS_eNB *eNB,
       return(-1);
   }
 
-  notifiedFIFO_t respEncode;
-  initNotifiedFIFO(&respEncode);
-  for (int r=0, r_offset=0; r<hadlsch->C; r++) {
-    
-    union turboReqUnion id= {.s={dlsch->rnti,frame,subframe,r,0}};
-    notifiedFIFO_elt_t *req = newNotifiedFIFO_elt(sizeof(turboEncode_t), id.p, &respEncode, TPencode);
-    turboEncode_t * rdata=(turboEncode_t *) NotifiedFifoData(req);
+  turboEncode_t arr[hadlsch->C];
+  task_ans_t ans;
+  init_task_ans(&ans, hadlsch->C);
+
+  for (int r = 0, r_offset = 0; r < hadlsch->C; r++) {
+    turboEncode_t *rdata = &arr[r];
+    rdata->ans = &ans;
+
     rdata->input=hadlsch->c[r];
     rdata->Kr_bytes= ( r<hadlsch->Cminus ? hadlsch->Kminus : hadlsch->Kplus) >>3;
     rdata->filler=(r==0) ? hadlsch->F : 0;
@@ -369,8 +368,8 @@ int dlsch_encoding(PHY_VARS_eNB *eNB,
     rdata->r_offset=r_offset;
     rdata->G=G;
 
-    pushTpool(proc->threadPool, req);
-    nbEncode++;
+    task_t t = {.func = TPencode, .args = rdata};
+    pushTpool(proc->threadPool, t);
 
     int Qm=hadlsch->Qm;
     int C=hadlsch->C;
@@ -382,14 +381,9 @@ int dlsch_encoding(PHY_VARS_eNB *eNB,
     else
       r_offset += Nl*Qm * ((GpmodC==0?0:1) + (Gp/C));
   }
-  // Wait all other threads finish to process
-  while (nbEncode) {
-    notifiedFIFO_elt_t *res = pullTpool(&respEncode, proc->threadPool);
-    if (res == NULL)
-      break; // Tpool has been stopped
-    delNotifiedFIFO_elt(res);
-    nbEncode--;
-  }
+
+  join_task_ans(&ans);
+
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_ENB_DLSCH_ENCODING, VCD_FUNCTION_OUT);
   return(0);
 }
@@ -454,14 +448,14 @@ int dlsch_encoding_fembms_pmch(PHY_VARS_eNB *eNB,
                          &hadlsch->F)<0)
       return(-1);
   }
-  int nbEncode = 0;
-  notifiedFIFO_t respEncode;
-  initNotifiedFIFO(&respEncode);
-  for (int r=0, r_offset=0; r<hadlsch->C; r++) {
-    
-    union turboReqUnion id= {.s={dlsch->rnti,frame,subframe,r,0}};
-    notifiedFIFO_elt_t *req = newNotifiedFIFO_elt(sizeof(turboEncode_t), id.p, &respEncode, TPencode);
-    turboEncode_t * rdata=(turboEncode_t *) NotifiedFifoData(req);
+  turboEncode_t arr[hadlsch->C];
+  task_ans_t ans;
+  init_task_ans(&ans, hadlsch->C);
+
+  for (int r = 0, r_offset = 0; r < hadlsch->C; r++) {
+    turboEncode_t *rdata = &arr[r];
+    rdata->ans = &ans;
+
     rdata->input=hadlsch->c[r];
     rdata->Kr_bytes= ( r<hadlsch->Cminus ? hadlsch->Kminus : hadlsch->Kplus) >>3;
     rdata->filler=(r==0) ? hadlsch->F : 0;
@@ -475,8 +469,8 @@ int dlsch_encoding_fembms_pmch(PHY_VARS_eNB *eNB,
     rdata->r_offset=r_offset;
     rdata->G=G;
 
-    pushTpool(proc->threadPool, req);
-    nbEncode++;
+    task_t t = {.func = TPencode, .args = rdata};
+    pushTpool(proc->threadPool, t);
 
     int Qm=hadlsch->Qm;
     int C=hadlsch->C;
@@ -488,14 +482,9 @@ int dlsch_encoding_fembms_pmch(PHY_VARS_eNB *eNB,
     else
       r_offset += Nl*Qm * ((GpmodC==0?0:1) + (Gp/C));
   }
-  // Wait all other threads finish to process
-  while (nbEncode) {
-    notifiedFIFO_elt_t *res = pullTpool(&respEncode, proc->threadPool);
-    if (res == NULL)
-      break; // Tpool has been stopped
-    delNotifiedFIFO_elt(res);
-    nbEncode--;
-  }
+
+  join_task_ans(&ans);
+
   return(0);
 }
 

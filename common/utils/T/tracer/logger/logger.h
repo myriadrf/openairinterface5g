@@ -15,8 +15,8 @@ logger *new_ticked_ttilog(void *event_handler, void *database,
     char *event_name, char *data_varname,
     int convert_to_dB, float empty_value);
 logger *new_throughputlog(void *event_handler, void *database,
-    char *tick_event_name, char *frame_varname, char *subframe_varname,
-    char *event_name, char *data_varname);
+    char *tick_event_name, char *frame_varname, char *tick_varname,
+    char *event_name, char *data_varname, int ticks_per_frame);
 logger *new_timelog(void *event_handler, void *database, char *event_name);
 logger *new_ticklog(void *event_handler, void *database,
     char *event_name, char *frame_name, char *subframe_name);
@@ -30,6 +30,7 @@ logger *new_iqdotlog(void *event_handler, void *database,
 
 void framelog_set_skip(logger *_this, int skip_delay);
 void framelog_set_update_only_at_sf9(logger *_this, int update_only_at_sf9);
+void framelog_set_type_buffer_db(logger *_this);
 
 void textlog_dump_buffer(logger *_this, int dump_buffer);
 void textlog_raw_time(logger *_this, int raw_time);

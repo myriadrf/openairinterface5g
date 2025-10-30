@@ -45,15 +45,16 @@ if(ENABLE_UESCOPE OR ENABLE_ENBSCOPE OR ENABLE_NRSCOPE)
               lte_phy_scope.c
               ../../../executables/stats.c)
   target_link_libraries(xforms_common PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+  target_link_libraries(xforms_common PRIVATE log_headers)
 
   add_library(enbscope MODULE lte_enb_scope.c $<TARGET_OBJECTS:xforms_common>)
-  target_link_libraries(enbscope PUBLIC forms PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+  target_link_libraries(enbscope PUBLIC forms PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs UTIL)
 
   add_library(uescope MODULE lte_ue_scope.c $<TARGET_OBJECTS:xforms_common>)
-  target_link_libraries(uescope PUBLIC forms PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+  target_link_libraries(uescope PUBLIC forms PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs UTIL)
 
   add_library(nrscope MODULE nr_phy_scope.c)
-  target_link_libraries(nrscope PUBLIC forms PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+  target_link_libraries(nrscope PUBLIC forms PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs UTIL)
 
   # all libraries should be written to root build dir (default creates the same hierarchie under build as existing for sources)
   set_target_properties(enbscope uescope nrscope 
@@ -64,6 +65,6 @@ if (ENABLE_TESTS)
   add_subdirectory(tests)
 endif()
 
-if (ENABLE_IMSCOPE)
+if (ENABLE_IMSCOPE OR ENABLE_IMSCOPE_RECORD)
   add_subdirectory(imscope)
 endif()

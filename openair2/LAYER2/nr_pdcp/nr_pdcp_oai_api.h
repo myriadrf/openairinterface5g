@@ -22,44 +22,37 @@
 #ifndef NR_PDCP_OAI_API_H
 #define NR_PDCP_OAI_API_H
 
-#include "pdcp.h"
+#include <assertions.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include "NR_DRB-ToAddModList.h"
+#include "NR_PDCP-Config.h"
+#include "NR_SRB-ToAddModList.h"
+#include "nr_pdcp/nr_pdcp_entity.h"
+#include "nr_pdcp/nr_pdcp_integrity_data.h"
 #include "nr_pdcp_ue_manager.h"
+struct NR_DRB_ToAddMod;
+struct NR_SRB_ToAddMod;
+struct sdap_configuration_s;
 
 void nr_pdcp_layer_init(void);
-uint64_t nr_pdcp_module_init(uint64_t _pdcp_optmask, int id);
-
-void du_rlc_data_req(const protocol_ctxt_t *const ctxt_pP,
-                     const srb_flag_t srb_flagP,
-                     const MBMS_flag_t MBMS_flagP,
-                     const rb_id_t rb_idP,
-                     const mui_t muiP,
-                     confirm_t confirmP,
-                     sdu_size_t sdu_sizeP,
-                     uint8_t *sdu_pP);
 
 bool nr_pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
                       const srb_flag_t srb_flagP,
-                      const MBMS_flag_t MBMS_flagP,
                       const rb_id_t rb_id,
                       const sdu_size_t sdu_buffer_size,
-                      uint8_t *const sdu_buffer,
-                      const uint32_t *const srcID,
-                      const uint32_t *const dstID);
-
-void nr_pdcp_add_drbs(eNB_flag_t enb_flag,
-                      ue_id_t UEid,
-                      NR_DRB_ToAddModList_t *const drb2add_list,
-                      const nr_pdcp_entity_security_keys_and_algos_t *security_parameters);
+                      uint8_t *const sdu_buffer);
 
 void nr_pdcp_add_srbs(eNB_flag_t enb_flag,
                       ue_id_t UEid,
                       NR_SRB_ToAddModList_t *const srb2add_list,
                       const nr_pdcp_entity_security_keys_and_algos_t *security_parameters);
 
-void add_drb(int is_gnb,
-             ue_id_t UEid,
-             struct NR_DRB_ToAddMod *s,
-             const nr_pdcp_entity_security_keys_and_algos_t *security_parameters);
+void nr_pdcp_add_drb(int is_gnb,
+                     const ue_id_t UEid,
+                     const NR_PDCP_Config_t *pdcp,
+                     const struct sdap_configuration_s *sdap,
+                     const nr_pdcp_entity_security_keys_and_algos_t *security_parameters);
 
 void nr_pdcp_remove_UE(ue_id_t ue_id);
 void nr_pdcp_reestablishment(ue_id_t ue_id,
@@ -123,12 +116,18 @@ bool nr_pdcp_data_req_drb(protocol_ctxt_t *ctxt_pP,
                           const uint32_t *const sourceL2Id,
                           const uint32_t *const destinationL2Id);
 
-void nr_pdcp_tick(int frame, int subframe);
-
 nr_pdcp_ue_manager_t *nr_pdcp_sdap_get_ue_manager();
 
 int nr_pdcp_get_num_ues(ue_id_t *ue_list, int len);
 
 bool nr_pdcp_get_statistics(ue_id_t ue_id, int srb_flag, int rb_id, nr_pdcp_statistics_t *out);
+
+void nr_pdcp_count_update(ue_id_t ue_id,
+                          rb_id_t drb_id,
+                          nr_pdcp_count_t dl_count,
+                          nr_pdcp_count_t ul_count,
+                          int sn_size);
+
+void nr_pdcp_get_drb_count_values(ue_id_t ue_id, rb_id_t rb_id, nr_pdcp_count_t *ul_count, nr_pdcp_count_t *dl_count);
 
 #endif /* NR_PDCP_OAI_API_H */

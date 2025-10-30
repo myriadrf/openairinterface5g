@@ -26,11 +26,10 @@
  * \version 0.1
  * \email: yoshio.inoue@fujitsu.com,masayuki.harada@fujitsu.com (yoshio.inoue%40fujitsu.com%2cmasayuki.harada%40fujitsu.com)
  */
- 
-#include "tree.h"
-#include "queue.h"
 
+#include <stdint.h>
 #include "ngap_gNB_defs.h"
+#include "tree.h"
 
 #ifndef NGAP_GNB_UE_CONTEXT_H_
 #define NGAP_GNB_UE_CONTEXT_H_
@@ -70,18 +69,14 @@ typedef struct ngap_gNB_ue_context_s {
   /* Reference to AMF data this UE is attached to */
   struct ngap_gNB_amf_data_s *amf_ref;
 
-  /* Signaled by the UE in RRC Connection Setup Complete and used in NAS Uplink
-   * to route NAS messages correctly. 0-based, not 1-based as in TS 36.331
-   * 6.2.2 RRC Connection Setup Complete! */
-  int selected_plmn_identity;
-
   /* Reference to gNB data this UE is attached to */
   ngap_gNB_instance_t *gNB_instance;
 } ngap_gNB_ue_context_t;
 
-void ngap_store_ue_context(ngap_gNB_ue_context_t *ue_desc_p);
+void ngap_store_ue_context(const ngap_gNB_ue_context_t *ue_desc_p);
 
 ngap_gNB_ue_context_t *ngap_get_ue_context(uint32_t gNB_ue_ngap_id);
+ngap_gNB_ue_context_t *ngap_get_ue_context_from_amf_ue_ngap_id(uint32_t amf_ue_ngap_id);
 ngap_gNB_ue_context_t *ngap_detach_ue_context(uint32_t gNB_ue_ngap_id);
 
 #endif /* NGAP_GNB_UE_CONTEXT_H_ */

@@ -22,9 +22,9 @@
 #ifndef _NR_SDAP_GNB_H_
 #define _NR_SDAP_GNB_H_
 
+#include <stdbool.h>
+#include <stdint.h>
 #include "common/platform_types.h"
-#include "common/utils/LOG/log.h"
-#include "nr_sdap_entity.h"
 
 /*
  * TS 37.324 4.4 Functions
@@ -35,7 +35,6 @@
 bool sdap_data_req(protocol_ctxt_t *ctxt_p,
                    const ue_id_t ue_id,
                    const srb_flag_t srb_flag,
-                   const rb_id_t rb_id,
                    const mui_t mui,
                    const confirm_t confirm,
                    const sdu_size_t sdu_buffer_size,
@@ -53,7 +52,7 @@ bool sdap_data_req(protocol_ctxt_t *ctxt_p,
  * Uplink   - gNB
  * Downlink - nrUE
  */
-void sdap_data_ind(rb_id_t pdcp_entity,
+void sdap_data_ind(int pdcp_entity,
                    int is_gnb,
                    bool has_sdap_rx,
                    int pdusession_id,
@@ -61,6 +60,8 @@ void sdap_data_ind(rb_id_t pdcp_entity,
                    char *buf,
                    int size);
 
-void set_qfi_pduid(uint8_t qfi, uint8_t pduid);
+void start_sdap_tun_ue(ue_id_t ue_id, int pdu_session_id, int sock);
+void start_sdap_tun_gnb_first_ue_default_pdu_session(ue_id_t ue_id);
+void create_ue_ip_if(const char *ipv4, const char *ipv6, int ue_id, int pdu_session_id);
 
 #endif

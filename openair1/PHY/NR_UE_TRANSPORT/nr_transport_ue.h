@@ -38,20 +38,16 @@
 #include "nfapi/open-nFAPI/nfapi/public_inc/fapi_nr_ue_interface.h"
 #include "../NR_TRANSPORT/nr_transport_common_proto.h"
 
-typedef enum {
- NEW_TRANSMISSION_HARQ,
- RETRANSMISSION_HARQ
-} harq_result_t;
+#define MAX_FA_BLOCKS 10
+typedef struct {
+  int start[MAX_FA_BLOCKS];
+  int end[MAX_FA_BLOCKS];
+  int num_rbs;
+  int num_blocks;
+  uint8_t bitmap[36];
+} freq_alloc_bitmap_t;
 
 typedef struct {
-  /// HARQ tx status
-  harq_result_t tx_status;
-  /// Status Flag indicating for this ULSCH (idle,active,disabled)
-  SCH_status_t ULstatus;
-  /// Last TPC command
-  uint8_t TPC;
-  /// Length of ACK information (bits)
-  uint8_t O_ACK;
   /// Index of current HARQ round for this ULSCH
   uint8_t round;
   /// pointer to pdu from MAC interface (TS 36.212 V15.4.0, Sec 5.1 p. 8)
@@ -68,14 +64,10 @@ typedef struct {
   uint32_t C;
   /// Number of bits in code segments
   uint32_t K;
-  /// Total number of bits across all segments
-  uint32_t sumKr;
+  ///
+  uint32_t Kb;
   /// Number of "Filler" bits
   uint32_t F;
-  /// n_DMRS  for cyclic shift of DMRS
-  uint8_t n_DMRS;
-  /// n_DMRS2 for cyclic shift of DMRS
-  uint8_t n_DMRS2;
   /// Number of soft channel bits
   uint32_t G;
   // Number of modulated symbols carrying data
@@ -87,6 +79,7 @@ typedef struct {
 } NR_UL_UE_HARQ_t;
 
 typedef struct {
+  SCH_status_t status;
   /// NDAPI struct for UE
   nfapi_nr_ue_pusch_pdu_t pusch_pdu;
   // UL number of harq processes
@@ -104,6 +97,8 @@ typedef struct {
   uint8_t first_rx;
   /// DLSCH status flag indicating
   SCH_status_t status;
+  /// Pointer to the payload (38.212 V15.4.0 section 5.1)
+  uint8_t *b;
   /// Pointers to transport block segments
   uint8_t **c;
   /// soft bits for each received segment ("d"-sequence)(for definition see 36-212 V8.6 2009-03, p.15)
@@ -126,6 +121,8 @@ typedef struct {
   /// Last index of LLR buffer that contains information.
   /// Used for computing LDPC decoder R
   int llrLen;
+  /// Number of segments processed so far
+  uint32_t processedSegments;
   decode_abort_t abort_decode;
 } NR_DL_UE_HARQ_t;
 
@@ -143,10 +140,19 @@ typedef struct {
   /// Maximum number of LDPC iterations
   uint8_t max_ldpc_iterations;
   /// number of iterations used in last turbo decoding
-  uint8_t last_iteration_cnt;
+  int8_t last_iteration_cnt;
   /// bit mask of PT-RS ofdm symbol indicies
   uint16_t ptrs_symbols;
   // PTRS symbol index, to be updated every PTRS symbol within a slot.
   uint8_t ptrs_symbol_index;
 } NR_UE_DLSCH_t;
+
+typedef struct {
+  uint16_t Q_dash_ACK; // number of coded HARQ-ACK symbols
+  uint16_t E_uci_ACK; // number of coded HARQ-ACK bits
+  uint16_t Q_dash_ACK_rvd; // number of coded HARQ-ACK symbols reserved
+  uint16_t E_uci_ACK_rvd; // number of coded HARQ-ACK bits reserved
+  uint32_t G_ulsch; // bit capacity of ULSCH
+} rate_match_info_uci_t;
+
 #endif

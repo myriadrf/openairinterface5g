@@ -196,7 +196,7 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   view *v;
   logger *l;
 
-  main_window = new_toplevel_window(g, 1200, 900, "eNB tracer");
+  main_window = new_toplevel_window(g, 1200, 900, "UE tracer");
   top_container = new_container(g, VERTICAL);
   widget_add_child(g, main_window, top_container, -1);
 
@@ -207,7 +207,7 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   /* logo */
   widget_add_child(g, line, logo, -1);
 
-  input_signal_plot = new_xy_plot(g, 256, 55, "input signal", 20);
+  input_signal_plot = new_xy_plot(g, 512, 110, "input signal", 20);
   widget_add_child(g, line, input_signal_plot, -1);
   xy_plot_set_range(g, input_signal_plot, 0, 7680*10, 20, 70);
   input_signal_log = new_framelog(h, database,
@@ -221,7 +221,7 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   logger_add_view(input_signal_log, input_signal_view);
 
   /* UE x PDSCH IQ data */
-  w = new_xy_plot(g, 55, 55, "", 50);
+  w = new_xy_plot(g, 110, 110, "", 50);
   e->pdsch_iq_ue_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, -500, 500, -500, 500);
@@ -232,7 +232,7 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   e->pdsch_iq_ue_logger = l;
 
   /* UE x estimated DL channel */
-  w = new_xy_plot(g, 280, 55, "", 50);
+  w = new_xy_plot(g, 560, 110, "", 50);
   e->dl_estimate_ue_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, 0, 512*10, -10, 80);
@@ -245,20 +245,20 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   e->dl_estimate_ue_logger = l;
 
   /* PHY Meas */
-  w = new_xy_plot(g, 128, 55, "", 50);
+  w = new_xy_plot(g, 256, 110, "", 50);
   e->phy_meas_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, 0, 1024*10, -130, 35);
   /*l = new_ticked_ttilog(h, database,"UE_PHY_DL_TICK", "frame", "subframe","UE_PHY_MEAS", "rssi", 0, -1);
-  v = new_view_tti(10, g, w, new_color(g, "#720c0c"));
+  v = new_view_tti(10, g, w, new_color(g, "#720c0c"), 10);
   logger_add_view(l, v);
   e->phy_meas_logger = l;*/
   l = new_ticked_ttilog(h, database,"UE_PHY_DL_TICK", "frame", "subframe","UE_PHY_MEAS", "rsrp", 0, -1);
-  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"));
+  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"), 10);
   logger_add_view(l, v);
   e->phy_meas_logger = l;
   l = new_ticked_ttilog(h, database,"UE_PHY_DL_TICK", "frame", "subframe","UE_PHY_MEAS", "snr", 0, -1);
-  v = new_view_tti(10, g, w, new_color(g, "#0c720c"));
+  v = new_view_tti(10, g, w, new_color(g, "#0c720c"), 10);
   logger_add_view(l, v);
   e->phy_meas_logger = l;
 
@@ -271,117 +271,117 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   /* UE x DL mcs */
   line = new_container(g, HORIZONTAL);
   widget_add_child(g, top_container, line, -1);
-  w = new_xy_plot(g, 128, 55, "", 20);
+  w = new_xy_plot(g, 192, 110, "", 20);
   xy_plot_set_range(g, w, 0, 1024*10, -2, 30);
   e->dl_mcs_xy_plot = w;
   widget_add_child(g, line, w, -1);
   l = new_ticked_ttilog(h, database, "UE_PHY_DL_TICK", "frame", "subframe",
       "UE_PHY_DLSCH_UE_DCI", "mcs", 0, -1);
-  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"));
+  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"), 10);
   logger_add_view(l, v);
   e->dl_mcs_logger = l;
 
   /* UE x UL mcs */
-  w = new_xy_plot(g, 128, 55, "", 20);
+  w = new_xy_plot(g, 192, 110, "", 20);
   xy_plot_set_range(g, w, 0, 1024*10, -2, 30);
   e->ul_mcs_xy_plot = w;
   widget_add_child(g, line, w, -1);
   l = new_ticked_ttilog(h, database, "UE_PHY_DL_TICK", "frame", "subframe",
       "UE_PHY_ULSCH_UE_DCI", "mcs", 0, -1);
-  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"));
+  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"), 10);
   logger_add_view(l, v);
   e->ul_mcs_logger = l;
 
     /* UE x PUSCH TX Power */
 //  line = new_container(g, HORIZONTAL);
 //  widget_add_child(g, top_container, line, -1);
-  w = new_xy_plot(g, 128, 55, "", 20);
+  w = new_xy_plot(g, 192, 110, "", 20);
   e->pusch_power_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, 0, 1024*10, -30, 50);
   l = new_ttilog(h, database,
       "UE_PHY_PUSCH_TX_POWER", "frame", "subframe", "p0_pusch", 0);
-  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"));
+  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"), 10);
   logger_add_view(l, v);
   e->pusch_power_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PUSCH_TX_POWER", "frame", "subframe", "ampl", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#720c0c"));
+  v = new_view_tti(10, g, w, new_color(g, "#720c0c"), 10);
   logger_add_view(l, v);
   e->pusch_ampl_logger = l;
 
       /* UE x PUCCH TX Power */
 //  line = new_container(g, HORIZONTAL);
 //  widget_add_child(g, top_container, line, -1);
-  w = new_xy_plot(g, 128, 55, "", 20);
+  w = new_xy_plot(g, 192, 110, "", 20);
   e->pucch_power_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, 0, 1024*10, -30, 50);
   l = new_ttilog(h, database,
       "UE_PHY_PUCCH_TX_POWER", "frame", "subframe", "p0_pucch", 0);
-  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"));
+  v = new_view_tti(10, g, w, new_color(g, "#0c0c72"), 10);
   logger_add_view(l, v);
   e->pucch_power_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PUCCH_TX_POWER", "frame", "subframe", "ampl", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#720c0c"));
+  v = new_view_tti(10, g, w, new_color(g, "#720c0c"), 10);
   logger_add_view(l, v);
   e->pucch_ampl_logger = l;
 
   /* UE x PDSCH energy */
-  w = new_xy_plot(g, 128, 55, "", 50);
+  w = new_xy_plot(g, 192, 110, "", 50);
   e->pdsch_energy_ue_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, 0, 1024*10, -10, 80);
   l = new_ttilog(h, database,
       "UE_PHY_PDSCH_ENERGY", "frame", "subframe", "pdsch_ch_level00", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#ff0000"));
+  v = new_view_tti(10, g, w, new_color(g, "#ff0000"), 10);
   logger_add_view(l, v);
   e->pdsch_energy_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PDSCH_ENERGY", "frame", "subframe", "pdsch_ch_level01", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#00ff00"));
+  v = new_view_tti(10, g, w, new_color(g, "#00ff00"), 10);
   logger_add_view(l, v);
   e->pdsch_energy_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PDSCH_ENERGY", "frame", "subframe", "pdsch_ch_level10", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#0f0f0f"));
+  v = new_view_tti(10, g, w, new_color(g, "#0f0f0f"), 10);
   logger_add_view(l, v);
   e->pdsch_energy_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PDSCH_ENERGY", "frame", "subframe", "pdsch_ch_level11", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#0000ff"));
+  v = new_view_tti(10, g, w, new_color(g, "#0000ff"), 10);
   logger_add_view(l, v);
   e->pdsch_energy_logger = l;
 
   /* UE x PDCCH energy */
-  w = new_xy_plot(g, 128, 55, "", 50);
+  w = new_xy_plot(g, 192, 110, "", 50);
   e->pdcch_energy_ue_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, 0, 1024*10, -10, 80);
   l = new_ttilog(h, database,
       "UE_PHY_PDCCH_ENERGY", "frame", "subframe", "pdcch_ch_level00", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#ff0000"));
+  v = new_view_tti(10, g, w, new_color(g, "#ff0000"), 10);
   logger_add_view(l, v);
   e->pdcch_energy_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PDCCH_ENERGY", "frame", "subframe", "pdcch_ch_level01", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#00ff00"));
+  v = new_view_tti(10, g, w, new_color(g, "#00ff00"), 10);
   logger_add_view(l, v);
   e->pdcch_energy_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PDCCH_ENERGY", "frame", "subframe", "pdcch_ch_level10", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#0f0f0f"));
+  v = new_view_tti(10, g, w, new_color(g, "#0f0f0f"), 10);
   logger_add_view(l, v);
   e->pdcch_energy_logger = l;
   l = new_ttilog(h, database,
       "UE_PHY_PDCCH_ENERGY", "frame", "subframe", "pdcch_ch_level11", 1);
-  v = new_view_tti(10, g, w, new_color(g, "#0000ff"));
+  v = new_view_tti(10, g, w, new_color(g, "#0000ff"), 10);
   logger_add_view(l, v);
   e->pdcch_energy_logger = l;
 
     /* UE x PDCCH IQ data */
-  w = new_xy_plot(g, 55, 55, "", 50);
+  w = new_xy_plot(g, 110, 110, "", 50);
   e->pdcch_iq_ue_xy_plot = w;
   widget_add_child(g, line, w, -1);
   xy_plot_set_range(g, w, -100, 100, -100, 100);
@@ -544,16 +544,16 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   /* phy/mac/rlc/pdcp/rrc textlog */
   line = new_container(g, HORIZONTAL);
   widget_add_child(g, top_container, line, -1);
-  container_set_child_growable(g, top_container, line, 1);
+  container_set_child_growable(g, top_container, line, 0);
 
   /* phy */
   col = new_container(g, VERTICAL);
   widget_add_child(g, line, col, -1);
   container_set_child_growable(g, line, col, 1);
   widget_add_child(g, col, new_label(g, "PHY"), -1);
-  text = new_textlist(g, 100, 10, new_color(g, "#afa"));
+  text = new_textlist(g, 100, 5, new_color(g, "#afa"));
   widget_add_child(g, col, text, -1);
-  container_set_child_growable(g, col, text, 1);
+  container_set_child_growable(g, col, text, 0);
   textview = new_view_textlist(10000, 10, g, text);
   e->phyview = textview;
 
@@ -562,24 +562,24 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   widget_add_child(g, line, col, -1);
   container_set_child_growable(g, line, col, 1);
   widget_add_child(g, col, new_label(g, "MAC"), -1);
-  text = new_textlist(g, 100, 10, new_color(g, "#adf"));
+  text = new_textlist(g, 100, 5, new_color(g, "#adf"));
   widget_add_child(g, col, text, -1);
-  container_set_child_growable(g, col, text, 1);
+  container_set_child_growable(g, col, text, 0);
   textview = new_view_textlist(10000, 10, g, text);
   e->macview = textview;
 
   line = new_container(g, HORIZONTAL);
   widget_add_child(g, top_container, line, -1);
-  container_set_child_growable(g, top_container, line, 1);
+  container_set_child_growable(g, top_container, line, 0);
 
   /* rlc */
   col = new_container(g, VERTICAL);
   widget_add_child(g, line, col, -1);
   container_set_child_growable(g, line, col, 1);
   widget_add_child(g, col, new_label(g, "RLC"), -1);
-  text = new_textlist(g, 100, 10, new_color(g, "#aff"));
+  text = new_textlist(g, 100, 5, new_color(g, "#aff"));
   widget_add_child(g, col, text, -1);
-  container_set_child_growable(g, col, text, 1);
+  container_set_child_growable(g, col, text, 0);
   textview = new_view_textlist(10000, 10, g, text);
   e->rlcview = textview;
 
@@ -588,24 +588,24 @@ static void ue_main_gui(ue_gui *e, gui *g, event_handler *h, void *database,
   widget_add_child(g, line, col, -1);
   container_set_child_growable(g, line, col, 1);
   widget_add_child(g, col, new_label(g, "PDCP"), -1);
-  text = new_textlist(g, 100, 10, new_color(g, "#ed9"));
+  text = new_textlist(g, 100, 5, new_color(g, "#ed9"));
   widget_add_child(g, col, text, -1);
-  container_set_child_growable(g, col, text, 1);
+  container_set_child_growable(g, col, text, 0);
   textview = new_view_textlist(10000, 10, g, text);
   e->pdcpview = textview;
 
   line = new_container(g, HORIZONTAL);
   widget_add_child(g, top_container, line, -1);
-  container_set_child_growable(g, top_container, line, 1);
+  container_set_child_growable(g, top_container, line, 0);
 
   /* rrc */
   col = new_container(g, VERTICAL);
   widget_add_child(g, line, col, -1);
   container_set_child_growable(g, line, col, 1);
   widget_add_child(g, col, new_label(g, "RRC"), -1);
-  text = new_textlist(g, 100, 10, new_color(g, "#fdb"));
+  text = new_textlist(g, 100, 5, new_color(g, "#fdb"));
   widget_add_child(g, col, text, -1);
-  container_set_child_growable(g, col, text, 1);
+  container_set_child_growable(g, col, text, 0);
   textview = new_view_textlist(10000, 10, g, text);
   e->rrcview = textview;
 
