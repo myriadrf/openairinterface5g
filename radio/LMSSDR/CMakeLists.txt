@@ -2,7 +2,7 @@ find_package(Threads REQUIRED)
 find_package(limesuiteng REQUIRED)
 
 add_library(oai_lmssdrdevif MODULE limesuiteng_lib.cpp)
-target_link_libraries(oai_lmssdrdevif limesuiteng log_headers)
+target_link_libraries(oai_lmssdrdevif limesuiteng log_headers ${libconfig_LIBRARIES})
 
 set_target_properties(oai_lmssdrdevif PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 add_custom_command(TARGET oai_lmssdrdevif POST_BUILD
