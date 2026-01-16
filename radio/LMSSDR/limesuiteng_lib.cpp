@@ -212,7 +212,9 @@ int device_init(openair0_device *device,
   int rxCount = openair0_cfg->rx_num_channels;
   int txCount = openair0_cfg->tx_num_channels;
 
-  params.rf_ports = {{openair0_cfg->sample_rate, rxCount, txCount}};
+  params.rf_ports.clear();
+  LimeRuntimeParameters::PortParams port {openair0_cfg->sample_rate, rxCount, txCount};
+  params.rf_ports.push_back(port);
 
   AssignCArrayToVector(params.rx.freq, openair0_cfg->rx_freq, rxCount);
   if (configProvider.GetDouble(val, "rx_gain"))
