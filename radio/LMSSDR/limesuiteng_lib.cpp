@@ -144,6 +144,7 @@ static int trx_lms7002m_write(openair0_device *device, openair0_timestamp timest
     return 0;
 
   StreamTxMeta meta;
+  timestamp -= device->openair0_cfg->command_line_sample_advance + device->openair0_cfg->tx_sample_advance;
   meta.timestamp = lime::Timespec(int64_t(timestamp));
   meta.hasTimestamp = true;
   meta.flags = ((flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END)) ? StreamTxMeta::Flags::EndOfBurst : 0;
