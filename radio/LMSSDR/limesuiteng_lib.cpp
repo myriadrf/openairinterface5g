@@ -253,6 +253,11 @@ int device_init(openair0_device *device,
   else
     AssignCArrayToVector(params.rx.gain, openair0_cfg->rx_gain, rxCount);
   params.rx.bandwidth.assign(rxCount, openair0_cfg->rx_bw);
+  for (int c=0; c<rxCount; ++c)
+  {
+    if (params.rx.bandwidth[c] == 0)
+      params.rx.bandwidth[c] = openair0_cfg->sample_rate;
+  }
 
   AssignCArrayToVector(params.tx.freq, openair0_cfg->tx_freq, txCount);
   if (configProvider.GetDouble(val, "tx_gain"))
@@ -260,6 +265,11 @@ int device_init(openair0_device *device,
   else
     AssignCArrayToVector(params.tx.gain, openair0_cfg->tx_gain, txCount);
   params.tx.bandwidth.assign(txCount, openair0_cfg->tx_bw);
+  for (int c=0; c<txCount; ++c)
+  {
+    if (params.tx.bandwidth[c] == 0)
+      params.tx.bandwidth[c] = openair0_cfg->sample_rate;
+  }
 
   /* Set callbacks */
   device->priv = (void*)context;
