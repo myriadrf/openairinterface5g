@@ -127,10 +127,10 @@ static int trx_lms7002m_write(openair0_device *device, openair0_timestamp timest
   if (!buff) // Nothing to transmit
     return 0;
 
-  StreamMeta meta;
-  meta.timestamp = timestamp;
-  meta.waitForTimestamp = true;
-  meta.flushPartialPacket = (flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END);
+  StreamTxMeta meta;
+  meta.timestamp = lime::Timespec(int64_t(timestamp));
+  meta.hasTimestamp = true;
+  meta.flags = ((flags == TX_BURST_END) || (flags == TX_BURST_START_AND_END)) ? StreamTxMeta::Flags::EndOfBurst : 0;
 
   // samples format conversion is done internally
   LimePluginContext* context = static_cast<LimePluginContext*>(device->priv);
@@ -148,15 +148,13 @@ static int trx_lms7002m_read(openair0_device *device, openair0_timestamp *ptimes
   // OAI stores samples as 16bit I + 16bit Q, but actually uses only 12bit LSB
   lime::complex12_t** samples = reinterpret_cast<lime::complex12_t**>(buff);
 
-  StreamMeta meta;
-  meta.waitForTimestamp = false;
-  meta.flushPartialPacket = false;
+  StreamRxMeta meta;
 
   int samplesGot = LimePlugin_Read_complex12(context, samples, nsamps, DEFAULT_PORT, meta);
   if (samplesGot <= 0)
     return samplesGot;
 
-  *ptimestamp = meta.timestamp;
+  *ptimestamp = meta.timestamp.GetTicks();
   return samplesGot;
 }
 
