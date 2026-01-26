@@ -223,11 +223,19 @@ int device_init(openair0_device *device,
   double val = 0;
   std::string cwd; // current working dir
 
-  LOG_D(HW, "configFilename: %s\n", openair0_cfg[0].configFilename);
-  if (configProvider.Init(openair0_cfg[0].configFilename) != 0)
+  std::string configFilePath;
+  if (!openair0_cfg[0].configFilename)
+  {
+    LOG_E(HW, "--rf-config-file not provided\n");
+    return -1;
+  }
+  else
+    configFilePath = openair0_cfg[0].configFilename;
+
+  LOG_I(HW, "rf-config-file: %s\n", configFilePath.c_str());
+  if (configProvider.Init(configFilePath.c_str()) != 0)
     return -1;
 
-  std::string configFilePath(openair0_cfg[0].configFilename);
   size_t cwdLength = configFilePath.find_last_of("/");
   if (cwdLength != std::string::npos)
     cwd = configFilePath.substr(0, cwdLength);
