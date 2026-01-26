@@ -245,7 +245,10 @@ int device_init(openair0_device *device,
   int txCount = openair0_cfg->tx_num_channels;
 
   params.rf_ports.clear();
-  LimeRuntimeParameters::PortParams port {openair0_cfg->sample_rate, rxCount, txCount};
+  LimeRuntimeParameters::PortParams port;
+  port.sample_rate = openair0_cfg->sample_rate;
+  port.rx_channel_count = rxCount;
+  port.tx_channel_count = txCount;
   params.rf_ports.push_back(port);
 
   AssignCArrayToVector(params.rx.freq, openair0_cfg->rx_freq, rxCount);
