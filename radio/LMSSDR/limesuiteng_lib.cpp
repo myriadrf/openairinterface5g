@@ -99,7 +99,23 @@ private:
 
 int trx_lms7002m_set_gains(openair0_device *device, openair0_config_t *openair0_cfg)
 {
-  // TODO: implement
+  LOG_D(HW, "trx_lms7002m_set_gain, Tx:%f Rx:%f:\n", openair0_cfg[0].tx_gain[0], openair0_cfg[0].rx_gain[0]);
+  LimePluginContext *context = (LimePluginContext*)device->priv;
+
+  OpStatus status = context->rxChannels[0].parent->device->SetGain(0, TRXDir::Rx, 0, lime::eGainTypes::GENERIC, openair0_cfg[0].rx_gain[0]);
+  if (status != OpStatus::Success)
+  {
+    LOG_E(HW, "Failed to set Rx gain %f", openair0_cfg[0].rx_gain[0]);
+    return -1;
+  }
+
+  status = context->txChannels[0].parent->device->SetGain(0, TRXDir::Tx, 0, lime::eGainTypes::GENERIC, openair0_cfg[0].tx_gain[0]);
+  if (status != OpStatus::Success)
+  {
+    LOG_E(HW, "Failed to set Tx gain %f", openair0_cfg[0].tx_gain[0]);
+    return -1;
+  }
+
   return(0);
 }
 
@@ -167,7 +183,24 @@ static int trx_lms7002m_reset_stats(openair0_device *device) {
 }
 
 static int trx_lms7002m_set_freq(openair0_device *device, openair0_config_t *openair0_cfg) {
-  // TODO: implement
+  LOG_D(HW, "trx_lms7002m_set_freq TX Freq %f, RX Freq %f, tune_offset: %f\n", openair0_cfg[0].tx_freq[0], openair0_cfg[0].rx_freq[0], openair0_cfg[0].tune_offset);
+
+  LimePluginContext *context = (LimePluginContext*)device->priv;
+
+  OpStatus status = context->rxChannels[0].parent->device->SetFrequency(0, TRXDir::Rx, 0, openair0_cfg[0].rx_freq[0]);
+  if (status != OpStatus::Success)
+  {
+    LOG_E(HW, "Failed to set Rx Freq %f", openair0_cfg[0].rx_freq[0]);
+    return -1;
+  }
+
+  status = context->txChannels[0].parent->device->SetFrequency(0, TRXDir::Tx, 0, openair0_cfg[0].tx_freq[0]);
+  if (status != OpStatus::Success)
+  {
+    LOG_E(HW, "Failed to set Tx Freq %f", openair0_cfg[0].tx_freq[0]);
+    return -1;
+  }
+
   return(0);
 }
 
