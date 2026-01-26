@@ -839,8 +839,7 @@ int main(int argc, char **argv) {
       ack_errors=0;
       cqi_crc_falsepositives=0;
       cqi_crc_falsenegatives=0;
-      round=0;
-      //randominit(0);
+      round = 0;
       harq_pid = subframe2harq_pid(&UE->frame_parms,proc_rxtx_ue->frame_tx,subframe);
       input_buffer_length = UE->ulsch[0]->harq_processes[harq_pid]->TBS/8;
 

@@ -194,13 +194,7 @@ void handle_nr_srs_measurements(const module_id_t module_id,
 void set_default_frame_parms(LTE_DL_FRAME_PARMS *frame_parms[MAX_NUM_CCs]);
 
 /* TODO these declarations are to be removed */
-void nr_schedule_dl_tti_req(void) {};
-void nr_schedule_ul_dci_req() {};
-void nr_schedule_tx_req() {};
-void nr_schedule_ul_tti_req() {};
 void nr_slot_select() {};
-void NR_UL_indication(NR_UL_IND_t *UL_INFO) {};
-void gNB_dlsch_ulsch_scheduler() {};
 
 /*------------------------------------------------------------------------*/
 
@@ -411,7 +405,6 @@ int main ( int argc, char **argv )
 #if T_TRACER
   T_Config_Init();
 #endif
-  //randominit (0);
   set_taus_seed (0);
   printf("configuring for RAU/RRU\n");
 

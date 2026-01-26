@@ -177,7 +177,7 @@ static void rrc_nsa_add_drb(const int ue_id,
     sdap.drb_id = drb->drb_Identity;
     sdap.defaultDRB = true;
     // add SDAP entity (terminated at gNB, since it's EPC)
-    nr_sdap_addmod_entity(GNB_FLAG_YES, ue_id, sdap);
+    nr_sdap_addmod_entity(GNB_FLAG_YES, ue_id, &sdap);
     // add PDCP entity
     nr_pdcp_add_drb(GNB_FLAG_YES, ue_id, drb->pdcp_Config, &sdap, sp);
   }

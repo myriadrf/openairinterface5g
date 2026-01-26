@@ -64,7 +64,8 @@ typedef struct {
   uint8_t transaction_id;
   NR_SRB_ToAddModList_t *srb_config_list;
   NR_DRB_ToAddModList_t *drb_config_list;
-  NR_DRB_ToReleaseList_t *drb_release_list;
+  int *drb_rel;
+  int n_drb_rel;
   NR_SecurityConfig_t *security_config;
   NR_MeasConfig_t *meas_config;
   byte_array_t dedicated_NAS_msg_list[MAX_DRBS_PER_UE];
@@ -130,6 +131,9 @@ int do_nrMeasurementReport_SA(long trigger_to_measid,
                               long rs_type,
                               uint16_t Nid_cell,
                               int rsrp_index,
+                              bool neighbor_cell_valid,
+                              uint16_t neighbor_Nid_cell,
+                              int neighbor_rsrp_index,
                               uint8_t *buffer,
                               size_t buffer_size);
 
@@ -163,7 +167,8 @@ NR_MeasConfig_t *get_MeasConfig(const NR_MeasTiming_t *mt,
                                 NR_ReportConfigToAddMod_t *rc_PER,
                                 NR_ReportConfigToAddMod_t *rc_A2,
                                 seq_arr_t *rc_A3_seq,
-                                seq_arr_t *neigh_seq);
+                                seq_arr_t *neigh_seq,
+                                int *neigh_a3_id);
 void free_MeasConfig(NR_MeasConfig_t *mc);
 int do_NR_Paging(uint8_t Mod_id, uint8_t *buffer, uint32_t tmsi);
 

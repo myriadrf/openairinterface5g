@@ -39,20 +39,21 @@ int nr_prs_channel_estimation(uint8_t gNB_id,
                               c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]);
 
 /* Generic function to find the peak of channel estimation buffer */
-void peak_estimator(int32_t *buffer, int32_t buf_len, int32_t *peak_idx, int32_t *peak_val, int32_t mean_val);
+void peak_estimator(c16_t *buffer, int32_t buf_len, int32_t *peak_idx, int32_t *peak_val, int32_t mean_val);
 
 /*!
 \brief This function performs channel estimation including frequency and temporal interpolation
 */
-void nr_pdcch_channel_estimation(PHY_VARS_NR_UE *ue,
-                                 const UE_nr_rxtx_proc_t *proc,
-                                 unsigned char symbol,
-                                 fapi_nr_coreset_t *coreset,
+void nr_pdcch_channel_estimation(const PHY_VARS_NR_UE *ue,
+                                 int nb_rb,
+                                 int rb_offset,
+                                 int dmrs_ref,
                                  uint16_t first_carrier_offset,
                                  uint16_t BWPStart,
                                  int32_t pdcch_est_size,
                                  c16_t pdcch_dl_ch_estimates[][pdcch_est_size],
-                                 c16_t rxdataF[ue->frame_parms.nb_antennas_rx][ue->frame_parms.ofdm_symbol_size]);
+                                 c16_t rxdataF[ue->frame_parms.nb_antennas_rx][ue->frame_parms.ofdm_symbol_size],
+                                 c16_t *pilot);
 
 c32_t nr_pbch_dmrs_correlation(const NR_DL_FRAME_PARMS *fp,
                                const UE_nr_rxtx_proc_t *proc,
@@ -113,9 +114,22 @@ uint32_t nr_ue_calculate_ssb_rsrp(const NR_DL_FRAME_PARMS *fp,
                                   int ssb_start_subcarrier);
 
 void nr_ue_ssb_rsrp_measurements(PHY_VARS_NR_UE *ue,
-                                 uint8_t gNB_index,
+                                 int ssb_index,
                                  const UE_nr_rxtx_proc_t *proc,
                                  c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]);
+
+// Structure to pass data to neighboring cell measurement task
+typedef struct {
+  UE_nr_rxtx_proc_t proc;
+  PHY_VARS_NR_UE *ue;
+  c16_t *rxdata[NB_RX_ANTENNAS_MAX];
+  uint32_t rxdata_size;
+  c16_t rxdata_ant[];
+} nr_meas_task_args_t;
+
+void nr_ue_meas_neighboring_cell(void *arg);
+
+void do_neighboring_cell_measurements(UE_nr_rxtx_proc_t *proc, PHY_VARS_NR_UE *ue, c16_t **rxdata, uint32_t rxdata_size);
 
 void nr_ue_rrc_measurements(PHY_VARS_NR_UE *ue,
                             const UE_nr_rxtx_proc_t *proc,

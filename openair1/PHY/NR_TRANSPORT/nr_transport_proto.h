@@ -45,7 +45,7 @@ int nr_generate_prs(int slot,
                     int16_t amp,
                     prs_config_t *prs_cfg,
                     nfapi_nr_config_request_scf_t *config,
-                    NR_DL_FRAME_PARMS *frame_parms);
+                    const NR_DL_FRAME_PARMS *frame_parms);
 
 /*!
 \fn int nr_generate_pss
@@ -200,32 +200,18 @@ void nr_fill_ulsch(PHY_VARS_gNB *gNB,
                    int slot,
                    nfapi_nr_pusch_pdu_t *ulsch_pdu);
 
-int nr_fill_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_pdu_t *prach_pdu);
+prach_item_t *nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_pdu_t *prach_pdu);
 
-void rx_nr_prach(PHY_VARS_gNB *gNB,
-                 nfapi_nr_prach_pdu_t *prach_pdu,
-                 int prachOccasion,
-                 int frame,
-                 int subframe,
-                 uint16_t *max_preamble,
-                 uint16_t *max_preamble_energy,
-                 uint16_t *max_preamble_delay);
+typedef struct rx_prach_out {
+  uint16_t max_preamble;
+  uint16_t max_preamble_energy;
+  uint16_t max_preamble_delay;
+} rx_prach_out_t;
+rx_prach_out_t rx_nr_prach(const prach_item_t *, int occasion);
 
-void rx_nr_prach_ru(RU_t *ru,
-                    int prach_fmt,
-                    int numRA,
-                    int beam,
-                    int prachStartSymbol,
-                    int prachStartSlot,
-                    int prachOccasion,
-                    int frame,
-                    int subframe);
+void rx_nr_prach_ru(prach_item_t *, int32_t **, NR_DL_FRAME_PARMS *frame_parms, int N_TA_offset);
 
-void nr_fill_prach_ru(RU_t *ru,int SFN, int Slot, nfapi_nr_prach_pdu_t *prach_pdu, int *beam_nb);
-
-int16_t find_nr_prach(PHY_VARS_gNB *gNB,int frame,int slot, find_type_t type);
-int16_t find_nr_prach_ru(RU_t *ru,int frame,int slot, find_type_t type);
-
+prach_item_t *find_nr_prach(prach_list_t *, int frame, int slot, find_type_t type);
 void nr_fill_pucch(PHY_VARS_gNB *gNB,
                    int frame,
                    int slot,
@@ -245,12 +231,25 @@ int nr_get_srs_signal(PHY_VARS_gNB *gNB,
                       c16_t srs_received_signal[][gNB->frame_parms.ofdm_symbol_size * (1 << srs_pdu->num_symbols)],
                       c16_t srs_received_noise[][gNB->frame_parms.ofdm_symbol_size * (1 << srs_pdu->num_symbols)]);
 
-void init_prach_list(PHY_VARS_gNB *gNB);
-void init_prach_ru_list(RU_t *ru);
-void free_nr_ru_prach_entry(RU_t *ru, int prach_id);
+void nr_srs_rx_procedures(PHY_VARS_gNB *gNB,
+                          int frame_rx,
+                          int slot_rx,
+                          uint8_t nb_antennas_rx,
+                          uint8_t N_ap,
+                          uint8_t N_symb_SRS,
+                          uint16_t ofdm_symbol_size,
+                          NR_gNB_SRS_t *srs,
+                          nr_srs_info_t *nr_srs_info,
+                          int *srs_est,
+                          c16_t srs_estimated_channel_freq[][N_ap][ofdm_symbol_size * N_symb_SRS],
+                          c16_t srs_estimated_channel_time[][N_ap][NR_SRS_IDFT_OVERSAMP_FACTOR * ofdm_symbol_size],
+                          int16_t *snr_per_rb,
+                          uint16_t *timing_advance_offset,
+                          int16_t *timing_advance_offset_nsec);
+
 int get_nr_prach_duration(uint8_t prach_format);
 
-void free_nr_prach_entry(PHY_VARS_gNB *gNB, int prach_id);
+void free_nr_prach_entry(prach_list_t *, prach_item_t *);
 
 void nr_decode_pucch1(c16_t **rxdataF,
                       pucch_GroupHopping_t pucch_GroupHopping,

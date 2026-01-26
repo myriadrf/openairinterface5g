@@ -46,36 +46,14 @@
 
 #define MAX_NUM_RU_PER_gNB 8
 #define MAX_PUCCH0_NID 8
+#define NR_SRS_IDFT_OVERSAMP_FACTOR 2
+#define NR_SRS_DETECTION_THRESHOLD 10
 
 typedef struct {
   int nb_id;
   int Nid[MAX_PUCCH0_NID];
   int lut[MAX_PUCCH0_NID][160][14];
 } NR_gNB_PUCCH0_LUT_t;
-
-typedef struct {
-  /// Nfapi DLSCH PDU
-  nfapi_nr_dl_tti_pdsch_pdu pdsch_pdu;
-  /// pointer to pdu from MAC interface (this is "a" in 36.212)
-  uint8_t *pdu;
-  /// Pointer to the payload
-  uint8_t *b;
-  /// Pointers to transport block segments
-  uint8_t **c;
-  /// Frame where current HARQ round was sent
-  uint32_t frame;
-  /// Interleaver outputs
-  uint8_t *f;
-  /// LDPC lifting size
-  uint32_t Z;
-  /// REs unavailable for DLSCH (overlapping with PTRS, CSIRS etc.)
-  uint32_t unav_res;
-} NR_DL_gNB_HARQ_t;
-
-typedef struct {
-  uint8_t active;
-  nfapi_nr_dl_tti_csi_rs_pdu csirs_pdu;
-} NR_gNB_CSIRS_t;
 
 typedef struct {
   int dump_frame;
@@ -121,40 +99,19 @@ typedef struct {
 } NR_gNB_PHY_STATS_t;
 
 typedef struct {
-  /// Pointers to variables related to DLSCH harq process
-  NR_DL_gNB_HARQ_t harq_process;
-  /// Active flag for baseband transmitter processing
-  uint8_t active;
-  /// Number of soft channel bits
-  uint32_t G;
+  /// Nfapi DLSCH PDU
+  const nfapi_nr_dl_tti_pdsch_pdu *pdsch_pdu;
+  /// pointer to pdu from MAC interface (this is "a" in 36.212)
+  uint8_t *pdu;
+  /// Pointer to the payload
+  uint8_t *b;
+  /// Pointers to transport block segments
+  uint8_t **c;
+  /// Interleaver outputs
+  uint8_t *f;
+  /// REs unavailable for DLSCH (overlapping with PTRS, CSIRS etc.)
+  uint32_t unav_res;
 } NR_gNB_DLSCH_t;
-
-typedef struct {
-  bool active;
-  nfapi_nr_dl_tti_ssb_pdu ssb_pdu;
-} NR_gNB_SSB_t;
-
-typedef struct {
-  int frame;
-  int slot;
-  // identifier for concurrent beams
-  // prach duration in slots
-  int num_slots;
-  int *beam_nb;
-  nfapi_nr_prach_pdu_t pdu;  
-} gNB_PRACH_list_t;
-
-#define NUMBER_OF_NR_PRACH_MAX 8
-
-typedef struct {
-  /// \brief ?.
-  /// second index: rx antenna [0..63] (hard coded) \note Hard coded array size indexed by \c nb_antennas_rx.
-  /// third index: frequency-domain sample [0..ofdm_symbol_size*12[
-  int16_t **rxsigF;
-  /// \brief local buffer to compute prach_ifft
-  int32_t *prach_ifft;
-  gNB_PRACH_list_t list[NUMBER_OF_NR_PRACH_MAX];
-} NR_gNB_PRACH;
 
 typedef struct {
   uint8_t NumPRSResources;
@@ -430,7 +387,9 @@ typedef struct PHY_VARS_gNB_s {
   int max_nb_pusch;
 
   NR_gNB_COMMON common_vars;
-  NR_gNB_PRACH prach_vars;
+  prach_list_t prach_list;
+  // TODO: can we remove c from NR_gNB_DLSCH_t and put it on the stack?
+  NR_gNB_DLSCH_t *dlsch;
   NR_gNB_PRS prs_vars;
   NR_gNB_PUSCH *pusch_vars;
   NR_gNB_PUCCH_t *pucch;
@@ -486,6 +445,9 @@ typedef struct PHY_VARS_gNB_s {
 
   bool enable_analog_das;
 
+  time_stats_t l1_tx_proc;
+  time_stats_t l1_rx_proc;
+
   time_stats_t phy_proc_tx;
   time_stats_t phy_proc_rx;
   time_stats_t rx_prach;
@@ -513,7 +475,6 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t rx_pusch_symbol_processing_stats;
   time_stats_t ul_indication_stats;
   time_stats_t slot_indication_stats;
-  time_stats_t schedule_response_stats;
   time_stats_t ulsch_decoding_stats;
   time_stats_t ts_deinterleave;
   time_stats_t ts_rate_unmatch;
@@ -541,7 +502,6 @@ typedef struct PHY_VARS_gNB_s {
   int L1_rx_thread_core;
   pthread_t L1_tx_thread;
   int L1_tx_thread_core;
-  struct processingData_L1tx *msgDataTx;
   void *scopeData;
 } PHY_VARS_gNB;
 
@@ -618,16 +578,6 @@ typedef struct processingData_L1tx {
   int slot_rx;
   openair0_timestamp timestamp_tx;
   PHY_VARS_gNB *gNB;
-  nfapi_nr_dl_tti_pdcch_pdu pdcch_pdu[NFAPI_NR_MAX_NB_CORESETS];
-  nfapi_nr_ul_dci_request_pdus_t ul_pdcch_pdu[NFAPI_NR_MAX_NB_CORESETS];
-  NR_gNB_CSIRS_t csirs_pdu[NR_SYMBOLS_PER_SLOT];
-  NR_gNB_DLSCH_t **dlsch;
-  NR_gNB_SSB_t ssb[64];
-  uint16_t num_pdsch_slot;
-  int num_dl_pdcch;
-  int num_ul_pdcch;
-  /* a reference to the sched_response, to release it when not needed anymore */
-  int sched_response_id;
 } processingData_L1tx_t;
 
 typedef struct processingData_L1rx {

@@ -1,5 +1,71 @@
 # RELEASE NOTES: #
 
+## [v2.4.0](https://gitlab.eurecom.fr/oai/openairinterface5g/-/tags/v2.4.0) -> December 2025. ##
+
+General new features and improvements (both RAN and UE):
+- Rework LDPC BBdev/AAL interface and support both AMD T2/Intel vRAN Boost
+  (VRB) 1 accelerators
+- Add a taps client for vrtsim real-time simulator (check: vrtsim release?)
+- Add new RFemulator virtual radio driver to emulate radio (including noise
+  generation) for gNB/UE standalone operation
+- RLC AM reception improvements for high-throughput scenarios (!3512)
+- Small NTN fixes (!3659, !3666, !3581, !3652)
+- Improvements to imScope
+
+Stability and bug fixes:
+- RFsimulator: fix concurrency problems during multi-client connection
+- USRP driver: support synchronization of USRP B200
+- MAC scheduler improvements
+- General L1 improvements for efficiency and stability
+- Correct PRS bug and test in CI
+- Upgrade Ubuntu container images to Ubuntu 24.04
+- All build system targets compile (`make/ninja all`)
+- Minor cleanup, harmonization, and performance improvements all over the stack
+- Simplify CI code
+
+RAN changes (gNB/CU/CU-CP/CU-UP/DU/DU-high/DU-low):
+- Support of N2 handover
+- Support of "UL-heavy" TDD patterns, e.g., DSUUU
+- Open Fronthaul M-plane: CM improvements, PM implementation, and additional
+  v16.01 support
+- Improve interoperability with Nvidia Aerial L1 to support 2 layer UL
+- Add O-RAN OSC WLS library as FAPI transport and enable L1/L2 shared memory
+  split
+- Implement FAPI Stop exchange
+- Improve interoperability with srsRAN_Project DU
+- Add new synchronized real-time data recording application (!3462)
+- Support for measurement gaps and general handover fixes
+- Support of RRC PDU session release procedure
+- Add CU-UP load tester
+- Correct BWP scheduling and support multiple BWPs per UE
+
+nrUE changes:
+- Support one additional PDU session (see !3486)
+- L3 measurements for A2 measurement reports
+- Support for type0 PDSCH frequency allocation
+- UE symbol based PDCCH receiver
+
+Regression or removals:
+- No known regressions
+- Unused L2 simulator code has been removed
+- Unused Benetel radio driver code (not FHI 7.2!) has been removed
+
+Configuration file changes:
+- `gNBs.[0].servingCellConfigCommon.[0].ra_ResponseWindow` is automatically
+  computed and can be removed
+- `gNBs.[0].bwp_list` has been added (moved from entries in
+  `gNBs.[0].servingCellConfigDedicated`)
+- `gNBs.[0].phaseTrackingRS` has been added (moved from entries in
+  `gNBs.[0].servingCellConfigDedicated`)
+- `gNBs.[0].local_s_portc` and `gNBs.[0].remote_s_portc` have no effect and
+  should be removed
+- `gNBs.[0].CSI_report_type` has been added
+- `MACRLCs.[0].ulsch_max_frame_inactivity` is automatically computed and can be
+  removed
+- `MACRLCs.[0].local_n_portc` and `MACRLCs.[0].remote_n_portc` have no effect and
+  should be removed
+- `MACRLCs.[0].stats_max_ue` has been added
+
 ## [v2.3.0](https://gitlab.eurecom.fr/oai/openairinterface5g/-/tags/v2.3.0) -> July 2025. ##
 
 General new features and improvements (both RAN and UE):

@@ -82,7 +82,7 @@ void print_ue_mac_stats(const module_id_t mod, const int frame_rx, const int slo
   for (int i = 1; i < nb + 1; i++)
     cur += snprintf(cur, end - cur, "/%lu", mac->stats.dl.rounds[i]);
 
-  cur += snprintf(cur, end - cur, "\n    Ul harq: %lu", mac->stats.ul.rounds[0]);
+  cur += snprintf(cur, end - cur, "\n    UL harq: %lu", mac->stats.ul.rounds[0]);
   for (nb = NR_MAX_HARQ_ROUNDS_FOR_STATS - 1; nb > 1; nb--)
     if (mac->stats.ul.rounds[nb])
       break;
@@ -108,22 +108,27 @@ static int handle_bcch_bch(NR_UE_MAC_INST_t *mac,
                            void *phy_data,
                            uint8_t *pduP,
                            unsigned int additional_bits,
-                           uint32_t ssb_index,
+                           uint32_t ssb_index_mod8,
                            uint32_t ssb_length,
                            uint16_t ssb_start_subcarrier,
                            long ssb_arfcn,
                            uint16_t cell_id)
 {
-  mac->mib_ssb = ssb_index;
+  mac->mib_ssb = ssb_index_mod8;
   mac->physCellId = cell_id;
   mac->mib_additional_bits = additional_bits;
   mac->ssb_start_subcarrier = ssb_start_subcarrier;
-  if(ssb_length == 64)
+  if(ssb_length == 64) {
     mac->frequency_range = FR2;
+    uint8_t ab = additional_bits & 0xff;
+    uint8_t out;
+    reverse_bits_u8(&ab, 1, &out);
+    mac->mib_ssb += (out & 0x7) << 3;
+  }
   else
     mac->frequency_range = FR1;
   //  fixed 3 bytes MIB PDU
-  nr_mac_rrc_data_ind_ue(mac->ue_id, cc_id, gNB_index, 0, 0, 0, cell_id, ssb_arfcn, NR_BCCH_BCH, (uint8_t *) pduP, 3);
+  nr_mac_rrc_data_ind_ue(mac->ue_id, cc_id, gNB_index, 0, 0, 0, 0, cell_id, ssb_arfcn, NR_BCCH_BCH, (uint8_t *) pduP, 3);
   return 0;
 }
 
@@ -134,10 +139,11 @@ static int handle_bcch_dlsch(NR_UE_MAC_INST_t *mac,
                              uint8_t ack_nack,
                              uint8_t *pduP,
                              uint32_t pdu_len,
+                             int hfn,
                              int frame,
                              int slot)
 {
-  nr_ue_decode_BCCH_DL_SCH(mac, cc_id, gNB_index, ack_nack, pduP, pdu_len, frame, slot);
+  nr_ue_decode_BCCH_DL_SCH(mac, cc_id, gNB_index, ack_nack, pduP, pdu_len, hfn, frame, slot);
   return 0;
 }
 
@@ -301,6 +307,7 @@ static uint32_t nr_ue_dl_processing(NR_UE_MAC_INST_t *mac, nr_downlink_indicatio
                                          rx_indication_body.pdsch_pdu.ack_nack,
                                          rx_indication_body.pdsch_pdu.pdu,
                                          rx_indication_body.pdsch_pdu.pdu_length,
+                                         dl_info->hfn,
                                          dl_info->frame,
                                          dl_info->slot)) << FAPI_NR_RX_PDU_TYPE_SIB;
           break;
@@ -389,6 +396,7 @@ static void handle_sl_bch(int ue_id,
                           sl_nr_ue_mac_params_t *sl_mac,
                           uint8_t *const sl_mib,
                           const uint8_t len,
+                          int hfn_rx,
                           uint16_t frame_rx,
                           uint16_t slot_rx,
                           uint16_t rx_slss_id)
@@ -421,7 +429,7 @@ static void handle_sl_bch(int ue_id,
   sl_mac->decoded_DFN = frame;
   sl_mac->decoded_slot = slot;
 
-  nr_mac_rrc_data_ind_ue(ue_id, 0, 0, frame_rx, slot_rx, 0, rx_slss_id, 0, NR_SBCCH_SL_BCH, (uint8_t *)sl_mib, len);
+  nr_mac_rrc_data_ind_ue(ue_id, 0, 0, hfn_rx, frame_rx, slot_rx, 0, rx_slss_id, 0, NR_SBCCH_SL_BCH, (uint8_t *)sl_mib, len);
 
   return;
 }
@@ -433,6 +441,7 @@ if PSBCH rx - handle_psbch()
 if PSSCH DATa rx - handle slsch()
 */
 void sl_nr_process_rx_ind(int ue_id,
+                          int hfn,
                           uint32_t frame,
                           uint32_t slot,
                           sl_nr_ue_mac_params_t *sl_mac,
@@ -456,6 +465,7 @@ void sl_nr_process_rx_ind(int ue_id,
                       sl_mac,
                       rx_ind->rx_indication_body[num_pdus - 1].ssb_pdu.psbch_payload,
                       4,
+                      hfn,
                       frame,
                       slot,
                       rx_ind->rx_indication_body[num_pdus - 1].ssb_pdu.rx_slss_id);
@@ -488,11 +498,12 @@ void nr_ue_sl_indication(nr_sidelink_indication_t *sl_indication)
 
   uint16_t slot = sl_indication->slot_rx;
   uint16_t frame = sl_indication->frame_rx;
+  int hfn = sl_indication->hfn_rx;
 
   sl_nr_ue_mac_params_t *sl_mac = mac->SL_MAC_PARAMS;
 
   if (sl_indication->rx_ind) {
-    sl_nr_process_rx_ind(ue_id, frame, slot, sl_mac, sl_indication->rx_ind);
+    sl_nr_process_rx_ind(ue_id, hfn, frame, slot, sl_mac, sl_indication->rx_ind);
   } else {
     nr_ue_sidelink_scheduler(sl_indication, mac);
   }

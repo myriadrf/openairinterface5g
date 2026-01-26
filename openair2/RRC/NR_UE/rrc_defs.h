@@ -70,6 +70,7 @@
 #define MAX_MEAS_CONFIG 64
 #define MAX_MEAS_ID 64
 #define MAX_QUANTITY_CONFIG 2
+#define NUMBER_OF_NEIGHBORING_CELLS_MAX 1
 
 typedef enum {
   nr_SecondaryCellGroupConfig_r15=0,
@@ -196,13 +197,16 @@ typedef struct l3_measurements_s {
   float ssb_filter_coeff_rsrp;
   float csi_RS_filter_coeff_rsrp;
   meas_t serving_cell;
+  meas_t neighboring_cell[NUMBER_OF_NEIGHBORING_CELLS_MAX];
   long trigger_to_measid;
   long trigger_quantity;
   long rs_type;
   int reports_sent;
   int max_reports;
   long report_interval_ms;
+  bool neighbor_cell_valid;
   NR_timer_t TA2;
+  NR_timer_t TA3;
   NR_timer_t periodic_report_timer;
 } l3_measurements_t;
 
@@ -262,12 +266,15 @@ typedef struct NR_UE_RRC_INST_s {
   // 5G-S-TMSI
   uint64_t fiveG_S_TMSI;
   // Frame timing received from MAC
+  int current_hfn;
   int current_frame;
-
+  bool sched_reconfsync_sib1;
   //Sidelink params
   NR_SL_PreconfigurationNR_r16_t *sl_preconfig;
   // NTN params
   bool is_NTN_UE;
+  NR_NTN_Config_r17_t *target_ntncfg;
+  bool process_target_ntncfg;
   notifiedFIFO_t *mac_input_nf;
 } NR_UE_RRC_INST_t;
 

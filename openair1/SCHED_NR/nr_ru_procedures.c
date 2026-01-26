@@ -31,6 +31,7 @@
  */
 
 #include "PHY/defs_gNB.h"
+#include "common/platform_types.h"
 #include "sched_nr.h"
 #include "PHY/MODULATION/modulation_common.h"
 #include "PHY/MODULATION/nr_modulation.h"
@@ -58,7 +59,7 @@ void nr_feptx0(RU_t *ru, int tti_tx, int first_symbol, int num_symbols, int aa)
 
   if (aa == 0 && first_symbol == 0)
     start_meas(&ru->ofdm_mod_stats);
-  slot_offset  = fp->get_samples_slot_timestamp(slot, fp, 0);
+  slot_offset = get_samples_slot_timestamp(fp, slot);
   slot_offsetF = first_symbol * fp->ofdm_symbol_size;
 
   int abs_first_symbol = slot * fp->symbols_per_slot;
@@ -156,7 +157,7 @@ void nr_feptx_ofdm(RU_t *ru,int frame_tx,int tti_tx) {
   int slot_sizeF = (fp->ofdm_symbol_size)*
                    ((cyclic_prefix_type == 1) ? 12 : 14);
   int slot = tti_tx;
-  int *txdata = &ru->common.txdata[aa][fp->get_samples_slot_timestamp(slot,fp,0)];
+  int *txdata = &ru->common.txdata[aa][get_samples_slot_timestamp(fp, slot)];
 
   if (nr_slot_select(cfg,frame_tx,slot) == NR_UPLINK_SLOT) return;
 
@@ -169,10 +170,13 @@ void nr_feptx_ofdm(RU_t *ru,int frame_tx,int tti_tx) {
 
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM , 0 );
 
-  LOG_D(PHY,"feptx_ofdm (TXPATH): frame %d, slot %d: txp (time %p) %d dB, txp (freq) %d dB\n",
-	frame_tx,slot,txdata,dB_fixed(signal_energy((int32_t*)txdata,fp->get_samples_per_slot(
-  slot,fp))),dB_fixed(signal_energy_nodc((c16_t*)ru->common.txdataF_BF[aa],2*slot_sizeF)));
-
+  LOG_D(PHY,
+        "feptx_ofdm (TXPATH): frame %d, slot %d: txp (time %p) %d dB, txp (freq) %d dB\n",
+        frame_tx,
+        slot,
+        txdata,
+        dB_fixed(signal_energy((int32_t *)txdata, get_samples_per_slot(slot, fp))),
+        dB_fixed(signal_energy_nodc((c16_t *)ru->common.txdataF_BF[aa], 2 * slot_sizeF)));
 }
 
 void nr_feptx_prec(RU_t *ru, int frame_tx, int slot_tx)
@@ -196,10 +200,11 @@ void nr_feptx_prec(RU_t *ru, int frame_tx, int slot_tx)
   if (nr_slot_select(cfg,frame_tx,slot_tx) == NR_UPLINK_SLOT)
     return;
 
+  int Ptx = cfg->carrier_config.num_tx_ant.value;
   // If there is no digital beamforming we just need to copy the data to RU
   if (ru->config.dbt_config.num_dig_beams == 0 || ru->gNB_list[0]->common_vars.analog_bf) {
     for (int b = 0; b < ru->num_beams_period; b++) {
-      for (int i = 0; i < ru->nb_tx; ++i) {
+      for (int i = 0; i < Ptx; ++i) {
         int tx_idx = i + b * ru->nb_tx;
         memcpy((void*)ru->common.txdataF_BF[tx_idx],
                (void*)&gNB->common_vars.txdataF[b][i][txdataF_offset],
@@ -316,33 +321,21 @@ void nr_feptx_tp(RU_t *ru, int frame_tx, int slot)
 }
 
 // core RX FEP routine, called by threads in RU thread-pool
-void nr_fep(void* arg)
+void nr_fep(void *arg)
 {
   feprx_cmd_t *feprx_cmd = (feprx_cmd_t *)arg;
-  RU_t *ru = feprx_cmd->ru;
-  int aid = feprx_cmd->aid;
-  int beam = feprx_cmd->beam;
   int slot = feprx_cmd->slot;
   int startSymbol = feprx_cmd->startSymbol;
   int endSymbol = feprx_cmd->endSymbol;
-  NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
-  
-  LOG_D(PHY,"aid %d, frame %d slot %d, startSymbol %d, endSymbol %d\n", aid, ru->proc.frame_rx, slot, startSymbol, endSymbol);
 
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPRX+aid, 1);
-
-  int idx = aid + beam * ru->nb_rx;
-  int offset = (slot % RU_RX_SLOT_DEPTH) * fp->symbols_per_slot * fp->ofdm_symbol_size;
-  for (int l = startSymbol; l <= endSymbol; l++) 
-      nr_slot_fep_ul(fp,
-                     ru->common.rxdata[idx],
-                     &ru->common.rxdataF[idx][offset],
+  for (int l = startSymbol; l <= endSymbol; l++)
+    nr_symbol_fep_ul(feprx_cmd->fp,
+                     feprx_cmd->rxdata,
+                     &feprx_cmd->rxdataF[l * feprx_cmd->fp->ofdm_symbol_size],
                      l,
                      slot,
-                     ru->N_TA_offset);
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPRX+aid, 0);
+                     feprx_cmd->sample_offet);
 
-  // Task completed in //
   completed_task_ans(feprx_cmd->ans);
 }
 
@@ -354,39 +347,36 @@ void nr_fep_tp(RU_t *ru, int slot) {
   start_meas(&ru->ofdm_demod_stats);
 
   int nt = ru->nb_rx * ru->num_beams_period;
-  size_t const sz = nt + (ru->half_slot_parallelization > 0) * nt;
+  int tasks_per_slot = (ru->half_slot_parallelization > 0) ? 2 : 1;
+  size_t const sz = nt * tasks_per_slot;
   feprx_cmd_t arr[sz];
   task_ans_t ans;
   init_task_ans(&ans, sz);
+  NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
+  int rxdataF_offset = (slot % RU_RX_SLOT_DEPTH) * fp->symbols_per_slot * fp->ofdm_symbol_size;
 
-  for (int beam = 0; beam < ru->num_beams_period; beam++) {
-    for (int aid = 0; aid < ru->nb_rx; aid++) {
-      feprx_cmd_t *feprx_cmd = &arr[nbfeprx];
-      feprx_cmd->ans = &ans;
-      feprx_cmd->beam = beam;
-      feprx_cmd->aid = aid;
-      feprx_cmd->ru = ru;
-      feprx_cmd->slot = ru->proc.tti_rx;
-      feprx_cmd->startSymbol = 0;
-      feprx_cmd->endSymbol = (ru->half_slot_parallelization > 0) ? (ru->nr_frame_parms->symbols_per_slot >> 1) - 1
-                                                                 : (ru->nr_frame_parms->symbols_per_slot - 1);
+  int symbols_per_task = fp->symbols_per_slot / tasks_per_slot;
 
-      task_t t = {.func = nr_fep, .args = feprx_cmd};
-      pushTpool(ru->threadPool, t);
-      nbfeprx++;
-      if (ru->half_slot_parallelization > 0) {
+  for (int task_idx = 0; task_idx < tasks_per_slot; task_idx++) {
+    int start_symbol = task_idx * symbols_per_task;
+    int end_symbol = (task_idx + 1) * symbols_per_task - 1;
+    if (task_idx == tasks_per_slot - 1)
+      end_symbol = fp->symbols_per_slot - 1;
+
+    for (int beam = 0; beam < ru->num_beams_period; beam++) {
+      for (int aid = 0; aid < ru->nb_rx; aid++) {
         feprx_cmd_t *feprx_cmd = &arr[nbfeprx];
         feprx_cmd->ans = &ans;
-        feprx_cmd->beam = beam;
-        feprx_cmd->aid = aid;
-        feprx_cmd->ru = ru;
+        feprx_cmd->fp = fp;
         feprx_cmd->slot = ru->proc.tti_rx;
-        feprx_cmd->startSymbol = ru->nr_frame_parms->symbols_per_slot >> 1;
-        feprx_cmd->endSymbol = ru->nr_frame_parms->symbols_per_slot - 1;
+        feprx_cmd->startSymbol = start_symbol;
+        feprx_cmd->endSymbol = end_symbol;
+        feprx_cmd->rxdata = (const c16_t *)ru->common.rxdata[aid + beam * ru->nb_rx];
+        feprx_cmd->rxdataF = (c16_t *)&ru->common.rxdataF[aid + beam * ru->nb_rx][rxdataF_offset];
+        feprx_cmd->sample_offet = ru->N_TA_offset;
 
         task_t t = {.func = nr_fep, .args = feprx_cmd};
         pushTpool(ru->threadPool, t);
-
         nbfeprx++;
       }
     }

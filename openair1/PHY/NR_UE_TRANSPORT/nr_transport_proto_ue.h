@@ -168,15 +168,20 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
 /** \brief This function does IFFT for PUSCH
 */
 
-uint8_t nr_ue_pusch_common_procedures(PHY_VARS_NR_UE *UE,
-                                      const uint8_t slot,
-                                      const NR_DL_FRAME_PARMS *frame_parms,
-                                      const uint8_t n_antenna_ports,
-                                      c16_t **txdataF,
-                                      c16_t **txdata,
-                                      uint32_t linktype,
-                                      bool was_symbol_used[NR_NUMBER_OF_SYMBOLS_PER_SLOT],
-                                      bool no_phase_pre_comp);
+uint8_t nr_tx_rotation_and_ofdm_mod(const uint8_t slot,
+                                    const NR_DL_FRAME_PARMS *frame_parms,
+                                    const uint8_t n_antenna_ports,
+                                    c16_t **txdataF,
+                                    c16_t **txdata,
+                                    uint32_t linktype,
+                                    bool was_symbol_used[NR_NUMBER_OF_SYMBOLS_PER_SLOT],
+                                    bool no_phase_pre_comp);
+
+bool ue_srs_procedures_nr(PHY_VARS_NR_UE *ue,
+                                 const UE_nr_rxtx_proc_t *proc,
+                                 c16_t **txdataF,
+                                 nr_phy_data_tx_t *phy_data,
+                                 bool was_symbol_used[NR_NUMBER_OF_SYMBOLS_PER_SLOT]);
 
 void clean_UE_harq(PHY_VARS_NR_UE *UE);
 
@@ -240,6 +245,13 @@ nr_initial_sync_t nr_initial_sync(UE_nr_rxtx_proc_t *proc,
                                   int sa,
                                   nr_gscn_info_t gscnInfo[MAX_GSCN_BAND],
                                   int numGscn);
+
+/*!
+  \brief Common SSB search function shared by initial sync and neighbor cell search
+  @param params Pointer to SSB search parameters structure
+  @return true if SSB was successfully detected, false otherwise
+*/
+bool nr_search_ssb_common(nr_ssb_search_params_t *params);
 
 /*!
   \brief This function gets the carrier frequencies either from FP or command-line-set global variables, depending on the
@@ -330,7 +342,17 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
                 pdsch_scope_req_t *scope_req);
 
 int32_t generate_nr_prach(PHY_VARS_NR_UE *ue, uint8_t gNB_id, int frame, uint8_t slot, c16_t **txData);
-
+void apply_ntn_config(PHY_VARS_NR_UE *UE,
+                      NR_DL_FRAME_PARMS *fp,
+                      int hfn_rx,
+                      int frame_rx,
+                      int slot_rx,
+                      int *duration_rx_to_tx,
+                      int *timing_advance,
+                      int *ntn_koffset,
+                      bool *ntn_targetcell);
+void fix_ntn_epoch_hfn(PHY_VARS_NR_UE *UE, int hfn, int frame);
+void apply_ntn_timing_advance_and_doppler(PHY_VARS_NR_UE *UE, const NR_DL_FRAME_PARMS *fp, int abs_subframe_tx);
 void dump_nrdlsch(PHY_VARS_NR_UE *ue,uint8_t gNB_id,uint8_t nr_slot_rx,unsigned int *coded_bits_per_codeword,int round,  unsigned char harq_pid);
 void nr_a_sum_b(c16_t *input_x, c16_t *input_y, unsigned short nb_rb);
 

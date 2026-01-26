@@ -39,7 +39,8 @@
 #include "PHY/impl_defs_nr.h"
 #include "utils.h"
 #include "SCHED_NR_UE/phy_sch_processing_time.h"
-#include "openair1/PHY/phy_extern_nr_ue.h"
+
+extern PHY_VARS_NR_UE ***PHY_vars_UE_g;
 
 const char *const dl_pdu_type[] = {"DCI", "DLSCH", "RA_DLSCH", "SI_DLSCH", "P_DLSCH", "CSI_RS", "CSI_IM", "TA"};
 const char *const ul_pdu_type[] = {"PRACH", "PUCCH", "PUSCH", "SRS"};
@@ -87,21 +88,6 @@ static void configure_dlsch(NR_UE_DLSCH_t *dlsch0,
     LOG_W(NR_MAC, "dlsch0_harq->status not ACTIVE due to false retransmission harq pid: %d\n", current_harq_pid);
     update_harq_status(mac, current_harq_pid, dlsch0_harq->decodeResult);
   }
-}
-
-static void configure_ntn_params(PHY_VARS_NR_UE *ue, fapi_nr_dl_ntn_config_command_pdu* ntn_params_message)
-{
-  if (!ue->ntn_config_message) {
-    ue->ntn_config_message = CALLOC(1, sizeof(*ue->ntn_config_message));
-  }
-
-  ue->ntn_config_message->ntn_config_params.epoch_sfn = ntn_params_message->epoch_sfn;
-  ue->ntn_config_message->ntn_config_params.epoch_subframe = ntn_params_message->epoch_subframe;
-  ue->ntn_config_message->ntn_config_params.cell_specific_k_offset = ntn_params_message->cell_specific_k_offset;
-  ue->ntn_config_message->ntn_config_params.ntn_total_time_advance_ms = ntn_params_message->ntn_total_time_advance_ms;
-  ue->ntn_config_message->ntn_config_params.ntn_total_time_advance_drift = ntn_params_message->ntn_total_time_advance_drift;
-  ue->ntn_config_message->ntn_config_params.ntn_total_time_advance_drift_variant = ntn_params_message->ntn_total_time_advance_drift_variant;
-  ue->ntn_config_message->update = true;
 }
 
 static void configure_ta_command(PHY_VARS_NR_UE *ue, fapi_nr_ta_command_pdu *ta_command_pdu)
@@ -220,14 +206,93 @@ static void nr_ue_scheduled_response_dl(NR_UE_MAC_INST_t *mac,
       case FAPI_NR_CONFIG_TA_COMMAND:
         configure_ta_command(phy, &pdu->ta_command_pdu);
         break;
-      case FAPI_NR_DL_NTN_CONFIG_PARAMS:
-        configure_ntn_params(phy, &pdu->ntn_config_command_pdu);
-        break;
       default:
         LOG_W(PHY, "unhandled dl pdu type %d \n", pdu->pdu_type);
     }
   }
   dl_config->number_pdus = 0;
+}
+
+static void dump_pusch_pdu(int instance, int frame, int slot, nfapi_nr_ue_pusch_pdu_t *pusch_pdu)
+{
+  LOG_D(PHY,
+        "[UE %d] %d.%d ULSCH PDU pdu_bit_map %u "
+        "rnti %u "
+        "handle %u "
+        "bwp_size %u "
+        "bwp_start %u "
+        "subcarrier_spacing %u "
+        "cyclic_prefix %u "
+        "target_code_rate %u "
+        "qam_mod_order %u "
+        "mcs_index %u "
+        "mcs_table %u "
+        "transform_precoding %u "
+        "data_scrambling_id %u "
+        "nrOfLayers %u "
+        "Tpmi %u "
+        "ul_dmrs_symb_pos %u "
+        "dmrs_config_type %u "
+        "ul_dmrs_scrambling_id %u "
+        "scid %u "
+        "num_dmrs_cdm_grps_no_data %u "
+        "dmrs_ports %u "
+        "resource_alloc %u "
+        "rb_start %u "
+        "rb_size %u "
+        "vrb_to_prb_mapping %u "
+        "frequency_hopping %u "
+        "tx_direct_current_location %u "
+        "uplink_frequency_shift_7p5khz %u "
+        "start_symbol_index %u "
+        "nr_of_symbols %u "
+        "tbslbrm %u "
+        "ldpcBaseGraph %u "
+        "ulsch_indicator %u "
+        "pusch_data->rv_index %u "
+        "pusch_data->harq_process_id %u "
+        "pusch_data->new_data_indicator %u "
+        "pusch_data->num_cb %u\n",
+        instance,
+        frame,
+        slot,
+        pusch_pdu->pdu_bit_map,
+        pusch_pdu->rnti,
+        pusch_pdu->handle,
+        pusch_pdu->bwp_size,
+        pusch_pdu->bwp_start,
+        pusch_pdu->subcarrier_spacing,
+        pusch_pdu->cyclic_prefix,
+        pusch_pdu->target_code_rate,
+        pusch_pdu->qam_mod_order,
+        pusch_pdu->mcs_index,
+        pusch_pdu->mcs_table,
+        pusch_pdu->transform_precoding,
+        pusch_pdu->data_scrambling_id,
+        pusch_pdu->nrOfLayers,
+        pusch_pdu->Tpmi,
+        pusch_pdu->ul_dmrs_symb_pos,
+        pusch_pdu->dmrs_config_type,
+        pusch_pdu->ul_dmrs_scrambling_id,
+        pusch_pdu->scid,
+        pusch_pdu->num_dmrs_cdm_grps_no_data,
+        pusch_pdu->dmrs_ports,
+        pusch_pdu->resource_alloc,
+        pusch_pdu->rb_start,
+        pusch_pdu->rb_size,
+        pusch_pdu->vrb_to_prb_mapping,
+        pusch_pdu->frequency_hopping,
+        pusch_pdu->tx_direct_current_location,
+        pusch_pdu->uplink_frequency_shift_7p5khz,
+        pusch_pdu->start_symbol_index,
+        pusch_pdu->nr_of_symbols,
+        pusch_pdu->tbslbrm,
+        pusch_pdu->ldpcBaseGraph,
+        pusch_pdu->ulsch_indicator,
+        pusch_pdu->pusch_data.rv_index,
+        pusch_pdu->pusch_data.harq_process_id,
+        pusch_pdu->pusch_data.new_data_indicator,
+        pusch_pdu->pusch_data.num_cb);
 }
 
 static void nr_ue_scheduled_response_ul(PHY_VARS_NR_UE *phy, fapi_nr_ul_config_request_t *ul_config, nr_phy_data_tx_t *phy_data)
@@ -251,6 +316,7 @@ static void nr_ue_scheduled_response_ul(PHY_VARS_NR_UE *phy, fapi_nr_ul_config_r
               pdu->pusch_config_pdu.num_dmrs_cdm_grps_no_data);
 
         memcpy(pusch_pdu, &pdu->pusch_config_pdu, sizeof(*pusch_pdu));
+        dump_pusch_pdu(phy->Mod_id, ul_config->frame, ul_config->slot, pusch_pdu);
         if (pdu->pusch_config_pdu.tx_request_body.fapiTxPdu) {
           LOG_D(PHY,
                 "%d.%d Copying %d bytes to harq_process_ul_ue->a (harq_pid %d)\n",

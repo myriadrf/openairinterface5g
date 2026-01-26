@@ -48,8 +48,8 @@ static int channelmod_show_cmd(char *buff, int debug, telnet_printfunc_t prnt);
 static int channelmod_modify_cmd(char *buff, int debug, telnet_printfunc_t prnt);
 static int channelmod_print_help(char *buff, int debug, telnet_printfunc_t prnt);
 int get_modchannel_index(char *buf, int debug, void *vdata, telnet_printfunc_t prnt);
-int get_channel_params(char *buf, int debug, void *tdata, telnet_printfunc_t prnt);
-int get_currentchannels_type(char *buf, int debug, void *vdata, telnet_printfunc_t prnt);
+int get_channel_params(const char *buf, int debug, void *tdata, telnet_printfunc_t prnt);
+int get_currentchannels_type(const char *buf, int debug, void *vdata, telnet_printfunc_t prnt);
 
 #define HELP_WEBIF_MODIFCHAN_STRING "<channel index>"
 static telnetshell_cmddef_t channelmod_cmdarray[] = {
@@ -462,8 +462,7 @@ void get_cexp_doppler(struct complexd *cexp_doppler, channel_desc_t *chan_desc, 
   // TS 38.104 - Table G.3-1
   uint16_t Dmin = 2;
   uint16_t Ds = 300;
-  double c = 299792458;
-  double v = chan_desc->max_Doppler * (c / (double)chan_desc->center_freq);
+  double v = chan_desc->max_Doppler * ((double) SPEED_OF_LIGHT / (double)chan_desc->center_freq);
 
 #ifdef DOPPLER_DEBUG
   printf("v = %f\n", v);
@@ -572,11 +571,6 @@ channel_desc_t *new_channel_desc_scm(uint8_t nb_tx,
                                      double path_loss_dB,
                                      float noise_power_dB)
 {
-  // To create tables for normal distribution
-  struct timespec t;
-  clock_gettime(CLOCK_MONOTONIC, &t);
-  tableNor((long) (t.tv_nsec % INT_MAX));
-
   channel_desc_t *chan_desc = (channel_desc_t *)calloc(1,sizeof(channel_desc_t));
 
   for(int i=0; i<max_chan; i++) {
@@ -1701,7 +1695,7 @@ channel_desc_t *new_channel_desc_scm(uint8_t nb_tx,
   return(chan_desc);
 } /* channel_desc_t *new_channel_desc_scm  */
 
-channel_desc_t *find_channel_desc_fromname( char *modelname ) {
+channel_desc_t *find_channel_desc_fromname(const char *modelname) {
   for(int i=0; i<max_chan; i++) {
     if (defined_channels[i] != NULL) {
       if (strcmp(defined_channels[i]->model_name,modelname) == 0)
@@ -2034,7 +2028,7 @@ static int channelmod_print_help(char *buff, int debug, telnet_printfunc_t prnt 
 
 static char *pnames[] = {"riceanf", "aoa", "randaoa", "ploss", "noise_power_dB", "offset", "forgetf", NULL};
 static char *pformat[] = {"%lf", "%lf", "%i", "%lf", "%lf", "%i", "%lf", NULL};
-int get_channel_params(char *buf, int debug, void *vdata, telnet_printfunc_t prnt)
+int get_channel_params(const char *buf, int debug, void *vdata, telnet_printfunc_t prnt)
 {
   if (buf == NULL) {
     LOG_I(UTIL, "%s received NULL buffer\n", __FUNCTION__);
@@ -2116,7 +2110,7 @@ static void display_channelmodel(channel_desc_t *cd,int debug, telnet_printfunc_
   }
 }
 
-int get_currentchannels_type(char *buf, int debug, void *vdata, telnet_printfunc_t prnt)
+int get_currentchannels_type(const char *buf, int debug, void *vdata, telnet_printfunc_t prnt)
 {
   webdatadef_t *tdata;
   if (buf == NULL) {

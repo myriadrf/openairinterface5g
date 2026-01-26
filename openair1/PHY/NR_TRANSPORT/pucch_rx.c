@@ -71,7 +71,6 @@ void nr_fill_pucch(PHY_VARS_gNB *gNB, int frame, int slot, nfapi_nr_pucch_pdu_t 
         int bitmap = SL_to_bitmap(pucch_pdu->start_symbol_index, pucch_pdu->nr_of_symbols);
         pucch->beam_nb = beam_index_allocation(gNB->enable_analog_das,
                                                fapi_beam_idx,
-                                               &gNB->gNB_config.analog_beamforming_ve,
                                                &gNB->common_vars,
                                                slot,
                                                NR_NUMBER_OF_SYMBOLS_PER_SLOT,

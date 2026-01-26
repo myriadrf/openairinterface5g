@@ -519,7 +519,13 @@ static NR_RRCReconfiguration_IEs_t *build_RRCReconfiguration_IEs(const nr_rrc_re
     cfg->drb_ToAddModList = params->drb_config_list;
     cfg->securityConfig = params->security_config;
     cfg->srb3_ToRelease = NULL;
-    cfg->drb_ToReleaseList = params->drb_release_list;
+    if (params->n_drb_rel) {
+      asn1cCalloc(cfg->drb_ToReleaseList, to_release);
+      for (int i = 0; i < params->n_drb_rel; i++) {
+        asn1cSequenceAdd(to_release->list, NR_DRB_Identity_t, DRB_release);
+        *DRB_release = params->drb_rel[i];
+      }
+    }
   }
 
   /* measConfig */
@@ -849,12 +855,15 @@ int do_RRCSetupComplete(uint8_t *buffer,
   return((enc_rval.encoded+7)/8);
 }
 
-// TODO: This function is only implemented for event A2
+// TODO: This function is only implemented for event A2/A3
 int do_nrMeasurementReport_SA(long trigger_to_measid,
                               long trigger_quantity,
                               long rs_type,
                               uint16_t Nid_cell,
                               int rsrp_index,
+                              bool neighbor_cell_valid,
+                              uint16_t neighbor_Nid_cell,
+                              int neighbor_rsrp_index,
                               uint8_t *buffer,
                               size_t buffer_size)
 {
@@ -871,6 +880,7 @@ int do_nrMeasurementReport_SA(long trigger_to_measid,
   asn1cCalloc(measurementReport->criticalExtensions.choice.measurementReport, mrIE);
   mrIE->measResults.measId = trigger_to_measid;
 
+  // Serving cell
   NR_MeasResultServMO_t *measResultServMo = calloc_or_fail(1, sizeof(*measResultServMo));
 
   NR_MeasResultNR_t *measResultServingCell = &measResultServMo->measResultServingCell;
@@ -889,6 +899,30 @@ int do_nrMeasurementReport_SA(long trigger_to_measid,
   }
 
   ASN_SEQUENCE_ADD(&mrIE->measResults.measResultServingMOList.list, measResultServMo);
+
+  // Neighbor cell
+  if (neighbor_cell_valid) {
+    struct NR_MeasResults__measResultNeighCells *measResultNeighCells = calloc_or_fail(1, sizeof(*measResultNeighCells));
+    mrIE->measResults.measResultNeighCells = measResultNeighCells;
+    measResultNeighCells->present = NR_MeasResults__measResultNeighCells_PR_measResultListNR;
+    NR_MeasResultListNR_t *measResultListNR = calloc_or_fail(1, sizeof(*measResultListNR));
+    measResultNeighCells->choice.measResultListNR = measResultListNR;
+    struct NR_MeasResultNR *meas_result_neigh_cell = calloc_or_fail(1, sizeof(*meas_result_neigh_cell));
+    asn1cCalloc(meas_result_neigh_cell->physCellId, neighbor_pci);
+    *neighbor_pci = neighbor_Nid_cell;
+    struct NR_MeasResultNR__measResult__cellResults *cellResults = &meas_result_neigh_cell->measResult.cellResults;
+    struct NR_MeasQuantityResults *neigh_mq_res = calloc_or_fail(1, sizeof(*neigh_mq_res));
+    if (trigger_quantity == NR_MeasTriggerQuantityOffset_PR_rsrp) {
+      asn1cCalloc(neigh_mq_res->rsrp, rsrp);
+      *rsrp = neighbor_rsrp_index;
+      if (rs_type == NR_NR_RS_Type_ssb)
+        cellResults->resultsSSB_Cell = neigh_mq_res;
+      else
+        cellResults->resultsCSI_RS_Cell = neigh_mq_res;
+    }
+    ASN_SEQUENCE_ADD(&measResultListNR->list, meas_result_neigh_cell);
+  }
+
   enc_rval = uper_encode_to_buffer(&asn_DEF_NR_UL_DCCH_Message, NULL, (void *)&ul_dcch_msg, buffer, buffer_size);
   AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
 
@@ -1115,7 +1149,8 @@ NR_MeasConfig_t *get_MeasConfig(const NR_MeasTiming_t *mt,
                                 NR_ReportConfigToAddMod_t *rc_PER,
                                 NR_ReportConfigToAddMod_t *rc_A2,
                                 seq_arr_t *rc_A3_seq,
-                                seq_arr_t *neigh_seq)
+                                seq_arr_t *neigh_seq,
+                                int *neigh_a3_id)
 {
   DevAssert(mt != NULL && mt->frequencyAndTiming != NULL);
   const struct NR_MeasTiming__frequencyAndTiming *ft = mt->frequencyAndTiming;
@@ -1201,7 +1236,10 @@ NR_MeasConfig_t *get_MeasConfig(const NR_MeasTiming_t *mt,
   if (neigh_seq) {
     int i = 0;
     FOR_EACH_SEQ_ARR(nr_neighbour_cell_t *, neigh_cell, neigh_seq) {
-      NR_ReportConfigId_t reportConfigId = neigh_cell->physicalCellId == -1 ? 3 : i + 4;
+      NR_ReportConfigId_t reportConfigId = neigh_a3_id[i];
+      /* check that there is a A3 configured for this neighbour */
+      if (reportConfigId == -1)
+        continue;
       NR_MeasIdToAddMod_t *measid_A3 = get_MeasId(meas_idx + 1, reportConfigId, i + 2);
       meas_idx++;
       asn1cSeqAdd(&mc->measIdToAddModList->list, measid_A3);

@@ -47,7 +47,6 @@
 #define NGAP_UE_CAPABILITIES_IND(mSGpTR)        (mSGpTR)->ittiMsg.ngap_ue_cap_info_ind
 #define NGAP_INITIAL_CONTEXT_SETUP_RESP(mSGpTR) (mSGpTR)->ittiMsg.ngap_initial_context_setup_resp
 #define NGAP_INITIAL_CONTEXT_SETUP_FAIL(mSGpTR) (mSGpTR)->ittiMsg.ngap_initial_context_setup_fail
-#define NGAP_UE_CONTEXT_RELEASE_RESP(mSGpTR)    (mSGpTR)->ittiMsg.ngap_ue_release_resp
 #define NGAP_NAS_NON_DELIVERY_IND(mSGpTR)       (mSGpTR)->ittiMsg.ngap_nas_non_delivery_ind
 #define NGAP_UE_CTXT_MODIFICATION_RESP(mSGpTR)  (mSGpTR)->ittiMsg.ngap_ue_ctxt_modification_resp
 #define NGAP_UE_CTXT_MODIFICATION_FAIL(mSGpTR)  (mSGpTR)->ittiMsg.ngap_ue_ctxt_modification_fail
@@ -474,8 +473,8 @@ typedef struct {
   cell_id_t id;
   // Cell type
   uint8_t type;
-  // Time UE Stayed in Cell
-  long time_in_cell;
+  // Time UE Stayed in Cell (seconds)
+  uint16_t time_in_cell;
   // Cause
   ngap_cause_t *cause;
 } last_visited_ngran_cell_info_t;
@@ -733,17 +732,13 @@ typedef struct ngap_ue_ctxt_modification_resp_s {
   uint32_t  gNB_ue_ngap_id;
 } ngap_ue_ctxt_modification_resp_t;
 
-typedef struct ngap_ue_release_complete_s {
-  uint32_t gNB_ue_ngap_id;
-  int num_pdu_sessions;
-  uint32_t pdu_session_id[256];
-} ngap_ue_release_complete_t;
-
 //-------------------------------------------------------------------------------------------//
 // NGAP -> RRC messages
 typedef struct ngap_downlink_nas_s {
   /* UE id for initial connection to NGAP */
   uint32_t gNB_ue_ngap_id;
+  /* UE id at AMF */
+  uint64_t amf_ue_ngap_id;
   /* NAS pdu */
   byte_array_t nas_pdu;
 } ngap_downlink_nas_t;
@@ -862,20 +857,24 @@ typedef struct ngap_ue_release_command_s {
 
 //-------------------------------------------------------------------------------------------//
 // NGAP <-- RRC messages
-typedef struct pdusession_release_s {
-  /* Unique pdusession_id for the UE. */
-  uint8_t                     pdusession_id;
-  byte_array_t data;
-} pdusession_release_t;
-
 typedef struct ngap_ue_release_req_s {
-  uint32_t             gNB_ue_ngap_id;
-  /* Number of pdusession resource in the list */
+  // RAN UE NGAP ID (mandatory)
+  uint32_t gNB_ue_ngap_id;
+  // PDU Session Resource List (optional)
   uint16_t nb_of_pdusessions;
-  /* list of pdusession resource by RRC layers */
-  pdusession_release_t pdusessions[NGAP_MAX_PDU_SESSION];
+  uint8_t pdusession_ids[NGAP_MAX_PDU_SESSION];
+  // Cause (mandatory)
   ngap_cause_t cause;
-} ngap_ue_release_req_t, ngap_ue_release_resp_t;
+} ngap_ue_release_req_t;
+
+typedef struct {
+  // RAN UE NGAP ID (mandatory)
+  uint32_t gNB_ue_ngap_id;
+  // PDU Session Resource List (optional)
+  uint16_t num_pdu_sessions;
+  // PDU Session ID (mandatory)
+  uint8_t pdu_session_id[NGAP_MAX_PDU_SESSION];
+} ngap_ue_release_complete_t;
 
 typedef struct ngap_pdusession_modify_req_s {
   /* AMF UE id  */
@@ -915,13 +914,18 @@ typedef struct ngap_pdusession_release_command_s {
   /* The NAS PDU should be forwarded by the RRC layer to the NAS layer */
   byte_array_t nas_pdu;
 
-  /* Number of pdusession to be released in the list */
+  // PDU Session Resource to Release List (mandatory)
   uint16_t nb_pdusessions_torelease;
-
-  /* PDUSession release command */
-  pdusession_release_t pdusession_release_params[NGAP_MAX_PDU_SESSION];
+  uint16_t pdusession_ids[NGAP_MAX_PDU_SESSION];
 
 } ngap_pdusession_release_command_t;
+
+typedef struct pdusession_release_s {
+  // PDU Session ID (mandatory)
+  uint8_t pdusession_id;
+  // PDU Session Resource Release Response Transfer (mandatory)
+  byte_array_t pdusession_release_response_transfer;
+} pdusession_release_t;
 
 typedef struct ngap_pdusession_release_resp_s {
   // AMF UE NGAP ID

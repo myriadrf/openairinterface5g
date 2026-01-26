@@ -139,7 +139,7 @@ int main(int argc, char **argv)
   }
 
   //logInit();
-  randominit(0);
+  randominit();
 
   int c;
   while ((c = getopt(argc, argv, "--:O:hg:n:s:S:py:z:M:N:R:F:m:l:q:r:W:")) != -1) {

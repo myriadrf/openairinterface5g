@@ -210,7 +210,7 @@ static void get_epochtime_from_sib19scheduling(NR_UE_RRC_SI_INFO *SI_info, int *
         slot);
 }
 
-static int eval_epoch_time(NR_UE_RRC_SI_INFO *SI_info, NR_NTN_Config_r17_t *ntncfg, int frame)
+static int eval_epoch_time(NR_UE_RRC_SI_INFO *SI_info, NR_NTN_Config_r17_t *ntncfg, int frame, bool is_targetcell)
 {
   int epoch_frame = 0, epoch_subframe = 0;
   int diff_frames = 0;
@@ -229,39 +229,47 @@ static int eval_epoch_time(NR_UE_RRC_SI_INFO *SI_info, NR_NTN_Config_r17_t *ntnc
     ntncfg->epochTime_r17->sfn_r17 = epoch_frame;
     ntncfg->epochTime_r17->subFrameNR_r17 = epoch_subframe;
   }
-  // For serving cell, the field sfn indicates the current SFN or the next upcoming SFN
-  // after the frame where the message indicating the epochTime is received
-  // i.e. Epochframe can be present or future SFN
-  diff_frames = (epoch_frame - frame + 1024) % 1024;    // According to 38.331 Epochtime is defined for serving cell like this
-  LOG_I(NR_RRC, "Epoch frame %d, ahead by %d frames\n", epoch_frame, diff_frames);
+  if (is_targetcell) {
+    // For Target cell,the SFN nearest to the frame needs to be considered
+    // i.e. Epochframe can be in the past or future
+    int diff1 = (frame - epoch_frame + 1024) % 1024;
+    int diff2 = (epoch_frame - frame + 1024) % 1024;
+    diff_frames = (diff1 < diff2) ? -diff1 : diff2;
+  } else {
+    // For serving cell, the field sfn indicates the current SFN or the next upcoming SFN
+    // after the frame where the message indicating the epochTime is received
+    // i.e. Epochframe can be present or future SFN
+    diff_frames = (epoch_frame - frame + 1024) % 1024;    // According to 38.331 Epochtime is defined for serving cell like this
+  }
+  LOG_I(NR_RRC, "Epoch frame %d ahead by %d frames\n", epoch_frame, diff_frames);
   return diff_frames;
 }
 
 static int get_ntn_timervalues(NR_UE_RRC_SI_INFO *SI_info, NR_NTN_Config_r17_t *ntncfg, int diff_frames, int *val430_ms)
 {
   int val430 = get_ulsyncvalidityduration_timer_value(ntncfg);
-  int sib19_periodicity_ms = (SI_info->sib19_periodicity + 1) * 10;
+  int sib19_periodicity_ms = SI_info->sib19_periodicity * 10;
   *val430_ms = val430 * 1000 + diff_frames * 10; // in ms
   if (*val430_ms <= sib19_periodicity_ms)
     LOG_E(NR_RRC, "Too small T430 value. Might result in frequent ULSYNC failure\n");
 
-  // Depending on ulsyncvalidity duration, SIB19 timer expires 15secs/2secs before T430
-  // LArger values might be used for GEO and epoch time interval can be around 10 secs
-  // Lower values will be used for NGSO (LEO/MEO), epoch time interval can be between 2-3 secs.
-  // TODO remove the hardoded values and define a better strategy to determine the time of expiry
-  // with real GEO/LEO/MEO SATs.
-  int expire_before_ms = ((val430 >= 120) ? 10000 : 2000);
-  int diff = *val430_ms - expire_before_ms;
-  int sib19_timer_ms = (diff > 0) ? diff : ((*val430_ms - sib19_periodicity_ms) > 0) ? (*val430_ms - sib19_periodicity_ms) : 0;
+  // by default SIB19 reception is started from the middle of the ulsyncvalidity duration.(i.e val430 in ms / 2)
+  int sib19_timer_ms = val430 * 500 + diff_frames * 10;
+
+  // if this is less than the SIB19 periodicity, use that instead.
+  // set the timer to expire 1 frame (10 ms) before periodicity, to not miss the SIB19
+  if (sib19_timer_ms <= sib19_periodicity_ms)
+    sib19_timer_ms = sib19_periodicity_ms - 10;
+
   LOG_I(NR_RRC, "val430:%d s, T430:%d ms, sib19_timer:%d ms\n", val430, *val430_ms, sib19_timer_ms);
   return sib19_timer_ms;
 }
 
-static void nr_rrc_process_ntnconfig(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_info, NR_NTN_Config_r17_t *ntncfg, int frame)
+static void nr_rrc_process_ntnconfig(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_info, NR_NTN_Config_r17_t *ntncfg, int frame, bool is_targetcell)
 {
   SI_info->SInfo_r17.sib19_validity = true;
   // Check if Epochtime is sent or not
-  int diff_frames = eval_epoch_time(SI_info, ntncfg, frame);
+  int diff_frames = eval_epoch_time(SI_info, ntncfg, frame, is_targetcell);
 
   if (ntncfg->ntn_UlSyncValidityDuration_r17) { // ulsyncvalidity duration configured
     int val430_ms = 0, sib19_timer_ms = 0;
@@ -284,7 +292,7 @@ static void nr_rrc_process_ntnconfig(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *S
     nr_timer_start(&SI_info->SInfo_r17.sib19_timer);
 }
 
-static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si, NR_UE_RRC_INST_t *rrc, int frame)
+static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si, NR_UE_RRC_INST_t *rrc, int hfn, int frame)
 {
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_RRC_UE_DECODE_SI, VCD_FUNCTION_IN);
 
@@ -361,7 +369,7 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
         sib19 = typeandinfo->choice.sib19_v1700;
         if (g_log->log_component[NR_RRC].level >= OAILOG_DEBUG)
           xer_fprint(stdout, &asn_DEF_NR_SIB19_r17, (const void *)sib19);
-        nr_rrc_process_ntnconfig(rrc, SI_info, sib19->ntn_Config_r17, frame);
+        nr_rrc_process_ntnconfig(rrc, SI_info, sib19->ntn_Config_r17, frame, false);
         break;
       default:
         break;
@@ -373,6 +381,8 @@ static void nr_decode_SI(NR_UE_RRC_SI_INFO *SI_info, NR_SystemInformation_t *si,
     rrc_msg.payload_type = NR_MAC_RRC_CONFIG_OTHER_SIB;
     nr_mac_rrc_config_other_sib_t *sib19_msg = &rrc_msg.payload.config_other_sib;
     asn_copy(&asn_DEF_NR_SIB19_r17, (void **)&sib19_msg->sib19, sib19);
+    sib19_msg->hfn = hfn;
+    sib19_msg->frame = frame;
     sib19_msg->can_start_ra = rrc->is_NTN_UE;
     nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
   }
@@ -517,13 +527,141 @@ static void nr_rrc_process_sib1(NR_UE_RRC_INST_t *rrc, NR_UE_RRC_SI_INFO *SI_inf
   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
 }
 
-static void nr_rrc_nh_update(NR_UE_RRC_INST_t *rrc, uint8_t *kamf, uint8_t *sync_input)
+/** @brief Synchronize NH chain based on nextHopChainingCount
+ *
+ * This function synchronizes the NH parameter chain as specified in 3GPP TS 33.501 Annex A.10.
+ * Use cases: Master Key Update, RRC Reestablishment: The UE receives an NCC value that is
+ * different from the NCC associated with the currently active KgNB. The NH chain is synchronized
+ * by computing the function defined in Annex A.10 iteratively (and increasing the NCC value until
+ * it matches the NCC value received from the source ng-gNB).
+ *
+ * @param kamf K_AMF key from NAS
+ * @param kgnb Current KgNB key (input/output)
+ * @param nh Current NH parameter (input/output)
+ * @param nhcc Pointer to current nextHopChainingCount (input/output)
+ * @param target_ncc Target nextHopChainingCount value to synchronize to */
+static void nr_sync_nh_chain(const uint8_t kamf[SECURITY_KEY_LEN],
+                             uint8_t kgnb[SECURITY_KEY_LEN],
+                             uint8_t nh[SECURITY_KEY_LEN],
+                             uint64_t *nhcc,
+                             const int8_t target_ncc)
 {
-  uint8_t nh[SECURITY_KEY_LEN] = {0};
-  nr_derive_nh(kamf, sync_input, nh);
-  log_hex_buffer("Sync input = stored NH", rrc->nh, SECURITY_KEY_LEN);
-  memcpy(rrc->nh, nh, SECURITY_KEY_LEN);
-  rrc->nhcc++; // Increase stored nextHopChainingCount
+  // If the UE received an NCC value that was different from the NCC associated with the
+  // currently active KgNB, the UE shall first synchronize the locally kept NH
+  // parameter by computing the function defined in Annex A.10 iteratively (and increasing
+  // the NCC value until it matches the NCC value received from the source ng-gNB).
+  if (target_ncc <= *nhcc) {
+    LOG_W(NR_RRC, "Received NCC=%d is less than or equal to current nhcc=%ld (nothing to sync)\n", target_ncc, *nhcc);
+    return;
+  }
+  if (target_ncc > *nhcc) {
+    LOG_I(NR_RRC, "Synchronizing NH chain: current nhcc=%ld, target ncc=%d\n", *nhcc, target_ncc);
+    if (*nhcc == 0) {
+      // First derivation: derive KgNB from KAMF, then derive NH from KgNB (per TS 33.501 A.10)
+      // Note: For the first NH derivation, we use UL NAS COUNT = 0 to match the AMF's derivation
+      // during handover. The AMF derives the first NH using the UL NAS COUNT from the last
+      // successful NAS SMC, which is 0 for the initial derivation.
+      derive_kgnb(kamf, 0, kgnb);
+      nr_derive_nh(kamf, kgnb, nh);
+      *nhcc = 1;
+    }
+    // Following derivations: iterate from current nhcc to target_ncc
+    for (uint8_t i = *nhcc; i < target_ncc; i++) {
+      LOG_D(NR_RRC, "Derive keys for ChainingCount = %d\n", i);
+      nr_derive_nh(kamf, nh, nh);
+    }
+    *nhcc = target_ncc;
+  }
+}
+
+/** @brief Derive KNG-RAN* (KgNB*) using horizontal derivation
+ *
+ * This function derives KNG-RAN* from the currently active KgNB (horizontal derivation)
+ * as specified in 3GPP TS 33.501 Annex A.11 and A.12.
+ * Used when NCC values match (no NH synchronization needed).
+ *
+ * @param pci Physical Cell ID
+ * @param nr_arfcn_dl NR ARFCN-DL
+ * @param kgnb Current KgNB key (input/output)
+ */
+static void nr_derive_kgnb_horizontal(const uint16_t pci, const uint64_t nr_arfcn_dl, uint8_t kgnb[SECURITY_KEY_LEN])
+{
+  // When the NCC values match, the UE shall derive the KNG-RAN* from the currently active
+  // KgNB and the target PCI and its frequency ARFCN-DL using the function defined in Annex A.11 and A.12.
+  LOG_D(NR_RRC, "Deriving KNG-RAN* using horizontal derivation (from current KgNB)\n");
+  nr_derive_key_ng_ran_star(pci, nr_arfcn_dl, kgnb, kgnb);
+}
+
+/** @brief Derive KNG-RAN* (KgNB*) using vertical derivation
+ *
+ * This function derives KNG-RAN* from the synchronized NH parameter (vertical derivation)
+ * as specified in 3GPP TS 33.501 Annex A.11 and A.12.
+ * Used after NH chain synchronization when NCC values differ.
+ *
+ * @param pci Physical Cell ID
+ * @param nr_arfcn_dl NR ARFCN-DL
+ * @param kgnb Current KgNB key (input/output)
+ * @param nh Synchronized NH parameter (input)
+ */
+static void nr_derive_kgnb_vertical(const uint16_t pci,
+                                    const uint64_t nr_arfcn_dl,
+                                    uint8_t kgnb[SECURITY_KEY_LEN],
+                                    const uint8_t nh[SECURITY_KEY_LEN])
+{
+  // When the NCC values match (after synchronization), the UE shall compute the K NG-RAN *
+  // from the synchronized NH parameter and the target PCI and its frequency ARFCN-DL
+  // using the function defined in Annex A.11 and A.12.
+  LOG_D(NR_RRC, "Deriving KNG-RAN* using vertical derivation (from synchronized NH)\n");
+  nr_derive_key_ng_ran_star(pci, nr_arfcn_dl, nh, kgnb);
+}
+
+/** @brief Update KgNB based on received nextHopChainingCount
+ *
+ * This function implements the common logic for updating KgNB based on received NCC value,
+ * as specified in 3GPP TS 33.501 6.9.2.3.4.
+ *
+ * Per 33.501 6.9.2.3.4 and Fig 6.9.2.1.1-1:
+ * - If NCC received == current NCC: use horizontal derivation (from currently active KgNB)
+ *   This applies regardless of whether NCC is 0 or >0. For a fixed NCC level, multiple
+ *   horizontal derivations can be done within that level.
+ * - If NCC received > current NCC: synchronize NH chain (Annex A.10), then use vertical
+ *   derivation (from NH) to enter the new NCC level.
+ *
+ * Horizontal derivation = derive KNG-RAN* from currently active KgNB + (PCI, ARFCN-DL)
+ * Vertical derivation = derive KNG-RAN* from NH + (PCI, ARFCN-DL)
+ *
+ * @param rrc RRC instance pointer
+ * @param kamf K_AMF key from NAS
+ * @param received_ncc Received nextHopChainingCount value */
+static void nr_update_kgnb_from_ncc(NR_UE_RRC_INST_t *rrc, const uint8_t kamf[SECURITY_KEY_LEN], int8_t received_ncc)
+{
+  const uint64_t original_nhcc = rrc->nhcc;
+
+  if (received_ncc == original_nhcc) {
+    // NCC values match: use horizontal derivation from currently active KgNB
+    // Per TS 33.501 6.9.2.3.4: "derive the KNG-RAN* from the currently active KgNB"
+    // This applies regardless of NCC being 0 or >0. For a fixed NCC level, we stay
+    // within that level using horizontal derivations.
+    LOG_D(NR_RRC, "NCC values match (%d), using horizontal derivation\n", received_ncc);
+    nr_derive_kgnb_horizontal(rrc->phyCellID, rrc->arfcn_ssb, rrc->kgnb);
+  } else if (received_ncc < original_nhcc) {
+    // Note: According to spec, NCC should only increase. If received_ncc < original_nhcc,
+    // this is an error condition, but we handle it gracefully.
+    LOG_W(NR_RRC,
+          "Received NCC=%d is less than current nhcc=%ld (unexpected per spec, NH chain should only increase)\n",
+          received_ncc,
+          original_nhcc);
+  } else {
+    // received_ncc > original_nhcc: synchronize NH chain first (per 33.501 A.10)
+    nr_sync_nh_chain(kamf, rrc->kgnb, rrc->nh, &rrc->nhcc, received_ncc);
+    // Store the received nextHopChainingCount value (per 38.331 5.3.7.5)
+    LOG_D(NR_RRC, "Synchronizing NH chain to target NCC %d\n", received_ncc);
+    rrc->nhcc = received_ncc;
+    // After synchronization, derive KNG-RAN* from synchronized NH (vertical derivation)
+    // per 33.501 6.9.2.3.4: "When the NCC values match, the UE shall compute the K NG-RAN *
+    // from the synchronized NH parameter"
+    nr_derive_kgnb_vertical(rrc->phyCellID, rrc->arfcn_ssb, rrc->kgnb, rrc->nh);
+  }
 }
 
 /** @brief AS security key update procedure (5.3.5.7 3GPP TS 38.331) */
@@ -535,40 +673,17 @@ void as_security_key_update(NR_UE_RRC_INST_t *rrc, NR_MasterKeyUpdate_t *mku)
   if (mku->keySetChangeIndicator) {
     LOG_E(NR_RRC, "derive or update the K gNB key based on the K AMF key, as specified in TS 33.501: not implemented yet\n");
   } else {
-    /* derive or update the K gNB key based on the current K gNB key or the NH, using the nextHopChainingCount
-       value indicated in the received masterKeyUpdate, as specified in 6.9.2.3.3 3GPP TS 33.501 */
-    if (mku->nextHopChainingCount != rrc->nhcc) {
-      // - If the UE received an NCC value that was different from the NCC associated with the currently active
-      // K gNB/K eNB, the UE shall first synchronize the locally kept NH parameter by computing the function defined in
-      // Annex A.10 iteratively (and increasing the NCC value until it matches the NCC value received from the source
-      // ng-eNB/gNB via the HO command message.
-      LOG_A(NR_RRC, "Received masterKeyUpdate (nextHopChainingCount %ld): update security keys\n", mku->nextHopChainingCount);
-      /** @todo: The KAMF should be obtained from NAS. This exchange over ITTI must be synchronized
-       * with the rest of the RRCReconfiguration procedure, in particular, the RadioBearerConfig
-       * processing that triggers bearer modifications. Security configueration of bearers must
-       * complete using the newly derived keys. As a workaround NAS is directly accessed here. */
-      nr_ue_nas_t *nas = get_ue_nas_info(rrc->ue_id);
-      uint8_t *kamf = nas->security.kamf;
-      log_hex_buffer("Stored kamf", kamf, SECURITY_KEY_LEN);
-      if (rrc->nhcc == 0) { // First derivation
-        derive_kgnb(kamf, 0, rrc->kgnb);
-        log_hex_buffer("Sync input = derived kgnb", rrc->kgnb, SECURITY_KEY_LEN);
-        nr_rrc_nh_update(rrc, kamf, rrc->kgnb);
-      }
-      for (int i = rrc->nhcc; i < mku->nextHopChainingCount; i++) { // Following derivations
-        LOG_D(NR_RRC, "Derive keys for ChainingCount = %d\n", i);
-        nr_rrc_nh_update(rrc, kamf, rrc->nh);
-      }
-      nr_derive_key_ng_ran_star(rrc->phyCellID, rrc->arfcn_ssb, rrc->nh, rrc->kgnb);
-      // When the NCC values match, the UE shall compute the K NG-RAN *
-      // from the synchronized NH parameter and the target PCI and its frequency ARFCN-DL/EARFCN-DL using the
-      // function defined in Annex A.11 and A.12.
-      // The UE shall use the KNG-RAN * as the K gNB when communicating with the target gNB and as the KeNB when
-      // communicating with the target ng-eNB.
-    } else {
-      nr_derive_key_ng_ran_star(rrc->phyCellID, rrc->arfcn_ssb, rrc->kgnb, rrc->kgnb);
-    }
-    log_hex_buffer("Derived kgnb", rrc->kgnb, SECURITY_KEY_LEN);
+    LOG_I(NR_RRC, "Received masterKeyUpdate (nextHopChainingCount %ld): update security keys\n", mku->nextHopChainingCount);
+    /** @todo: The KAMF should be obtained from NAS. This exchange over ITTI must be synchronized
+     * with the rest of the RRCReconfiguration procedure, in particular, the RadioBearerConfig
+     * processing that triggers bearer modifications. Security configueration of bearers must
+     * complete using the newly derived keys. As a workaround NAS is directly accessed here. */
+    nr_ue_nas_t *nas = get_ue_nas_info(rrc->ue_id);
+    const uint8_t *kamf = nas->security.kamf;
+    // KgNB update (TS 33.501 §6.9.2.3.3):
+    // If received NCC != local NCC, iteratively derive NH (Annex A.10) until NCC matches.
+    // Then derive the new KgNB from the synchronized NH.
+    nr_update_kgnb_from_ncc(rrc, kamf, mku->nextHopChainingCount);
   }
 }
 
@@ -619,7 +734,7 @@ static void rrc_ue_add_bearer(const int ue_id, const NR_DRB_ToAddMod_t *drb, con
     sdap = nr_sdap_get_config(GNB_FLAG_NO, drb->cnAssociation->choice.sdap_Config, drb->drb_Identity);
   }
   // add SDAP entity
-  nr_sdap_addmod_entity(GNB_FLAG_NO, ue_id, sdap);
+  nr_sdap_addmod_entity(GNB_FLAG_NO, ue_id, &sdap);
   // add PDCP entity
   nr_pdcp_add_drb(GNB_FLAG_NO, ue_id, drb->pdcp_Config, &sdap, sp);
 }
@@ -740,6 +855,217 @@ static void nr_rrc_ue_process_RadioBearerConfig(NR_UE_RRC_INST_t *ue_rrc, NR_Rad
   LOG_I(NR_RRC, "State = NR_RRC_CONNECTED\n");
 }
 
+static void nr_rrc_signal_maxrtxindication(int ue_id)
+{
+  MessageDef *msg = itti_alloc_new_message(TASK_RLC_UE, ue_id, NR_RRC_RLC_MAXRTX);
+  NR_RRC_RLC_MAXRTX(msg).ue_id = ue_id;
+  itti_send_msg_to_task(TASK_RRC_NRUE, ue_id, msg);
+}
+
+/** @brief Release all active RLC entities for a UE and set to inactive.
+ * This is typically used when tearing down all DRBs at UE side,
+ * such as after a PDU session release or full reconfiguration.
+ * @param rrc Pointer to NR_UE_RRC_INST_t structure
+ * @param id Logical Channel ID (must be in range [0, NR_MAX_NUM_LCID-1]) */
+static void nr_rrc_release_rlc_entity(NR_UE_RRC_INST_t *rrc, int id)
+{
+  DevAssert(rrc);
+  DevAssert(id >= 0 && id < NR_MAX_NUM_LCID);
+  if (rrc->active_RLC_entity[id]) {
+    rrc->active_RLC_entity[id] = false;
+    nr_rlc_release_entity(rrc->ue_id, id);
+    LOG_I(RLC, "Released RLC entity: ue_id=%ld, lc_id=%d\n", rrc->ue_id, id);
+  }
+}
+
+static void nr_rrc_manage_rlc_bearers(NR_UE_RRC_INST_t *rrc, const NR_CellGroupConfig_t *cellGroupConfig)
+{
+  if (cellGroupConfig->rlc_BearerToReleaseList != NULL) {
+    for (int i = 0; i < cellGroupConfig->rlc_BearerToReleaseList->list.count; i++) {
+      NR_LogicalChannelIdentity_t *lcid = cellGroupConfig->rlc_BearerToReleaseList->list.array[i];
+      AssertFatal(lcid, "LogicalChannelIdentity shouldn't be null here\n");
+      nr_rrc_release_rlc_entity(rrc, *lcid);
+    }
+  }
+
+  if (cellGroupConfig->rlc_BearerToAddModList != NULL) {
+    for (int i = 0; i < cellGroupConfig->rlc_BearerToAddModList->list.count; i++) {
+      NR_RLC_BearerConfig_t *rlc_bearer = cellGroupConfig->rlc_BearerToAddModList->list.array[i];
+      NR_LogicalChannelIdentity_t lcid = rlc_bearer->logicalChannelIdentity;
+      if (rrc->active_RLC_entity[lcid]) {
+        if (rlc_bearer->reestablishRLC)
+          nr_rlc_reestablish_entity(rrc->ue_id, lcid);
+        if (rlc_bearer->rlc_Config)
+          nr_rlc_reconfigure_entity(rrc->ue_id, lcid, rlc_bearer->rlc_Config);
+      } else {
+        rrc->active_RLC_entity[lcid] = true;
+        AssertFatal(rlc_bearer->servedRadioBearer, "servedRadioBearer mandatory in case of setup\n");
+        AssertFatal(rlc_bearer->servedRadioBearer->present != NR_RLC_BearerConfig__servedRadioBearer_PR_NOTHING,
+                    "Invalid RB for RLC configuration\n");
+        if (rlc_bearer->servedRadioBearer->present == NR_RLC_BearerConfig__servedRadioBearer_PR_srb_Identity) {
+          NR_SRB_Identity_t srb_id = rlc_bearer->servedRadioBearer->choice.srb_Identity;
+          nr_rlc_add_srb(rrc->ue_id, srb_id, rlc_bearer);
+          nr_rlc_set_rlf_handler(rrc->ue_id, nr_rrc_signal_maxrtxindication);
+        } else { // DRB
+          NR_DRB_Identity_t drb_id = rlc_bearer->servedRadioBearer->choice.drb_Identity;
+          if (!rlc_bearer->rlc_Config) {
+            LOG_E(RLC, "RLC-Config not present but is mandatory for setup\n");
+            rrc->active_RLC_entity[lcid] = false;
+          } else {
+            nr_rlc_add_drb(rrc->ue_id, drb_id, rlc_bearer);
+            nr_rlc_set_rlf_handler(rrc->ue_id, nr_rrc_signal_maxrtxindication);
+          }
+        }
+      }
+    }
+  }
+}
+
+static void nr_ue_meas_reset(meas_t *meas_cell, bool csi_meas)
+{
+  if (csi_meas)
+    meas_cell->csi_rsrp_dBm.init = false;
+  else
+    meas_cell->ss_rsrp_dBm.init = false;
+}
+
+static void nr_rrc_process_reconfigurationWithSync(NR_UE_RRC_INST_t *rrc,
+                                                   NR_ReconfigurationWithSync_t *reconfigurationWithSync,
+                                                   int gNB_index)
+{
+  // perform Reconfiguration with sync according to 5.3.5.5.2
+  if (!rrc->as_security_activated && !(get_softmodem_params()->phy_test || get_softmodem_params()->do_ra)) {
+    // if the AS security is not activated, perform the actions upon going to RRC_IDLE as specified in 5.3.11
+    // with the release cause 'other' upon which the procedure ends
+    NR_Release_Cause_t release_cause = OTHER;
+    nr_rrc_going_to_IDLE(rrc, release_cause, NULL);
+    return;
+  }
+
+  // Clear neighbor cell lists from measurement objects during handover
+  rrcPerNB_t *rrcNB = &rrc->perNB[gNB_index];
+  for (int i = 0; i < MAX_MEAS_OBJ; i++) {
+    if (rrcNB->MeasObj[i] && rrcNB->MeasObj[i]->measObject.present == NR_MeasObjectToAddMod__measObject_PR_measObjectNR) {
+      NR_MeasObjectNR_t *measObjNR = rrcNB->MeasObj[i]->measObject.choice.measObjectNR;
+      if (measObjNR->cellsToAddModList) {
+        ASN_STRUCT_FREE(asn_DEF_NR_CellsToAddModList, measObjNR->cellsToAddModList);
+        measObjNR->cellsToAddModList = NULL;
+      }
+    }
+  }
+
+  l3_measurements_t *l3m = &rrcNB->l3_measurements;
+  for (int i = 0; i < NUMBER_OF_NEIGHBORING_CELLS_MAX; i++) {
+    nr_ue_meas_reset(&l3m->neighboring_cell[i], false);
+    nr_ue_meas_reset(&l3m->neighboring_cell[i], true);
+  }
+
+  if (reconfigurationWithSync->spCellConfigCommon) {
+    /* if the frequencyInfoDL is included, consider the target SpCell
+       to be one on the SSB frequency indicated by the frequencyInfoDL */
+    const NR_DownlinkConfigCommon_t *dcc = reconfigurationWithSync->spCellConfigCommon->downlinkConfigCommon;
+    if (dcc && dcc->frequencyInfoDL && dcc->frequencyInfoDL->absoluteFrequencySSB) {
+      rrc->arfcn_ssb = *dcc->frequencyInfoDL->absoluteFrequencySSB;
+      LOG_I(NR_RRC, "UE %ld: updated ARFCN_SSB=%ld\n", rrc->ue_id, rrc->arfcn_ssb);
+    }
+
+    // consider the target SpCell to be one with a physical cell identity indicated by the physCellId
+    if (!reconfigurationWithSync->spCellConfigCommon->physCellId)
+      LOG_E(NR_RRC, "physCellId absent but should be mandatory present upon cell change and cell addition\n");
+    else
+      rrc->phyCellID = *reconfigurationWithSync->spCellConfigCommon->physCellId;
+  }
+
+  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
+  nr_timer_stop(&tac->T310);
+  if (!get_softmodem_params()->phy_test) {
+    // T304 is stopped upon completion of RA procedure which is not done in phy-test mode
+    int t304_value = nr_rrc_get_T304(reconfigurationWithSync->t304);
+    nr_timer_setup(&tac->T304, t304_value, 10); // 10ms step
+    nr_timer_start(&tac->T304);
+  }
+  rrc->rnti = reconfigurationWithSync->newUE_Identity;
+  // reset the MAC entity of this cell group (done at MAC in handle_reconfiguration_with_sync)
+
+  // 3GPP TS38.331 section 5.3.5.5.2
+  nr_timer_stop(&tac->T430);
+
+  if (rrc->target_ntncfg) {
+    ASN_STRUCT_FREE(asn_DEF_NR_NTN_Config_r17, rrc->target_ntncfg);
+    rrc->target_ntncfg = NULL;
+    rrc->process_target_ntncfg = false;
+  }
+  if (reconfigurationWithSync->spCellConfigCommon &&
+      reconfigurationWithSync->spCellConfigCommon->ext2 &&
+      reconfigurationWithSync->spCellConfigCommon->ext2->ntn_Config_r17) {
+    NR_NTN_Config_r17_t *ntncfg = reconfigurationWithSync->spCellConfigCommon->ext2->ntn_Config_r17;
+    // EPOCH time is always sent if NTN config is sent through DCCH
+    AssertFatal(ntncfg->epochTime_r17, "NTN-CONFIG sent in dedicated mode should have EPOCHTIME\n");
+    const int copy_result = asn_copy(&asn_DEF_NR_NTN_Config_r17, (void **)&rrc->target_ntncfg, ntncfg);
+    AssertFatal(copy_result == 0, "unable to copy NR_NTN_Config_r17_t\n");
+  }
+}
+
+static void nr_rrc_cellgroup_configuration(NR_UE_RRC_INST_t *rrc, NR_CellGroupConfig_t *cgConfig, int gNB_index, bool dedicatedsib1)
+{
+  NR_SpCellConfig_t *spCellConfig = cgConfig->spCellConfig;
+  if(spCellConfig) {
+    NR_ServingCellConfig_t *spCellConfigDedicated = spCellConfig->spCellConfigDedicated;
+    if (spCellConfigDedicated) {
+      if (spCellConfigDedicated->firstActiveDownlinkBWP_Id)
+        rrc->dl_bwp_id = *spCellConfigDedicated->firstActiveDownlinkBWP_Id;
+      if (spCellConfigDedicated->uplinkConfig && spCellConfigDedicated->uplinkConfig->firstActiveUplinkBWP_Id)
+        rrc->ul_bwp_id = *spCellConfigDedicated->uplinkConfig->firstActiveUplinkBWP_Id;
+    }
+    NR_ReconfigurationWithSync_t *reconfigurationWithSync = spCellConfig->reconfigurationWithSync;
+    if (reconfigurationWithSync) {
+      LOG_I(NR_RRC, "Processing reconfigurationWithSync\n");
+      nr_rrc_process_reconfigurationWithSync(rrc, reconfigurationWithSync, gNB_index);
+      // if RRCReconfiguration does not include dedicatedSIB1-Delivery
+      // if the active downlink BWP, which is indicated by the firstActiveDownlinkBWP-Id for the target SpCell of the MCG,
+      // has a common search space configured by searchSpaceSIB1
+      // acquire the SIB1, which is scheduled as specified in TS 38.213 [13], of the target SpCell of the MCG
+      if (!dedicatedsib1 && IS_SA_MODE(get_softmodem_params())) {
+        if (rrc->dl_bwp_id == 0) {
+          // Check initial DL BWP for searchSpaceSIB1
+          NR_ServingCellConfigCommon_t *spCellConfigCommon = reconfigurationWithSync->spCellConfigCommon;
+          if (spCellConfigCommon) {
+            NR_DownlinkConfigCommon_t *downlinkConfig = spCellConfigCommon->downlinkConfigCommon;
+            if (downlinkConfig
+                && downlinkConfig->initialDownlinkBWP
+                && downlinkConfig->initialDownlinkBWP->pdcch_ConfigCommon
+                && downlinkConfig->initialDownlinkBWP->pdcch_ConfigCommon->present == NR_SetupRelease_PDCCH_ConfigCommon_PR_setup
+                && downlinkConfig->initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->searchSpaceSIB1) {
+              rrc->sched_reconfsync_sib1 = true;
+            }
+          }
+        } else {
+          // Check dedicated DL BWP for searchSpaceSIB1
+          if (spCellConfig->spCellConfigDedicated->downlinkBWP_ToAddModList) {
+            for (int i = 0; i < spCellConfig->spCellConfigDedicated->downlinkBWP_ToAddModList->list.count; i++) {
+              NR_BWP_Downlink_t *bwp = spCellConfig->spCellConfigDedicated->downlinkBWP_ToAddModList->list.array[i];
+              if (bwp->bwp_Id == rrc->dl_bwp_id && bwp->bwp_Common && bwp->bwp_Common->pdcch_ConfigCommon
+                  && bwp->bwp_Common->pdcch_ConfigCommon->present == NR_SetupRelease_PDCCH_ConfigCommon_PR_setup
+                  && bwp->bwp_Common->pdcch_ConfigCommon->choice.setup->searchSpaceSIB1) {
+                rrc->sched_reconfsync_sib1 = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    nr_rrc_handle_SetupRelease_RLF_TimersAndConstants(rrc, spCellConfig->rlf_TimersAndConstants);
+  }
+
+  nr_rrc_manage_rlc_bearers(rrc, cgConfig);
+
+  if (cgConfig->ext1)
+    AssertFatal(cgConfig->ext1->reportUplinkTxDirectCurrent == NULL, "Reporting of UplinkTxDirectCurrent not implemented\n");
+  AssertFatal(cgConfig->sCellToReleaseList == NULL, "Secondary serving cell release not implemented\n");
+  AssertFatal(cgConfig->sCellToAddModList == NULL, "Secondary serving cell addition not implemented\n");
+}
+
 static void nr_rrc_ue_process_masterCellGroup(NR_UE_RRC_INST_t *rrc,
                                               OCTET_STRING_t *masterCellGroup,
                                               long *fullConfig,
@@ -747,17 +1073,20 @@ static void nr_rrc_ue_process_masterCellGroup(NR_UE_RRC_INST_t *rrc,
 {
   AssertFatal(!fullConfig, "fullConfig not supported yet\n");
   NR_CellGroupConfig_t *cellGroupConfig = NULL;
-  uper_decode(NULL,
-              &asn_DEF_NR_CellGroupConfig,   //might be added prefix later
-              (void **)&cellGroupConfig,
-              (uint8_t *)masterCellGroup->buf,
-              masterCellGroup->size, 0, 0);
-
+  asn_dec_rval_t dec_rval = uper_decode(NULL,
+                                        &asn_DEF_NR_CellGroupConfig, //might be added prefix later
+                                        (void **)&cellGroupConfig,
+                                        (uint8_t *)masterCellGroup->buf,
+                                        masterCellGroup->size, 0, 0);
+  if ((dec_rval.code != RC_OK) && (dec_rval.consumed == 0)) {
+    LOG_E(NR_RRC, "CellGroupConfig decode error\n");
+    return;
+  }
   if (LOG_DEBUGFLAG(DEBUG_ASN1)) {
     xer_fprint(stdout, &asn_DEF_NR_CellGroupConfig, (const void *) cellGroupConfig);
   }
 
-  nr_rrc_cellgroup_configuration(rrc, cellGroupConfig, gNB_index);
+  nr_rrc_cellgroup_configuration(rrc, cellGroupConfig, gNB_index, false);
 
   LOG_D(RRC, "Sending CellGroupConfig to MAC the pointer will be managed by mac\n");
   nr_mac_rrc_message_t rrc_msg = {0};
@@ -765,10 +1094,12 @@ static void nr_rrc_ue_process_masterCellGroup(NR_UE_RRC_INST_t *rrc,
   nr_mac_rrc_config_cg_t *mac_msg = &rrc_msg.payload.config_cg;
   mac_msg->cellGroupConfig = cellGroupConfig;
   mac_msg->UE_NR_Capability = rrc->UECap.UE_NR_Capability;
+  mac_msg->hfn = rrc->current_hfn;
+  mac_msg->frame = rrc->current_frame;
   nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
 }
 
-static void nr_rrc_process_reconfiguration_v1530(NR_UE_RRC_INST_t *rrc, NR_RRCReconfiguration_v1530_IEs_t *rec_1530, int gNB_index)
+static bool nr_rrc_process_reconfiguration_v1530(NR_UE_RRC_INST_t *rrc, NR_RRCReconfiguration_v1530_IEs_t *rec_1530, int gNB_index)
 {
   if (rec_1530->fullConfig) {
     // TODO perform the full configuration procedure as specified in 5.3.5.11 of 331
@@ -782,7 +1113,9 @@ static void nr_rrc_process_reconfiguration_v1530(NR_UE_RRC_INST_t *rrc, NR_RRCRe
     nr_pdcp_config_set_security(rrc->ue_id, 1, true, &sp);
   }
   NR_UE_RRC_SI_INFO *SI_info = &rrc->perNB[gNB_index].SInfo;
+  bool dedicatedsib1 = false;
   if (rec_1530->dedicatedSIB1_Delivery) {
+    dedicatedsib1 = true;
     NR_SIB1_t *sib1 = NULL;
     asn_dec_rval_t dec_rval = uper_decode(NULL,
                                           &asn_DEF_NR_SIB1,
@@ -813,7 +1146,7 @@ static void nr_rrc_process_reconfiguration_v1530(NR_UE_RRC_INST_t *rrc, NR_RRCRe
       SEQUENCE_free(&asn_DEF_NR_SystemInformation, si, 1);
     } else {
       LOG_I(NR_RRC, "[UE %ld] Decoding dedicatedSystemInformationDelivery\n", rrc->ue_id);
-      nr_decode_SI(SI_info, si, rrc, rrc->current_frame);
+      nr_decode_SI(SI_info, si, rrc, rrc->current_hfn, rrc->current_frame);
     }
   }
   if (rec_1530->otherConfig) {
@@ -823,30 +1156,33 @@ static void nr_rrc_process_reconfiguration_v1530(NR_UE_RRC_INST_t *rrc, NR_RRCRe
   NR_RRCReconfiguration_v1540_IEs_t *rec_1540 = rec_1530->nonCriticalExtension;
   if (rec_1540) {
     NR_RRCReconfiguration_v1560_IEs_t *rec_1560 = rec_1540->nonCriticalExtension;
-    if (rec_1560->sk_Counter) {
-      // TODO perform AS security key update procedure as specified in 5.3.5.7
-      LOG_E(NR_RRC, "RRCReconfiguration includes sk-Counter but this is not implemented yet\n");
-    }
-    if (rec_1560->mrdc_SecondaryCellGroupConfig) {
-      // TODO perform handling of mrdc-SecondaryCellGroupConfig as specified in 5.3.5.3
-      LOG_E(NR_RRC, "RRCReconfiguration includes mrdc-SecondaryCellGroupConfig but this is not handled yet\n");
-    }
-    if (rec_1560->radioBearerConfig2) {
-      NR_RadioBearerConfig_t *RadioBearerConfig = NULL;
-      asn_dec_rval_t dec_rval = uper_decode(NULL,
-                                            &asn_DEF_NR_RadioBearerConfig,
-                                            (void **)&RadioBearerConfig,
-                                            (uint8_t *)rec_1560->radioBearerConfig2->buf,
-                                            rec_1560->radioBearerConfig2->size,
-                                            0,
-                                            0);
-      if ((dec_rval.code != RC_OK) && (dec_rval.consumed == 0)) {
-        LOG_E(NR_RRC, "radioBearerConfig2 decode error\n");
-        SEQUENCE_free(&asn_DEF_NR_RadioBearerConfig, RadioBearerConfig, 1);
-      } else
-        nr_rrc_ue_process_RadioBearerConfig(rrc, RadioBearerConfig);
+    if (rec_1560) {
+      if (rec_1560->sk_Counter) {
+        // TODO perform AS security key update procedure as specified in 5.3.5.7
+        LOG_E(NR_RRC, "RRCReconfiguration includes sk-Counter but this is not implemented yet\n");
+      }
+      if (rec_1560->mrdc_SecondaryCellGroupConfig) {
+        // TODO perform handling of mrdc-SecondaryCellGroupConfig as specified in 5.3.5.3
+        LOG_E(NR_RRC, "RRCReconfiguration includes mrdc-SecondaryCellGroupConfig but this is not handled yet\n");
+      }
+      if (rec_1560->radioBearerConfig2) {
+        NR_RadioBearerConfig_t *RadioBearerConfig = NULL;
+        asn_dec_rval_t dec_rval = uper_decode(NULL,
+                                              &asn_DEF_NR_RadioBearerConfig,
+                                              (void **)&RadioBearerConfig,
+                                              (uint8_t *)rec_1560->radioBearerConfig2->buf,
+                                              rec_1560->radioBearerConfig2->size,
+                                              0,
+                                              0);
+        if ((dec_rval.code != RC_OK) && (dec_rval.consumed == 0)) {
+          LOG_E(NR_RRC, "radioBearerConfig2 decode error\n");
+          SEQUENCE_free(&asn_DEF_NR_RadioBearerConfig, RadioBearerConfig, 1);
+        } else
+          nr_rrc_ue_process_RadioBearerConfig(rrc, RadioBearerConfig);
+      }
     }
   }
+  return dedicatedsib1;
 }
 
 static void handle_meas_reporting_remove(rrcPerNB_t *rrc, int id, NR_UE_Timers_Constants_t *timers)
@@ -1045,7 +1381,11 @@ static void handle_measid_remove(rrcPerNB_t *rrc, struct NR_MeasIdToRemoveList *
   }
 }
 
-static void handle_measid_addmod(rrcPerNB_t *rrc, struct NR_MeasIdToAddModList *addmod_list, NR_UE_Timers_Constants_t *timers)
+static void handle_measid_addmod(rrcPerNB_t *rrc,
+                                 struct NR_MeasIdToAddModList *addmod_list,
+                                 NR_UE_Timers_Constants_t *timers,
+                                 nr_neighbor_cell_info_t *neighbor_cells,
+                                 int *num_neighbors)
 {
   for (int i = 0; i < addmod_list->list.count; i++) {
     NR_MeasId_t id = addmod_list->list.array[i]->measId;
@@ -1079,11 +1419,56 @@ static void handle_measid_addmod(rrcPerNB_t *rrc, struct NR_MeasIdToAddModList *
           nr_timer_start(&timers->T321);
         }
       }
+      // Check for A3 event and extract neighbor cell info for MAC/PHY
+      else if (reportNR->reportType.present == NR_ReportConfigNR__reportType_PR_eventTriggered) {
+        NR_EventTriggerConfig_t *eventTriggerConfig = reportNR->reportType.choice.eventTriggered;
+        if (eventTriggerConfig->eventId.present == NR_EventTriggerConfig__eventId_PR_eventA3) {
+          if (rrc->MeasObj[measObjectId]
+              && rrc->MeasObj[measObjectId]->measObject.present == NR_MeasObjectToAddMod__measObject_PR_measObjectNR) {
+            NR_MeasObjectNR_t *obj_nr = rrc->MeasObj[measObjectId]->measObject.choice.measObjectNR;
+
+            uint32_t ssb_freq = 0;
+            if (obj_nr->ssbFrequency) {
+              ssb_freq = *obj_nr->ssbFrequency;
+            }
+
+            if (obj_nr->cellsToAddModList) {
+              NR_CellsToAddModList_t *cellsToAddModList = obj_nr->cellsToAddModList;
+              for (int j = 0; j < cellsToAddModList->list.count; j++) {
+                if (*num_neighbors < NUMBER_OF_NEIGHBORING_CELLS_MAX) {
+                  NR_CellsToAddMod_t *cell = cellsToAddModList->list.array[j];
+                  neighbor_cells[*num_neighbors].Nid_cell = cell->physCellId;
+                  neighbor_cells[*num_neighbors].ssb_freq = ssb_freq;
+                  neighbor_cells[*num_neighbors].active = 1;
+                  (*num_neighbors)++;
+                } else {
+                  LOG_W(NR_RRC,
+                        "More than %d neighboring cells configured, ignoring excess cells!\n",
+                        NUMBER_OF_NEIGHBORING_CELLS_MAX);
+                  break;
+                }
+              }
+            } else {
+              // We do not know PCI of neighboring cells, so we do blind search
+              if (*num_neighbors < NUMBER_OF_NEIGHBORING_CELLS_MAX) {
+                neighbor_cells[*num_neighbors].Nid_cell = -1;
+                neighbor_cells[*num_neighbors].ssb_freq = ssb_freq;
+                neighbor_cells[*num_neighbors].active = 1;
+                (*num_neighbors)++;
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
 
-static void nr_rrc_ue_process_measConfig(rrcPerNB_t *rrc, NR_MeasConfig_t *const measConfig, NR_UE_Timers_Constants_t *timers)
+static void nr_rrc_ue_process_measConfig(rrcPerNB_t *rrc,
+                                         NR_MeasConfig_t *const measConfig,
+                                         NR_UE_Timers_Constants_t *timers,
+                                         nr_neighbor_cell_info_t *neighbor_cells,
+                                         int *num_neighbors)
 {
   if (measConfig->measObjectToRemoveList)
     handle_measobj_remove(rrc, measConfig->measObjectToRemoveList, timers);
@@ -1104,7 +1489,7 @@ static void nr_rrc_ue_process_measConfig(rrcPerNB_t *rrc, NR_MeasConfig_t *const
     handle_measid_remove(rrc, measConfig->measIdToRemoveList, timers);
 
   if (measConfig->measIdToAddModList)
-    handle_measid_addmod(rrc, measConfig->measIdToAddModList, timers);
+    handle_measid_addmod(rrc, measConfig->measIdToAddModList, timers, neighbor_cells, num_neighbors);
 
   LOG_W(NR_RRC, "Measurement gaps not yet supported!\n");
 
@@ -1125,8 +1510,9 @@ static void nr_rrc_ue_process_rrcReconfiguration(NR_UE_RRC_INST_t *rrc, int gNB_
     case NR_RRCReconfiguration__criticalExtensions_PR_rrcReconfiguration: {
       NR_RRCReconfiguration_IEs_t *ie = reconfiguration->criticalExtensions.choice.rrcReconfiguration;
 
+      bool dedicatedsib1 = false;
       if (ie->nonCriticalExtension)
-        nr_rrc_process_reconfiguration_v1530(rrc, ie->nonCriticalExtension, gNB_index);
+        dedicatedsib1 = nr_rrc_process_reconfiguration_v1530(rrc, ie->nonCriticalExtension, gNB_index);
 
       if (ie->radioBearerConfig) {
         LOG_I(NR_RRC, "RRCReconfiguration includes radio Bearer Configuration\n");
@@ -1158,24 +1544,30 @@ static void nr_rrc_ue_process_rrcReconfiguration(NR_UE_RRC_INST_t *rrc, int gNB_
           LOG_E(NR_RRC, "\n");
           // free the memory
           SEQUENCE_free(&asn_DEF_NR_CellGroupConfig, (void *)cellGroupConfig, 1);
+        } else {
+          if (LOG_DEBUGFLAG(DEBUG_ASN1))
+            xer_fprint(stdout, &asn_DEF_NR_CellGroupConfig, (const void *) cellGroupConfig);
+
+          nr_rrc_cellgroup_configuration(rrc, cellGroupConfig, gNB_index, dedicatedsib1);
+          AssertFatal(!IS_SA_MODE(get_softmodem_params()), "secondaryCellGroup only used in NSA for now\n");
+          nr_mac_rrc_message_t rrc_msg = {0};
+          rrc_msg.payload_type = NR_MAC_RRC_CONFIG_CG;
+          nr_mac_rrc_config_cg_t *config_cg = &rrc_msg.payload.config_cg;
+          config_cg->cellGroupConfig = cellGroupConfig;
+          config_cg->UE_NR_Capability = rrc->UECap.UE_NR_Capability;
+          config_cg->hfn = rrc->current_hfn;
+          config_cg->frame = rrc->current_frame;
+          nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
         }
-
-        if (LOG_DEBUGFLAG(DEBUG_ASN1))
-          xer_fprint(stdout, &asn_DEF_NR_CellGroupConfig, (const void *) cellGroupConfig);
-
-        nr_rrc_cellgroup_configuration(rrc, cellGroupConfig, gNB_index);
-
-        AssertFatal(!IS_SA_MODE(get_softmodem_params()), "secondaryCellGroup only used in NSA for now\n");
-        nr_mac_rrc_message_t rrc_msg = {0};
-        rrc_msg.payload_type = NR_MAC_RRC_CONFIG_CG;
-        nr_mac_rrc_config_cg_t *config_cg = &rrc_msg.payload.config_cg;
-        config_cg->cellGroupConfig = cellGroupConfig;
-        config_cg->UE_NR_Capability = rrc->UECap.UE_NR_Capability;
-        nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
       }
       if (ie->measConfig) {
         LOG_I(NR_RRC, "RRCReconfiguration includes Measurement Configuration\n");
-        nr_rrc_ue_process_measConfig(rrcNB, ie->measConfig, &rrc->timers_and_constants);
+        nr_neighbor_cell_info_t neighbor_cells[NUMBER_OF_NEIGHBORING_CELLS_MAX];
+        int num_neighbors = 0;
+        nr_rrc_ue_process_measConfig(rrcNB, ie->measConfig, &rrc->timers_and_constants, neighbor_cells, &num_neighbors);
+        if (num_neighbors > 0) {
+          nr_rrc_mac_config_req_meas(rrc->ue_id, neighbor_cells, num_neighbors);
+        }
       }
       if (ie->lateNonCriticalExtension) {
         LOG_E(NR_RRC, "RRCReconfiguration includes lateNonCriticalExtension. Not handled.\n");
@@ -1266,6 +1658,7 @@ NR_UE_RRC_INST_t* nr_rrc_init_ue(char* uecap_file, int instance_id, int num_ant_
   rrc->dl_bwp_id = 0;
   rrc->ul_bwp_id = 0;
   rrc->as_security_activated = false;
+  rrc->sched_reconfsync_sib1 = false;
   rrc->detach_after_release = false;
   rrc->reconfig_after_reestab = false;
   /* 5G-S-TMSI */
@@ -1450,7 +1843,21 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
                                                  uint8_t *const bufferP,
                                                  const uint8_t buffer_len)
 {
+  // MIB received on the target cell. Now process target ntncfg once new timing is received.
+  if (phycellid == rrc->phyCellID && rrc->target_ntncfg) {
+    rrc->process_target_ntncfg = true;
+  }
+
   NR_BCCH_BCH_Message_t *bcch_message = NULL;
+  if (rrc->phyCellID != phycellid || rrc->arfcn_ssb != ssb_arfcn) {
+    LOG_I(NR_RRC,
+          "[UE %ld] BCCH update: phyCellID %d->%u, arfcn_ssb %ld->%ld\n",
+          rrc->ue_id,
+          rrc->phyCellID,
+          phycellid,
+          rrc->arfcn_ssb,
+          ssb_arfcn);
+  }
   rrc->phyCellID = phycellid;
   rrc->arfcn_ssb = ssb_arfcn;
 
@@ -1490,17 +1897,21 @@ static void nr_rrc_ue_decode_NR_BCCH_BCH_Message(NR_UE_RRC_INST_t *rrc,
       && rrc->nrRrcState != RRC_STATE_DETACH_NR) {
     // to schedule MAC to get SI if required
     get_sib = check_si_status(SI_info);
-    if (get_sib)
-      SI_info->sib_pending = true;
   }
   if (bcch_message->message.present == NR_BCCH_BCH_MessageType_PR_mib) {
     nr_mac_rrc_message_t rrc_msg = {0};
     rrc_msg.payload_type = NR_MAC_RRC_CONFIG_MIB;
     nr_mac_rrc_config_mib_t *config_mib = &rrc_msg.payload.config_mib;
     config_mib->bcch = bcch_message;
-    config_mib->get_sib = get_sib;
     config_mib->access_barred = barred;
     nr_rrc_send_msg_to_mac(rrc, &rrc_msg);
+    if (get_sib) {
+      SI_info->sib_pending = true;
+      nr_mac_rrc_message_t sib_msg = {0};
+      sib_msg.payload_type = NR_MAC_RRC_SCHED_SIB;
+      sib_msg.payload.sched_sib.get_sib = get_sib;
+      nr_rrc_send_msg_to_mac(rrc, &sib_msg);
+    }
   } else {
     LOG_E(NR_RRC, "RRC-received BCCH message is not a MIB\n");
     ASN_STRUCT_FREE(asn_DEF_NR_BCCH_BCH_Message, bcch_message);
@@ -1594,6 +2005,7 @@ static void nr_rrc_ue_decode_NR_BCCH_DL_SCH_Message(NR_UE_RRC_INST_t *rrc,
                                                     const uint8_t Sdu_len,
                                                     const uint8_t rsrq,
                                                     const uint8_t rsrp,
+                                                    int hfn,
                                                     int frame,
                                                     int slot)
 {
@@ -1633,7 +2045,7 @@ static void nr_rrc_ue_decode_NR_BCCH_DL_SCH_Message(NR_UE_RRC_INST_t *rrc,
       case NR_BCCH_DL_SCH_MessageType__c1_PR_systemInformation:
         LOG_I(NR_RRC, "[UE %ld] %d:%d Decoding SI\n", rrc->ue_id, frame, slot);
         NR_SystemInformation_t *si = bcch_message->message.choice.c1->choice.systemInformation;
-        nr_decode_SI(SI_info, si, rrc, frame);
+        nr_decode_SI(SI_info, si, rrc, hfn, frame);
         break;
       case NR_BCCH_DL_SCH_MessageType__c1_PR_NOTHING:
       default:
@@ -1642,124 +2054,6 @@ static void nr_rrc_ue_decode_NR_BCCH_DL_SCH_Message(NR_UE_RRC_INST_t *rrc,
   }
   SEQUENCE_free(&asn_DEF_NR_BCCH_DL_SCH_Message, bcch_message, ASFM_FREE_EVERYTHING);
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME( VCD_SIGNAL_DUMPER_FUNCTIONS_UE_DECODE_BCCH, VCD_FUNCTION_OUT );
-}
-
-static void nr_rrc_signal_maxrtxindication(int ue_id)
-{
-  MessageDef *msg = itti_alloc_new_message(TASK_RLC_UE, ue_id, NR_RRC_RLC_MAXRTX);
-  NR_RRC_RLC_MAXRTX(msg).ue_id = ue_id;
-  itti_send_msg_to_task(TASK_RRC_NRUE, ue_id, msg);
-}
-
-static void nr_rrc_manage_rlc_bearers(NR_UE_RRC_INST_t *rrc, const NR_CellGroupConfig_t *cellGroupConfig)
-{
-  if (cellGroupConfig->rlc_BearerToReleaseList != NULL) {
-    for (int i = 0; i < cellGroupConfig->rlc_BearerToReleaseList->list.count; i++) {
-      NR_LogicalChannelIdentity_t *lcid = cellGroupConfig->rlc_BearerToReleaseList->list.array[i];
-      AssertFatal(lcid, "LogicalChannelIdentity shouldn't be null here\n");
-      nr_rlc_release_entity(rrc->ue_id, *lcid);
-    }
-  }
-
-  if (cellGroupConfig->rlc_BearerToAddModList != NULL) {
-    for (int i = 0; i < cellGroupConfig->rlc_BearerToAddModList->list.count; i++) {
-      NR_RLC_BearerConfig_t *rlc_bearer = cellGroupConfig->rlc_BearerToAddModList->list.array[i];
-      NR_LogicalChannelIdentity_t lcid = rlc_bearer->logicalChannelIdentity;
-      if (rrc->active_RLC_entity[lcid]) {
-        if (rlc_bearer->reestablishRLC)
-          nr_rlc_reestablish_entity(rrc->ue_id, lcid);
-        if (rlc_bearer->rlc_Config)
-          nr_rlc_reconfigure_entity(rrc->ue_id, lcid, rlc_bearer->rlc_Config);
-      } else {
-        rrc->active_RLC_entity[lcid] = true;
-        AssertFatal(rlc_bearer->servedRadioBearer, "servedRadioBearer mandatory in case of setup\n");
-        AssertFatal(rlc_bearer->servedRadioBearer->present != NR_RLC_BearerConfig__servedRadioBearer_PR_NOTHING,
-                    "Invalid RB for RLC configuration\n");
-        if (rlc_bearer->servedRadioBearer->present == NR_RLC_BearerConfig__servedRadioBearer_PR_srb_Identity) {
-          NR_SRB_Identity_t srb_id = rlc_bearer->servedRadioBearer->choice.srb_Identity;
-          nr_rlc_add_srb(rrc->ue_id, srb_id, rlc_bearer);
-          nr_rlc_set_rlf_handler(rrc->ue_id, nr_rrc_signal_maxrtxindication);
-        } else { // DRB
-          NR_DRB_Identity_t drb_id = rlc_bearer->servedRadioBearer->choice.drb_Identity;
-          nr_rlc_add_drb(rrc->ue_id, drb_id, rlc_bearer);
-          nr_rlc_set_rlf_handler(rrc->ue_id, nr_rrc_signal_maxrtxindication);
-        }
-      }
-    }
-  }
-}
-
-static void nr_rrc_process_reconfigurationWithSync(NR_UE_RRC_INST_t *rrc,
-                                                   NR_ReconfigurationWithSync_t *reconfigurationWithSync,
-                                                   int gNB_index)
-{
-  // perform Reconfiguration with sync according to 5.3.5.5.2
-  if (!rrc->as_security_activated && !(get_softmodem_params()->phy_test || get_softmodem_params()->do_ra)) {
-    // if the AS security is not activated, perform the actions upon going to RRC_IDLE as specified in 5.3.11
-    // with the release cause 'other' upon which the procedure ends
-    NR_Release_Cause_t release_cause = OTHER;
-    nr_rrc_going_to_IDLE(rrc, release_cause, NULL);
-    return;
-  }
-
-  if (reconfigurationWithSync->spCellConfigCommon) {
-    /* if the frequencyInfoDL is included, consider the target SpCell
-       to be one on the SSB frequency indicated by the frequencyInfoDL */
-    const NR_DownlinkConfigCommon_t *dcc = reconfigurationWithSync->spCellConfigCommon->downlinkConfigCommon;
-    if (dcc && dcc->frequencyInfoDL && dcc->frequencyInfoDL->absoluteFrequencySSB)
-      rrc->arfcn_ssb = *dcc->frequencyInfoDL->absoluteFrequencySSB;
-
-    // consider the target SpCell to be one with a physical cell identity indicated by the physCellId
-    rrc->phyCellID = *reconfigurationWithSync->spCellConfigCommon->physCellId;
-  }
-
-  NR_UE_Timers_Constants_t *tac = &rrc->timers_and_constants;
-  nr_timer_stop(&tac->T310);
-  if (!get_softmodem_params()->phy_test) {
-    // T304 is stopped upon completion of RA procedure which is not done in phy-test mode
-    int t304_value = nr_rrc_get_T304(reconfigurationWithSync->t304);
-    nr_timer_setup(&tac->T304, t304_value, 10); // 10ms step
-    nr_timer_start(&tac->T304);
-  }
-  rrc->rnti = reconfigurationWithSync->newUE_Identity;
-  // reset the MAC entity of this cell group (done at MAC in handle_reconfiguration_with_sync)
-
-  // 3GPP TS38.331 section 5.3.5.5.2
-  nr_timer_stop(&tac->T430);
-  if (reconfigurationWithSync->spCellConfigCommon &&
-      reconfigurationWithSync->spCellConfigCommon->ext2 &&
-      reconfigurationWithSync->spCellConfigCommon->ext2->ntn_Config_r17) {
-    NR_NTN_Config_r17_t *ntncfg = reconfigurationWithSync->spCellConfigCommon->ext2->ntn_Config_r17;
-    // EPOCH time is always sent if NTN config is sent through DCCH
-    AssertFatal(ntncfg->epochTime_r17, "NTN-CONFIG sent in dedicated mode should have EPOCHTIME\n");
-    nr_rrc_process_ntnconfig(rrc, &rrc->perNB[gNB_index].SInfo, ntncfg, rrc->current_frame);
-  }
-}
-
-void nr_rrc_cellgroup_configuration(NR_UE_RRC_INST_t *rrc, NR_CellGroupConfig_t *cellGroupConfig, int gNB_index)
-{
-  NR_SpCellConfig_t *spCellConfig = cellGroupConfig->spCellConfig;
-  if(spCellConfig) {
-    if (spCellConfig->reconfigurationWithSync) {
-      LOG_I(NR_RRC, "Processing reconfigurationWithSync\n");
-      nr_rrc_process_reconfigurationWithSync(rrc, spCellConfig->reconfigurationWithSync, gNB_index);
-    }
-    nr_rrc_handle_SetupRelease_RLF_TimersAndConstants(rrc, spCellConfig->rlf_TimersAndConstants);
-    if (spCellConfig->spCellConfigDedicated) {
-      if (spCellConfig->spCellConfigDedicated->firstActiveDownlinkBWP_Id)
-        rrc->dl_bwp_id = *spCellConfig->spCellConfigDedicated->firstActiveDownlinkBWP_Id;
-      if (spCellConfig->spCellConfigDedicated->uplinkConfig &&
-          spCellConfig->spCellConfigDedicated->uplinkConfig->firstActiveUplinkBWP_Id)
-        rrc->dl_bwp_id = *spCellConfig->spCellConfigDedicated->uplinkConfig->firstActiveUplinkBWP_Id;
-    }
-  }
-
-  nr_rrc_manage_rlc_bearers(rrc, cellGroupConfig);
-
-  if (cellGroupConfig->ext1)
-    AssertFatal(cellGroupConfig->ext1->reportUplinkTxDirectCurrent == NULL, "Reporting of UplinkTxDirectCurrent not implemented\n");
-  AssertFatal(cellGroupConfig->sCellToReleaseList == NULL, "Secondary serving cell release not implemented\n");
-  AssertFatal(cellGroupConfig->sCellToAddModList == NULL, "Secondary serving cell addition not implemented\n");
 }
 
 static void rrc_ue_generate_RRCSetupComplete(const NR_UE_RRC_INST_t *rrc, const uint8_t Transaction_id)
@@ -1830,10 +2124,7 @@ static void nr_rrc_rrcsetup_fallback(NR_UE_RRC_INST_t *rrc)
     }
   }
   for (int i = 1; i < NR_MAX_NUM_LCID; i++) {
-    if (rrc->active_RLC_entity[i]) {
-      rrc->active_RLC_entity[i] = false;
-      nr_rlc_release_entity(rrc->ue_id, i);
-    }
+    nr_rrc_release_rlc_entity(rrc, i);
   }
   nr_sdap_delete_ue_entities(rrc->ue_id);
 
@@ -2151,6 +2442,9 @@ static void nr_rrc_ue_generate_rrcReestablishmentComplete(const NR_UE_RRC_INST_t
   nr_pdcp_data_req_srb(rrc->ue_id, srb_id, 0, size, buffer, deliver_pdu_srb_rlc, NULL);
 }
 
+/** @brief Process RRCReestablishment message
+ * This function processes the RRCReestablishment message received from the gNB,
+ * implementing procedures as described in 38.331 section 5.3.7.5 */
 static void nr_rrc_ue_process_rrcReestablishment(NR_UE_RRC_INST_t *rrc,
                                                  const int gNB_index,
                                                  const NR_RRCReestablishment_t *rrcReestablishment,
@@ -2159,18 +2453,19 @@ static void nr_rrc_ue_process_rrcReestablishment(NR_UE_RRC_INST_t *rrc,
                                                  int msg_size,
                                                  const nr_pdcp_integrity_data_t *msg_integrity)
 {
-  // implementign procedues as described in 38.331 section 5.3.7.5
   // stop timer T301
   NR_UE_Timers_Constants_t *timers = &rrc->timers_and_constants;
   nr_timer_stop(&timers->T301);
-  // store the nextHopChainingCount value
   NR_RRCReestablishment_IEs_t *ies = rrcReestablishment->criticalExtensions.choice.rrcReestablishment;
   AssertFatal(ies, "Not expecting RRCReestablishment_IEs to be NULL\n");
-  // TODO need to understand how to use nextHopChainingCount
-  // int nh = rrcReestablishment->criticalExtensions.choice.rrcReestablishment->nextHopChainingCount;
 
-  // update the K gNB key based on the current K gNB key or the NH, using the stored nextHopChainingCount value
-  nr_derive_key_ng_ran_star(rrc->phyCellID, rrc->arfcn_ssb, rrc->kgnb, rrc->kgnb);
+  // Update KgNB based on the current K gNB key or the NH,
+  // using the received nextHopChainingCount (per 33.501 6.9.2.3.4)
+  // received from RRCReestablishment and update the stored value in rrc->nhcc
+  int8_t received_ncc = ies->nextHopChainingCount;
+  nr_ue_nas_t *nas = get_ue_nas_info(rrc->ue_id);
+  const uint8_t *kamf = nas->security.kamf;
+  nr_update_kgnb_from_ncc(rrc, kamf, received_ncc);
 
   // derive the K_RRCenc key associated with the previously configured cipheringAlgorithm
   // derive the K_RRCint key associated with the previously configured integrityProtAlgorithm
@@ -2192,6 +2487,7 @@ static void nr_rrc_ue_process_rrcReestablishment(NR_UE_RRC_INST_t *rrc,
   // perform the actions upon going to RRC_IDLE as specified in 5.3.11
   // with release cause 'RRC connection failure', upon which the procedure ends
   if (!integrity_pass) {
+    LOG_W(NR_RRC, "Integrity of RRCReestablishment failed, going to IDLE\n");
     NR_Release_Cause_t release_cause = RRC_CONNECTION_FAILURE;
     nr_rrc_going_to_IDLE(rrc, release_cause, NULL);
     return;
@@ -2235,13 +2531,7 @@ static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc, NR_UECa
   AssertFatal (enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
   rrc->UECap.sdu_size = (enc_rval.encoded + 7) / 8;
   LOG_I(PHY, "[RRC]UE NR Capability encoded, %d bytes (%zd bits)\n", rrc->UECap.sdu_size, enc_rval.encoded + 7);
-  /* RAT Container */
-  NR_UE_CapabilityRAT_Container_t *ue_CapabilityRAT_Container = CALLOC(1, sizeof(NR_UE_CapabilityRAT_Container_t));
-  ue_CapabilityRAT_Container->rat_Type = NR_RAT_Type_nr;
-  OCTET_STRING_fromBuf(&ue_CapabilityRAT_Container->ue_CapabilityRAT_Container, (const char *)rrc->UECap.sdu, rrc->UECap.sdu_size);
   NR_UECapabilityEnquiry_IEs_t *ueCapabilityEnquiry_ie = UECapabilityEnquiry->criticalExtensions.choice.ueCapabilityEnquiry;
-  //  ue_CapabilityRAT_Container.ueCapabilityRAT_Container.buf  = UE_rrc_inst[ue_mod_idP].UECapability;
-  // ue_CapabilityRAT_Container.ueCapabilityRAT_Container.size = UE_rrc_inst[ue_mod_idP].UECapability_size;
   AssertFatal(UECapabilityEnquiry->criticalExtensions.present == NR_UECapabilityEnquiry__criticalExtensions_PR_ueCapabilityEnquiry,
               "UECapabilityEnquiry->criticalExtensions.present (%d) != UECapabilityEnquiry__criticalExtensions_PR_c1 (%d)\n",
               UECapabilityEnquiry->criticalExtensions.present,NR_UECapabilityEnquiry__criticalExtensions_PR_ueCapabilityEnquiry);
@@ -2254,6 +2544,10 @@ static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc, NR_UECa
 
   for (int i = 0; i < ueCapabilityEnquiry_ie->ue_CapabilityRAT_RequestList.list.count; i++) {
     if (ueCapabilityEnquiry_ie->ue_CapabilityRAT_RequestList.list.array[i]->rat_Type == NR_RAT_Type_nr) {
+      /* RAT Container */
+      NR_UE_CapabilityRAT_Container_t *ue_CapabilityRAT_Container = CALLOC(1, sizeof(NR_UE_CapabilityRAT_Container_t));
+      ue_CapabilityRAT_Container->rat_Type = NR_RAT_Type_nr;
+      OCTET_STRING_fromBuf(&ue_CapabilityRAT_Container->ue_CapabilityRAT_Container, (const char *)rrc->UECap.sdu, rrc->UECap.sdu_size);
       asn1cSeqAdd(&UEcapList->list, ue_CapabilityRAT_Container);
       uint8_t buffer[500];
       asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_UL_DCCH_Message, NULL, (void *)&ul_dcch_msg, buffer, 500);
@@ -2267,8 +2561,7 @@ static void nr_rrc_ue_process_ueCapabilityEnquiry(NR_UE_RRC_INST_t *rrc, NR_UECa
       nr_pdcp_data_req_srb(rrc->ue_id, srb_id, 0, (enc_rval.encoded + 7) / 8, buffer, deliver_pdu_srb_rlc, NULL);
     }
   }
-  /* Free struct members after it's done
-     including locally allocated ue_CapabilityRAT_Container */
+  /* Free struct members after it's done including locally allocated ue_CapabilityRAT_Container */
   ASN_STRUCT_RESET(asn_DEF_NR_UL_DCCH_Message, &ul_dcch_msg);
 }
 
@@ -2412,13 +2705,10 @@ static void apply_ema(val_init_t *vi_rsrp_dBm, float filter_coeff_rsrp, int rsrp
   *meas_init = true;
 }
 
-void nr_ue_meas_filtering(rrcPerNB_t *rrc, bool is_neighboring_cell, uint16_t Nid_cell, bool csi_meas, int rsrp_dBm)
+void nr_ue_meas_filtering(rrcPerNB_t *rrc, meas_t *meas_cell, uint16_t Nid_cell, bool csi_meas, int rsrp_dBm)
 {
-  if (is_neighboring_cell)
-    return;
-
   l3_measurements_t *l3_measurements = &rrc->l3_measurements;
-  meas_t *meas_cell = &l3_measurements->serving_cell;
+
   if (meas_cell->Nid_cell != Nid_cell) {
     meas_cell->ss_rsrp_dBm.init = false;
     meas_cell->csi_rsrp_dBm.init = false;
@@ -2463,6 +2753,179 @@ static long get_measurement_report_interval_ms(NR_ReportInterval_t interval)
   }
 }
 
+static int get_rsrp_value(const meas_t *cell)
+{
+  if (cell->ss_rsrp_dBm.init)
+    return cell->ss_rsrp_dBm.val;
+  if (cell->csi_rsrp_dBm.init)
+    return cell->csi_rsrp_dBm.val;
+  return INT_MAX;
+}
+
+static int get_meas_id(rrcPerNB_t *rrcNB, int report_config_id)
+{
+  for (int j = 0; j < MAX_MEAS_ID; j++) {
+    NR_MeasIdToAddMod_t *meas_id_toAddMod = rrcNB->MeasId[j];
+    if (meas_id_toAddMod && meas_id_toAddMod->reportConfigId == report_config_id)
+      return meas_id_toAddMod->measId;
+  }
+  return -1;
+}
+
+static void setup_meas_trigger(l3_measurements_t *l3_measurements,
+                               NR_EventTriggerConfig_t *event_config,
+                               int meas_id,
+                               long trigger_quantity,
+                               bool neighbor_cell_valid)
+{
+  l3_measurements->trigger_to_measid = meas_id;
+  l3_measurements->trigger_quantity = trigger_quantity;
+  l3_measurements->rs_type = event_config->rsType;
+  l3_measurements->reports_sent = 0;
+  l3_measurements->max_reports =
+      (event_config->reportAmount == NR_EventTriggerConfig__reportAmount_infinity) ? INT_MAX : (1 << event_config->reportAmount);
+  l3_measurements->report_interval_ms = get_measurement_report_interval_ms(event_config->reportInterval);
+  l3_measurements->neighbor_cell_valid = neighbor_cell_valid;
+}
+
+static void start_meas_event(l3_measurements_t *l3_measurements,
+                             rrcPerNB_t *rrcNB,
+                             NR_timer_t *event_timer,
+                             NR_EventTriggerConfig_t *event_config,
+                             int report_config_id,
+                             long trigger_quantity,
+                             bool neighbor_cell_valid,
+                             long time_to_trigger)
+{
+  nr_timer_setup(event_timer, get_event_time_to_trigger(time_to_trigger), 10);
+  nr_timer_start(event_timer);
+
+  int meas_id = get_meas_id(rrcNB, report_config_id);
+  AssertFatal(meas_id > 0, "meas_id did not found for report_config_id %i\n", report_config_id);
+
+  setup_meas_trigger(l3_measurements, event_config, meas_id, trigger_quantity, neighbor_cell_valid);
+}
+
+static void stop_meas_event(l3_measurements_t *l3_measurements, NR_timer_t *event_timer)
+{
+  nr_timer_stop(event_timer);
+  nr_timer_stop(&l3_measurements->periodic_report_timer);
+  l3_measurements->reports_sent = 0;
+}
+
+// TS 38.331 - 5.5.4.3 Event A2 (Serving becomes worse than threshold)
+static void handle_event_a2(l3_measurements_t *l3_measurements,
+                            rrcPerNB_t *rrcNB,
+                            struct NR_EventTriggerConfig__eventId__eventA2 *event_A2,
+                            NR_EventTriggerConfig_t *event_trigger_config,
+                            long report_config_id)
+{
+  if (event_A2->a2_Threshold.present != NR_MeasTriggerQuantity_PR_rsrp)
+    return;
+
+  meas_t *serving_cell = &l3_measurements->serving_cell;
+  int serving_cell_rsrp = get_rsrp_value(serving_cell);
+  if (serving_cell_rsrp == INT_MAX) {
+    LOG_E(NR_RRC, "There are no RSRP measurements taken for the active cell\n");
+  }
+
+  // TS 38.133 - Table 10.1.6.1-1: SS-RSRP and CSI-RSRP measurement report mapping
+  int rsrp_threshold = event_A2->a2_Threshold.choice.rsrp - 157;
+  int rsrp_hysteresis = event_A2->hysteresis >> 1;
+
+  if (serving_cell_rsrp + rsrp_hysteresis < rsrp_threshold) {
+    if (!nr_timer_is_active(&l3_measurements->TA2) && (l3_measurements->reports_sent == 0)) {
+      start_meas_event(l3_measurements,
+                       rrcNB,
+                       &l3_measurements->TA2,
+                       event_trigger_config,
+                       report_config_id,
+                       event_A2->a2_Threshold.present,
+                       false,
+                       event_A2->timeToTrigger);
+
+      LOG_W(NR_RRC,
+            "(active_cell_rsrp) %i + (rsrp_hysteresis) %i < (rsrp_threshold) %i\n",
+            serving_cell_rsrp,
+            rsrp_hysteresis,
+            rsrp_threshold);
+    }
+  } else if (nr_timer_is_active(&l3_measurements->TA2) && (serving_cell_rsrp - rsrp_hysteresis > rsrp_threshold)) {
+    stop_meas_event(l3_measurements, &l3_measurements->TA2);
+  }
+}
+
+// TS 38.331 - 5.5.4.4 Event A3 (Neighbour becomes offset better than SpCell)
+static void handle_event_a3(l3_measurements_t *l3_measurements,
+                            rrcPerNB_t *rrcNB,
+                            struct NR_EventTriggerConfig__eventId__eventA3 *event_A3,
+                            NR_EventTriggerConfig_t *event_trigger_config,
+                            long report_config_id)
+{
+  if (event_A3->a3_Offset.present != NR_MeasTriggerQuantityOffset_PR_rsrp)
+    return;
+
+  meas_t *serving_cell = &l3_measurements->serving_cell;
+
+  int serving_cell_rsrp = get_rsrp_value(serving_cell);
+  if (serving_cell_rsrp == INT_MAX) {
+    LOG_D(NR_RRC, "There are no RSRP measurements taken for the serving cell\n");
+    return;
+  }
+
+  int rsrp_offset = event_A3->a3_Offset.choice.rsrp >> 1;
+  int rsrp_hysteresis = event_A3->hysteresis;
+
+  // Check all neighboring cells for Event A3 condition
+  bool entry_cond_met = false;
+  bool above_leaving_threshold = false;
+  int entry_neighbor_rsrp = INT_MIN;
+
+  for (int i = 0; i < NUMBER_OF_NEIGHBORING_CELLS_MAX; i++) {
+    meas_t *neighboring_cell = &l3_measurements->neighboring_cell[i];
+    int neighboring_cell_rsrp = get_rsrp_value(neighboring_cell);
+
+    if (neighboring_cell_rsrp == INT_MAX) {
+      LOG_D(NR_RRC, "There are no RSRP measurements taken for the neighboring cell %d\n", i);
+      neighboring_cell_rsrp = INT_MIN;
+    }
+
+    // Check entry condition
+    if (neighboring_cell_rsrp > serving_cell_rsrp + rsrp_offset + rsrp_hysteresis) {
+      entry_cond_met = true;
+      entry_neighbor_rsrp = neighboring_cell_rsrp;
+    }
+
+    // Check if any neighbor is still above leaving threshold
+    if (neighboring_cell_rsrp >= serving_cell_rsrp + rsrp_offset - rsrp_hysteresis) {
+      above_leaving_threshold = true;
+    }
+  }
+
+  // Trigger event if any neighbor meets entry condition
+  if (entry_cond_met && !nr_timer_is_active(&l3_measurements->TA3) && (l3_measurements->reports_sent == 0)) {
+    start_meas_event(l3_measurements,
+                     rrcNB,
+                     &l3_measurements->TA3,
+                     event_trigger_config,
+                     report_config_id,
+                     NR_MeasTriggerQuantityOffset_PR_rsrp,
+                     true,
+                     event_A3->timeToTrigger);
+
+    LOG_W(NR_RRC,
+          "(neighboring_cell_rsrp) %i > (serving_cell_rsrp %i) + (rsrp_offset) %i + (rsrp_hysteresis) %i\n",
+          entry_neighbor_rsrp,
+          serving_cell_rsrp,
+          rsrp_offset,
+          rsrp_hysteresis);
+  }
+  // Stop event if all neighbors are below leaving threshold
+  else if (nr_timer_is_active(&l3_measurements->TA3) && !above_leaving_threshold) {
+    stop_meas_event(l3_measurements, &l3_measurements->TA3);
+  }
+}
+
 static void nr_ue_check_meas_report(NR_UE_RRC_INST_t *rrc, const uint8_t gnb_index)
 {
   rrcPerNB_t *rrcNB = rrc->perNB + gnb_index;
@@ -2481,76 +2944,59 @@ static void nr_ue_check_meas_report(NR_UE_RRC_INST_t *rrc, const uint8_t gnb_ind
       continue;
 
     NR_EventTriggerConfig_t *event_trigger_config = report_config_nr->reportType.choice.eventTriggered;
-    if (event_trigger_config->eventId.present != NR_EventTriggerConfig__eventId_PR_eventA2)
-      continue;
 
-    struct NR_EventTriggerConfig__eventId__eventA2 *event_A2 = event_trigger_config->eventId.choice.eventA2;
-    if (event_A2->a2_Threshold.present != NR_MeasTriggerQuantity_PR_rsrp)
-      continue;
-
-    meas_t *serving_cell = &l3_measurements->serving_cell;
-    int serving_cell_rsrp = INT_MAX;
-    if (serving_cell->ss_rsrp_dBm.init == true) {
-      serving_cell_rsrp = serving_cell->ss_rsrp_dBm.val;
-    } else if (serving_cell->csi_rsrp_dBm.init == true) {
-      serving_cell_rsrp = serving_cell->csi_rsrp_dBm.val;
-    } else {
-      LOG_E(NR_RRC, "There are no RSRP measurements taken for the active cell\n");
-    }
-
-    // TS 38.133 - Table 10.1.6.1-1: SS-RSRP and CSI-RSRP measurement report mapping
-    int rsrp_threshold = event_A2->a2_Threshold.choice.rsrp - 157;
-    int rsrp_hysteresis = event_A2->hysteresis >> 1;
-
-    // TS 38.331 - 5.5.4.3 Event A2 (Serving becomes worse than threshold)
-    if (serving_cell_rsrp + rsrp_hysteresis < rsrp_threshold) {
-      if (!nr_timer_is_active(&l3_measurements->TA2) && (l3_measurements->reports_sent == 0)) {
-        nr_timer_setup(&l3_measurements->TA2, get_A2_event_time_to_trigger(event_A2->timeToTrigger), 10);
-        nr_timer_start(&l3_measurements->TA2);
-        int report_config_id = report_config->reportConfigId;
-        int meas_id = -1;
-        for (int j = 0; j < MAX_MEAS_ID; j++) {
-          NR_MeasIdToAddMod_t *meas_id_toAddMod = rrcNB->MeasId[j];
-          if (meas_id_toAddMod == NULL) {
-            continue;
-          }
-          if (meas_id_toAddMod->reportConfigId == report_config_id) {
-            meas_id = meas_id_toAddMod->measId;
-          }
-        }
-        AssertFatal(meas_id > 0, "meas_id did not found for report_config_id %i\n", report_config_id);
-
-        l3_measurements->trigger_to_measid = meas_id;
-        l3_measurements->trigger_quantity = event_A2->a2_Threshold.present;
-        l3_measurements->rs_type = event_trigger_config->rsType;
-        l3_measurements->reports_sent = 0;
-        l3_measurements->max_reports = (event_trigger_config->reportAmount == NR_EventTriggerConfig__reportAmount_infinity)
-                                           ? INT_MAX
-                                           : (1 << event_trigger_config->reportAmount);
-        l3_measurements->report_interval_ms = get_measurement_report_interval_ms(event_trigger_config->reportInterval);
-
-        LOG_W(NR_RRC,
-              "(active_cell_rsrp) %i + (rsrp_hysteresis) %i < (rsrp_threshold) %i\n",
-              serving_cell_rsrp,
-              rsrp_hysteresis,
-              rsrp_threshold);
-      }
-    } else if (nr_timer_is_active(&l3_measurements->TA2) && (serving_cell_rsrp - rsrp_hysteresis > rsrp_threshold)) {
-      nr_timer_stop(&l3_measurements->TA2);
-      nr_timer_stop(&l3_measurements->periodic_report_timer);
-      l3_measurements->reports_sent = 0;
+    switch (event_trigger_config->eventId.present) {
+      case NR_EventTriggerConfig__eventId_PR_eventA2:
+        handle_event_a2(l3_measurements,
+                        rrcNB,
+                        event_trigger_config->eventId.choice.eventA2,
+                        event_trigger_config,
+                        report_config->reportConfigId);
+        break;
+      case NR_EventTriggerConfig__eventId_PR_eventA3:
+        handle_event_a3(l3_measurements,
+                        rrcNB,
+                        event_trigger_config->eventId.choice.eventA3,
+                        event_trigger_config,
+                        report_config->reportConfigId);
+        break;
+      default:
+        break;
     }
   }
 }
 
-void nr_rrc_handle_ra_indication(NR_UE_RRC_INST_t *rrc, bool ra_succeeded)
+static void nr_rrc_handle_ra_indication(NR_UE_RRC_INST_t *rrc, bool ra_succeeded, int gNB_index)
 {
   NR_UE_Timers_Constants_t *timers = &rrc->timers_and_constants;
   if (ra_succeeded && nr_timer_is_active(&timers->T304)) {
     // successful Random Access procedure triggered by reconfigurationWithSync
-    nr_timer_stop(&timers->T304);
-    // TODO handle the rest of procedures as described in 5.3.5.3 for when
+    // procedures described in 5.3.5.3 of 38.331 when
     // reconfigurationWithSync is included in spCellConfig
+    nr_timer_stop(&timers->T304);
+
+    // TODO apply the parts of the CQI reporting configuration,
+    // the scheduling request configuration and the sounding RS
+    // configuration that do not require the UE to know the SFN of the respective target SpCell
+    // TODO apply the parts of the measurement and the radio resource configuration
+    // that require the UE to know the SFN of the respective target SpCell
+    // (not sure what to do for these two points, probably not relevant for our implementation)
+
+    // if T390 is running stop timer T390 for all access categories
+    if (nr_timer_is_active(&timers->T390)) {
+      nr_timer_stop(&timers->T390);
+      // TODO perform the actions as specified in 5.3.14.4.
+    }
+
+    if (rrc->sched_reconfsync_sib1) {
+      rrc->sched_reconfsync_sib1 = false;
+      NR_UE_RRC_SI_INFO *SI_info = &rrc->perNB[gNB_index].SInfo;
+      SI_info->sib_pending = true;
+      nr_mac_rrc_message_t sib_msg = {0};
+      sib_msg.payload_type = NR_MAC_RRC_SCHED_SIB;
+      sib_msg.payload.sched_sib.get_sib = 1;
+      nr_rrc_send_msg_to_mac(rrc, &sib_msg);
+    }
   } else if (!ra_succeeded) {
     // upon random access problem indication from MCG MAC
     // while neither T300, T301, T304, T311 nor T319 are running
@@ -2561,6 +3007,54 @@ void nr_rrc_handle_ra_indication(NR_UE_RRC_INST_t *rrc, bool ra_succeeded)
         && !nr_timer_is_active(&timers->T311)
         && !nr_timer_is_active(&timers->T319))
       handle_rlf_detection(rrc);
+  }
+}
+
+static void nr_rrc_handle_meas_indication(NR_UE_RRC_INST_t *rrc, NRRrcMacMeasDataInd *meas_ind)
+{
+  rrcPerNB_t *rrcNB = rrc->perNB + meas_ind->gnb_index;
+  l3_measurements_t *l3_measurements = &rrcNB->l3_measurements;
+  meas_t *meas_cell = NULL;
+
+  if (meas_ind->is_neighboring_cell) {
+    uint16_t target_nid_cell = meas_ind->Nid_cell;
+    for (int i = 0; i < NUMBER_OF_NEIGHBORING_CELLS_MAX; i++) {
+      if (l3_measurements->neighboring_cell[i].Nid_cell == target_nid_cell) {
+        meas_cell = &l3_measurements->neighboring_cell[i];
+        break;
+      }
+    }
+    if (!meas_cell) {
+      for (int i = 0; i < NUMBER_OF_NEIGHBORING_CELLS_MAX; i++) {
+        if (!l3_measurements->neighboring_cell[i].ss_rsrp_dBm.init && !l3_measurements->neighboring_cell[i].csi_rsrp_dBm.init) {
+          meas_cell = &l3_measurements->neighboring_cell[i];
+          break;
+        }
+      }
+    }
+  } else {
+    meas_cell = &l3_measurements->serving_cell;
+  }
+
+  if (!meas_cell) {
+    LOG_E(NR_RRC, "meas_cell not found!\n");
+    return;
+  }
+
+  if (meas_ind->is_neighboring_cell && meas_ind->rsrp_dBm == INT_MAX) {
+    LOG_W(NR_RRC, "[Nid_cell %i] Neighboring cell not detected. L3 measurements will be reset.\n", meas_ind->Nid_cell);
+    meas_cell->Nid_cell = meas_ind->Nid_cell;
+    nr_ue_meas_reset(meas_cell, meas_ind->is_csi_meas);
+  } else {
+    LOG_D(NR_RRC,
+          "[%s][Nid_cell %i] Received %s measurements: RSRP = %i (dBm)\n",
+          meas_ind->is_neighboring_cell ? "Neighboring cell" : "Active cell",
+          meas_ind->Nid_cell,
+          meas_ind->is_csi_meas ? "CSI meas" : "SSB meas",
+          meas_ind->rsrp_dBm);
+
+    nr_ue_meas_filtering(rrcNB, meas_cell, meas_ind->Nid_cell, meas_ind->is_csi_meas, meas_ind->rsrp_dBm);
+    nr_ue_check_meas_report(rrc, meas_ind->gnb_index);
   }
 }
 
@@ -2598,12 +3092,20 @@ void *rrc_nrue(void *notUsed)
   } break;
 
   case NRRRC_FRAME_PROCESS:
+    rrc->current_hfn = NRRRC_FRAME_PROCESS(msg_p).hfn;
     rrc->current_frame = NRRRC_FRAME_PROCESS(msg_p).frame;
     LOG_D(NR_RRC, "Received %s: frame %d\n", ITTI_MSG_NAME(msg_p), rrc->current_frame);
     // increase the timers every 10ms (every new frame)
     nr_rrc_handle_timers(rrc);
     NR_UE_RRC_SI_INFO *SInfo = &rrc->perNB[NRRRC_FRAME_PROCESS(msg_p).gnb_id].SInfo;
     nr_rrc_SI_timers(SInfo);
+    if (rrc->process_target_ntncfg) {
+      // Process target NTNCFG as the target cells timing is acquired
+      nr_rrc_process_ntnconfig(rrc, &rrc->perNB[NRRRC_FRAME_PROCESS(msg_p).gnb_id].SInfo, rrc->target_ntncfg, rrc->current_frame, true);
+      ASN_STRUCT_FREE(asn_DEF_NR_NTN_Config_r17, rrc->target_ntncfg);
+      rrc->target_ntncfg = NULL;
+      rrc->process_target_ntncfg = false;
+    }
     break;
 
   case NR_RRC_MAC_INAC_IND:
@@ -2634,7 +3136,7 @@ void *rrc_nrue(void *notUsed)
           rrc->ue_id,
           ITTI_MSG_NAME(msg_p),
           NR_RRC_MAC_RA_IND(msg_p).RA_succeeded ? "successful" : "failed");
-    nr_rrc_handle_ra_indication(rrc, NR_RRC_MAC_RA_IND(msg_p).RA_succeeded);
+    nr_rrc_handle_ra_indication(rrc, NR_RRC_MAC_RA_IND(msg_p).RA_succeeded, NR_RRC_MAC_RA_IND(msg_p).gnb_index);
     break;
 
   case NR_RRC_MAC_BCCH_DATA_IND:
@@ -2649,6 +3151,7 @@ void *rrc_nrue(void *notUsed)
                                               bcch->sdu_size,
                                               bcch->rsrq,
                                               bcch->rsrp,
+                                              bcch->hfn,
                                               bcch->frame,
                                               bcch->slot);
     break;
@@ -2659,21 +3162,9 @@ void *rrc_nrue(void *notUsed)
 
     nr_rrc_ue_decode_NR_SBCCH_SL_BCH_Message(rrc, sbcch->gnb_index,sbcch->frame, sbcch->slot, sbcch->sdu,
                                              sbcch->sdu_size, sbcch->rx_slss_id);
+    break;
   case NR_RRC_MAC_MEAS_DATA_IND:
-
-    LOG_D(NR_RRC, "[%s][Nid_cell %i] Received %s measurements: RSRP = %i (dBm)\n",
-          NR_RRC_MAC_MEAS_DATA_IND(msg_p).is_neighboring_cell? "Neighboring cell" : "Active cell",
-          NR_RRC_MAC_MEAS_DATA_IND(msg_p).Nid_cell,
-          NR_RRC_MAC_MEAS_DATA_IND(msg_p).is_csi_meas ? "CSI meas" : "SSB meas",
-          NR_RRC_MAC_MEAS_DATA_IND(msg_p).rsrp_dBm);
-
-    rrcPerNB_t *rrcNB = rrc->perNB + NR_RRC_MAC_MEAS_DATA_IND(msg_p).gnb_index;
-    nr_ue_meas_filtering(rrcNB,
-                         NR_RRC_MAC_MEAS_DATA_IND(msg_p).is_neighboring_cell,
-                         NR_RRC_MAC_MEAS_DATA_IND(msg_p).Nid_cell,
-                         NR_RRC_MAC_MEAS_DATA_IND(msg_p).is_csi_meas,
-                         NR_RRC_MAC_MEAS_DATA_IND(msg_p).rsrp_dBm);
-    nr_ue_check_meas_report(rrc, NR_RRC_MAC_MEAS_DATA_IND(msg_p).gnb_index);
+    nr_rrc_handle_meas_indication(rrc, &NR_RRC_MAC_MEAS_DATA_IND(msg_p));
     break;
 
   case NR_RRC_MAC_CCCH_DATA_IND: {
@@ -2784,6 +3275,14 @@ static void nr_rrc_initiate_rrcReestablishment(NR_UE_RRC_INST_t *rrc, NR_Reestab
       set_DRB_status(rrc, i, RB_SUSPENDED);
     }
   }
+
+  // Free Target NTNcfg is stored
+  if (rrc->target_ntncfg) {
+    ASN_STRUCT_FREE(asn_DEF_NR_NTN_Config_r17, rrc->target_ntncfg);
+    rrc->target_ntncfg = NULL;
+    rrc->process_target_ntncfg = false;
+  }
+
   // release the MCG SCell(s), if configured
   // no SCell configured in our implementation
 
@@ -2938,10 +3437,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
     }
   }
   for (int i = 0; i < NR_MAX_NUM_LCID; i++) {
-    if (rrc->active_RLC_entity[i]) {
-      rrc->active_RLC_entity[i] = false;
-      nr_rlc_release_entity(rrc->ue_id, i);
-    }
+    nr_rrc_release_rlc_entity(rrc, i);
   }
 
   for (int i = 0; i < NB_CNX_UE; i++) {
@@ -2975,6 +3471,13 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
   if (rrc->nrRrcState == RRC_STATE_DETACH_NR) {
     asn1cFreeStruc(asn_DEF_NR_UE_NR_Capability, rrc->UECap.UE_NR_Capability);
     asn1cFreeStruc(asn_DEF_NR_UE_TimersAndConstants, tac->sib1_TimersAndConstants);
+  }
+
+  // Free Target NTNcfg is stored
+  if (rrc->target_ntncfg) {
+    ASN_STRUCT_FREE(asn_DEF_NR_NTN_Config_r17, rrc->target_ntncfg);
+    rrc->target_ntncfg = NULL;
+    rrc->process_target_ntncfg = false;
   }
 
   // reset MAC
@@ -3063,11 +3566,17 @@ void rrc_ue_generate_measurementReport(rrcPerNB_t *rrc, instance_t ue_id)
   l3_measurements_t *l3m = &rrc->l3_measurements;
   int rsrp_dBm = l3m->rs_type == NR_NR_RS_Type_ssb ? l3m->serving_cell.ss_rsrp_dBm.val : l3m->serving_cell.csi_rsrp_dBm.val;
   int rsrp_index = get_rsrp_index(rsrp_dBm);
+  int neighbor_rsrp_dBm =
+      l3m->rs_type == NR_NR_RS_Type_ssb ? l3m->neighboring_cell[0].ss_rsrp_dBm.val : l3m->neighboring_cell[0].csi_rsrp_dBm.val;
+  int neighbor_rsrp_index = get_rsrp_index(neighbor_rsrp_dBm);
   uint8_t size = do_nrMeasurementReport_SA(l3m->trigger_to_measid,
                                            l3m->trigger_quantity,
                                            l3m->rs_type,
                                            l3m->serving_cell.Nid_cell,
                                            rsrp_index,
+                                           l3m->neighbor_cell_valid,
+                                           l3m->neighboring_cell[0].Nid_cell,
+                                           neighbor_rsrp_index,
                                            buffer,
                                            sizeof(buffer));
 

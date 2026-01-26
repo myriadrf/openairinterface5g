@@ -30,9 +30,7 @@
 
 #include "common/utils/assertions.h"
 #include "common/utils/LOG/log.h"
-#include "common/utils/nr/nr_common.h"
 #include "common_lib.h"
-#include "openair2/LAYER2/NR_MAC_COMMON/nr_prach_config.h"
 
 /* PRACH data samples are 32 bits wide (16bits for I/Q). Each packet contains
  * 840 samples for long sequence or 144 for short sequence. The payload length
@@ -50,7 +48,7 @@ void *gxran_handle;
 
 static struct xran_fh_init g_fh_init = {0};
 static struct xran_fh_config g_fh_config[XRAN_PORTS_NUM] = {0};
-static uint32_t g_prach_conf_duration[XRAN_PORTS_NUM] = {0};
+static nr_prach_info_t g_prach_info[XRAN_PORTS_NUM] = {0};
 
 static uint32_t get_nSW_ToFpga_FTH_TxBufferLen(int mu, int sections)
 {
@@ -335,6 +333,7 @@ static void oran_allocate_buffers(void *handle,
   struct xran_prb_map dlPmMixed = {0};
   struct xran_prb_map ulPmMixed = {0};
   uint32_t idx = 0;
+
   if (fh_config->frame_conf.nFrameDuplexType == XRAN_TDD) {
     oran_mixed_slot_t info = get_mixed_slot_info(&fh_config->frame_conf);
     dlPmMixed = get_xran_prb_map(fh_config, XRAN_DIR_DL, 0, info.num_dlsym);
@@ -359,8 +358,16 @@ static void oran_allocate_buffers(void *handle,
 #ifdef E_RELEASE
   uint32_t size_of_prb_map = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (xran_max_sections_per_slot - 1);
 #elif defined F_RELEASE
-  uint32_t numPrbElm = xran_get_num_prb_elm(&dlPm, mtu);
-  uint32_t size_of_prb_map  = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (numPrbElm);
+  uint32_t size_of_prb_map;
+  if (fh_config->RunSlotPrbMapBySymbolEnable) {
+    // For Liteon FR2 with RunSlotPrbMapBySymbolEnable, xran_prb_map will have xran_prb_elm prbMap[14]
+    size_of_prb_map  = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (XRAN_NUM_OF_SYMBOL_PER_SLOT);
+  }
+  else {
+    // For non-Liteon w/o RunSlotPrbMapBySymbolEnable, xran_prb_map will have xran_prb_elm prbMap[1]
+    uint32_t numPrbElm = xran_get_num_prb_elm(&dlPm, mtu);
+    size_of_prb_map  = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (numPrbElm);
+  }
 #endif
 
   // PDSCH
@@ -470,11 +477,9 @@ int *oai_oran_initialize(struct xran_fh_init *xran_fh_init, struct xran_fh_confi
     // retrieve and store prach duration
     uint8_t idx = xran_fh_config[o_xu_id].prach_conf.nPrachConfIdx;
     const struct xran_frame_config *fc = &xran_fh_config[o_xu_id].frame_conf;
-    g_prach_conf_duration[o_xu_id] =
-        get_nr_prach_occasion_info_from_index(idx,
-                                              fc->nNumerology > 2 ? FR2 : FR1,
-                                              fc->nFrameDuplexType == XRAN_FDD ? duplex_mode_FDD : duplex_mode_TDD)
-            .N_dur;
+    g_prach_info[o_xu_id] = get_nr_prach_occasion_info_from_index(idx,
+                                                                  fc->nNumerology > 2 ? FR2 : FR1,
+                                                                  fc->nFrameDuplexType == XRAN_FDD ? duplex_mode_FDD : duplex_mode_TDD);
   }
 
   // store config after xran initialization -- xran makes modifications to
@@ -504,9 +509,9 @@ struct xran_fh_config *get_xran_fh_config(uint32_t port_id)
   return &g_fh_config[port_id];
 }
 
-uint32_t get_prach_conf_duration(uint32_t port_id)
+nr_prach_info_t get_prach_info(uint32_t port_id)
 {
   struct xran_fh_init *fh_init = get_xran_fh_init();
   DevAssert(port_id < fh_init->xran_ports);
-  return g_prach_conf_duration[port_id];
+  return g_prach_info[port_id];
 }

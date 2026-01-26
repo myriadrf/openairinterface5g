@@ -56,6 +56,8 @@ typedef struct {
   uint32_t gNB_index;
   /// component carrier id
   int cc_id;
+  /// hyper frame number
+  int hfn;
   /// frame 
   frame_t frame;
   /// slot
@@ -101,10 +103,14 @@ typedef struct {
     uint32_t gNB_index;
     /// component carrier id
     int cc_id;
+    /// hyper frame number rx
+    int hfn_rx;
     /// frame rx
     frame_t frame_rx;
     /// slot rx
     uint32_t slot_rx;
+    /// hyper frame number tx
+    int hfn_tx;
     /// frame tx
     frame_t frame_tx;
     /// slot tx

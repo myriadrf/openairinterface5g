@@ -71,7 +71,7 @@ int config_get_processedint(configmodule_interface_t *cfg, paramdef_t *cfgoption
 
   return ret;
 }
-void config_printhelp(paramdef_t *params,int numparams, char *prefix) {
+void config_printhelp(paramdef_t *params,int numparams, const char *prefix) {
   printf("\n-----Help for section %-26s: %03i entries------\n",(prefix==NULL)?"(root section)":prefix,numparams);
 
   for (int i=0 ; i<numparams ; i++) {
@@ -84,7 +84,7 @@ void config_printhelp(paramdef_t *params,int numparams, char *prefix) {
   printf("--------------------------------------------------------------------\n\n");
 }
 
-int config_execcheck(configmodule_interface_t *cfg, paramdef_t *params, int numparams, char *prefix)
+int config_execcheck(configmodule_interface_t *cfg, paramdef_t *params, int numparams, const char *prefix)
 {
   int st=0;
 
@@ -105,17 +105,18 @@ int config_execcheck(configmodule_interface_t *cfg, paramdef_t *params, int nump
   return st;
 }
 
-int config_paramidx_fromname(paramdef_t *params, int numparams, char *name) {
-  for (int i=0; i<numparams ; i++) {
-    if (strcmp(name,params[i].optname) == 0)
+int config_paramidx_fromname(const paramdef_t *params, int numparams, const char *name)
+{
+  for (int i = 0; i < numparams; i++) {
+    if (strcmp(name, params[i].optname) == 0)
       return i;
   }
 
-  fprintf(stderr,"[CONFIG]config_paramidx_fromname , %s is not a valid parameter name\n",name);
+  fprintf(stderr, "[CONFIG]config_paramidx_fromname , %s is not a valid parameter name\n", name);
   return -1;
 }
 
-int config_get(configmodule_interface_t *cfgif, paramdef_t *params, int numparams, char *prefix)
+int config_get(configmodule_interface_t *cfgif, paramdef_t *params, int numparams, const char *prefix)
 {
   int ret= -1;
 
@@ -289,4 +290,11 @@ void config_set_checkfunctions(paramdef_t *params, checkedparam_t *checkfunction
   for (int i=0; i< numparams ; i++ ) {
     params[i].chkPptr = &(checkfunctions[i]);
   }
+}
+
+const paramdef_t *config_get_paramdef_from_name(const paramdef_t *pd, int num, const char *name)
+{
+  int idx = config_paramidx_fromname(pd, num, (char *)name);
+  AssertFatal(idx >= 0 && idx < num, "Invalid parameter name %s\n", name);
+  return &pd[idx];
 }

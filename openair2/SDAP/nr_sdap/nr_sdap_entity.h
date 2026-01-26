@@ -99,6 +99,7 @@ typedef struct nr_sdap_entity_s {
   /// sdap_tun_read_thread needs to know if we are gNB/UE, so for noS1 mode,
   /// store which one we are
   bool is_gnb;
+  bool enable_sdap;
   int pdusession_id;
   int pdusession_sock;
   pthread_t pdusession_thread;
@@ -172,7 +173,7 @@ sdap_config_t nr_sdap_get_config(const int is_gnb, const NR_SDAP_Config_t *sdap_
 void nr_sdap_release_drb(ue_id_t ue_id, int drb_id, int pdusession_id);
 
 /** @brief Add or modify an SDAP entity based on whether it already exists */
-void nr_sdap_addmod_entity(const int is_gnb, const ue_id_t ue_id, const sdap_config_t sdap);
+void nr_sdap_addmod_entity(const int is_gnb, const ue_id_t ue_id, const sdap_config_t *sdap);
 
 /**
  * @brief Function to delete a single SDAP Entity based on the ue_id and pdusession_id.

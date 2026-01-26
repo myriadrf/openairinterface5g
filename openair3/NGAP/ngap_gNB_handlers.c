@@ -84,7 +84,6 @@ void ngap_handle_ng_setup_message(ngap_gNB_amf_data_t *amf_desc_p, int sctp_shut
       }
     }
   } else {
-    LOG_A(NGAP, "Received NGSetupResponse from AMF\n");
     /* Check that at least one setup message is pending */
     DevCheck(amf_desc_p->ngap_gNB_instance->ngap_amf_pending_nb > 0, amf_desc_p->ngap_gNB_instance->instance,
              amf_desc_p->ngap_gNB_instance->ngap_amf_pending_nb, 0);
@@ -314,6 +313,7 @@ static int ngap_gNB_handle_ng_setup_response(sctp_assoc_t assoc_id, uint32_t str
   amf_desc_p->state = NGAP_GNB_STATE_CONNECTED;
   amf_desc_p->ngap_gNB_instance->ngap_amf_associated_nb ++;
   ngap_handle_ng_setup_message(amf_desc_p, 0);
+  LOG_A(NGAP, "Received NGSetupResponse from AMF\n");
 
   return 0;
 }
@@ -848,6 +848,11 @@ static int ngap_gNB_handle_initial_context_request(sctp_assoc_t assoc_id, uint32
     msg->nas_pdu = create_byte_array(ie->value.choice.NAS_PDU.size, ie->value.choice.NAS_PDU.buf);
 
   itti_send_msg_to_task(TASK_RRC_GNB, ue_desc_p->gNB_instance->instance, message_p);
+
+  NGAP_INFO("Initial Context Setup UE RAN ID %d UE AMF ID %ld: %d PDU session(s)\n",
+            msg->gNB_ue_ngap_id,
+            msg->amf_ue_ngap_id,
+            msg->nb_of_pdusessions);
 
   return 0;
 }
@@ -1390,9 +1395,20 @@ static int ngap_gNB_handle_pdusession_release_command(sctp_assoc_t assoc_id, uin
   for (i = 0; i < ie->value.choice.PDUSessionResourceToReleaseListRelCmd.list.count; i++) {
     NGAP_PDUSessionResourceToReleaseItemRelCmd_t *item_p;
     item_p = ie->value.choice.PDUSessionResourceToReleaseListRelCmd.list.array[i];
-    pdusession_release_t *r = &msg->pdusession_release_params[i];
-    r->pdusession_id = item_p->pDUSessionID;
-    r->data = create_byte_array(item_p->pDUSessionResourceReleaseCommandTransfer.size, item_p->pDUSessionResourceReleaseCommandTransfer.buf);
+    msg->pdusession_ids[i] = item_p->pDUSessionID;
+
+    /* PDUSessionResourceReleaseCommandTransfer (Mandatory) */
+    void *decoded = decode_pdusession_transfer(&asn_DEF_NGAP_PDUSessionResourceReleaseCommandTransfer,
+                                               item_p->pDUSessionResourceReleaseCommandTransfer);
+    if (!decoded) {
+      NGAP_ERROR("Failed to decode PDUSessionResourceReleaseCommandTransfer for PDU Session %d\n", msg->pdusession_ids[i]);
+      return -1;
+    }
+    NGAP_PDUSessionResourceReleaseCommandTransfer_t *transfer = decoded;
+    ngap_cause_t cause = decode_ngap_cause(&transfer->cause);
+    NGAP_INFO("PDU Session %d release command: Cause type=%d value=%d\n", msg->pdusession_ids[i], cause.type, cause.value);
+    ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceReleaseCommandTransfer, transfer);
+    free(transfer);
   }
 
   itti_send_msg_to_task(TASK_RRC_GNB, ue_desc_p->gNB_instance->instance, message_p);

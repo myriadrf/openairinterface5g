@@ -78,6 +78,7 @@
 
 typedef struct NRRrcMacRaInd_s {
   bool RA_succeeded;
+  int gnb_index;
 } NRRrcMacRaInd;
 
 typedef struct NRRrcMacMsg3Ind_s {
@@ -121,6 +122,7 @@ typedef struct RrcMacBcchDataInd_s {
 } RrcMacBcchDataInd;
 
 typedef struct NRRrcMacBcchDataInd_s {
+  uint32_t  hfn;
   uint32_t  frame;
   uint8_t   slot;
   uint32_t  sdu_size;
@@ -134,6 +136,7 @@ typedef struct NRRrcMacBcchDataInd_s {
 } NRRrcMacBcchDataInd;
 
 typedef struct NRRrcMacSBcchDataInd_s {
+  uint32_t  hfn;
   uint32_t  frame;
   uint8_t   slot;
   uint32_t  sdu_size;

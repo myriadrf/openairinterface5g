@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include "assertions.h"
 #include "common/utils/utils.h"
+#include "common/utils/LOG/log.h"
 
 #define MAX_SI_GROUPS 3
 #define NR_MAX_PDSCH_TBS 3824
@@ -272,6 +273,19 @@ static __attribute__((always_inline)) inline int count_bits64_with_mask(uint64_t
   return count_bits64(v & mask);
 }
 
+static inline void warn_higher_threequarter_fs(const int n_rb, const int mu)
+{
+  LOG_W(PHY,
+        "3/4 sampling is not possible for current PRB size: %d and numerology: %d.\n "
+        "So 6/4 sampling is chosen to support x3xx type USRPs.\n "
+        "Note that this sampling rate increases fronthaul traffic, FFT buffer size and processing time by a factor of two compared "
+        "to 3/4 sampling rate.\n "
+        "Some PRACH configuration might not be supported with 6/4 FFT size.\n "
+        "Consider reducing the PRB size that would fit within the FFT size of 3/4 sampling\n",
+        n_rb,
+        mu);
+}
+
 uint64_t reverse_bits(uint64_t in, int n_bits);
 void reverse_bits_u8(uint8_t const* in, size_t sz, uint8_t* out);
 
@@ -280,12 +294,12 @@ uint32_t to_nrarfcn(int nr_bandP, uint64_t dl_CarrierFreq, uint8_t scs_index, ui
 
 int cce_to_reg_interleaving(const int R, int k, int n_shift, const int C, int L, const int N_regs);
 int get_SLIV(uint8_t S, uint8_t L);
-void get_coreset_rballoc(uint8_t *FreqDomainResource,int *n_rb,int *rb_offset);
-int get_coreset_num_cces(uint8_t *FreqDomainResource, int duration);
+void get_coreset_rballoc(const uint8_t *FreqDomainResource, int *n_rb, int *rb_offset);
+int get_coreset_num_cces(const uint8_t *FreqDomainResource, int duration);
 int get_nr_table_idx(int nr_bandP, uint8_t scs_index);
 int32_t get_delta_duplex(int nr_bandP, uint8_t scs_index);
 frame_type_t get_frame_type(uint16_t nr_bandP, uint8_t scs_index);
-uint16_t get_band(uint64_t downlink_frequency, int32_t delta_duplex);
+uint16_t get_band(uint64_t downlink_frequency, int32_t delta_duplex, int64_t dlbw, int64_t ulbw);
 int NRRIV2BW(int locationAndBandwidth,int N_RB);
 int NRRIV2PRBOFFSET(int locationAndBandwidth,int N_RB);
 int PRBalloc_to_locationandbandwidth0(int NPRB,int RBstart,int BWPsize);
@@ -346,6 +360,7 @@ float get_beta_dmrs(int num_cdm_groups_no_data, bool is_type2);
 
 #define CEILIDIV(a,b) ((a+b-1)/b)
 #define ROUNDIDIV(a,b) (((a<<1)+b)/(b<<1))
+#define BOUNDED_EVAL(a, b, c) (min(c, max(a, b)))
 
 static const char *const duplex_mode_txt[] = {"FDD", "TDD"};
 

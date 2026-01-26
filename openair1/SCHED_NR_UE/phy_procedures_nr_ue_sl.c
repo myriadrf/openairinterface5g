@@ -44,8 +44,10 @@ void nr_fill_sl_indication(nr_sidelink_indication_t *sl_ind,
   sl_ind->gNB_index = proc->gNB_id;
   sl_ind->module_id = ue->Mod_id;
   sl_ind->cc_id = ue->CC_id;
+  sl_ind->hfn_rx = proc->hfn_rx;
   sl_ind->frame_rx = proc->frame_rx;
   sl_ind->slot_rx = proc->nr_slot_rx;
+  sl_ind->hfn_tx = proc->hfn_tx;
   sl_ind->frame_tx = proc->frame_tx;
   sl_ind->slot_tx = proc->nr_slot_tx;
   sl_ind->phy_data = phy_data;
@@ -313,15 +315,14 @@ void phy_procedures_nrUE_SL_TX(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc
     was_symbol_used[i] = true;
   if (tx_action) {
     LOG_D(NR_PHY, "Sending Uplink data \n");
-    nr_ue_pusch_common_procedures(ue,
-                                  proc->nr_slot_tx,
-                                  fp,
-                                  fp->nb_antennas_tx,
-                                  txdataF,
-                                  txp,
-                                  link_type_sl,
-                                  was_symbol_used,
-                                  ue->no_phase_pre_comp);
+    nr_tx_rotation_and_ofdm_mod(proc->nr_slot_tx,
+                                fp,
+                                fp->nb_antennas_tx,
+                                txdataF,
+                                txp,
+                                link_type_sl,
+                                was_symbol_used,
+                                ue->no_phase_pre_comp);
   }
 
   LOG_D(NR_PHY, "****** end Sidelink TX-Chain for AbsSubframe %d.%d ******\n", frame_tx, slot_tx);

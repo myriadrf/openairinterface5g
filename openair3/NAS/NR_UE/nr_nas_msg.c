@@ -1772,7 +1772,7 @@ static void send_nas_5gmm_ind(instance_t instance, const Guti5GSMobileIdentity_t
   itti_send_msg_to_task(TASK_RRC_NRUE, instance, msg);
 }
 
-static void request_pdusession(nr_ue_nas_t *nas, int pdusession_id)
+void request_pdusession(nr_ue_nas_t *nas, int pdusession_id)
 {
   MessageDef *message_p = itti_alloc_new_message(TASK_NAS_NRUE, nas->UE_id, NAS_PDU_SESSION_REQ);
   NAS_PDU_SESSION_REQ(message_p).pdusession_id = pdusession_id;

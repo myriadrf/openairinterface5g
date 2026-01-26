@@ -60,7 +60,6 @@
 #include "PHY/defs_nr_common.h"
 #include "PHY/impl_defs_nr.h"
 #include "PHY/phy_vars_nr_ue.h"
-#include "SCHED_NR/fapi_nr_l1.h"
 #include "SCHED_NR/sched_nr.h"
 #include "SCHED_NR_UE/defs.h"
 #include "SCHED_NR_UE/fapi_nr_ue_l1.h"
@@ -120,6 +119,15 @@ unsigned int NTN_UE_Koffset = 0;
 void nr_derive_key_ng_ran_star(uint16_t pci, uint64_t nr_arfcn_dl, const uint8_t key[32], uint8_t *key_ng_ran_star)
 {
 }
+
+/* this is a hack, but necessary for E2 agent. We compile in all of RRC
+ * (because of CMakeLists.txt), but we don't need it (only nr_radio_config.c).
+ * however, if E2 agent is defined, the following functions are used in
+ * rrc_gNB.c, but defined in RAN functions. In order to avoid pulling this in
+ * here as well, only provide a prototype (and abort if they are ever called). */
+void signal_rrc_msg(void /*const nr_rrc_class_e nr_channel, const uint32_t rrc_msg_id, const byte_array_t rrc_ba*/ ) { abort(); }
+void signal_rrc_state_changed_to(void /* const gNB_RRC_UE_t *rrc_ue_context, const rrc_state_e2sm_rc_e rrc_state */) { abort(); }
+void signal_ue_id(void /* const gNB_RRC_UE_t *rrc_ue_context, const uint16_t class, const uint32_t msg_id */) { abort(); }
 
 extern void fix_scd(NR_ServingCellConfig_t *scd);// forward declaration
 
@@ -273,7 +281,6 @@ int main(int argc, char *argv[])
   char *filename_csv = NULL;
   int i;
   double SNR, snr0 = -2.0, snr1 = 2.0;
-  double sigma, sigma_dB;
   double snr_step = .2;
   uint8_t snr1set = 0;
   int slot = 8, frame = 1;
@@ -300,7 +307,7 @@ int main(int argc, char *argv[])
   int Imcs = 9;
   uint8_t precod_nbr_layers = 1;
   int tx_offset;
-  int32_t txlev_sum = 0, atxlev[4];
+  double txlev_sum = 0;
   int start_rb = 0;
   int UE_id = 0;
   int print_perf = 0;
@@ -349,7 +356,7 @@ int main(int argc, char *argv[])
   }
   int ul_proc_error = 0; // uplink processing checking status flag
   //logInit();
-  randominit(0);
+  randominit();
 
   /* initialize the sin-cos table */
   InitSinLUT();
@@ -727,11 +734,6 @@ int main(int argc, char *argv[])
   else
     initNamedTpool(gNBthreads, &gNB->threadPool, true, "gNB-tpool");
 
-  processingData_L1tx_t *msgDataTx = malloc(sizeof(processingData_L1tx_t));
-  msgDataTx->slot = -1;
-  gNB->msgDataTx = msgDataTx;
-  //gNB_config = &gNB->gNB_config;
-
   NR_UL_IND_t UL_INFO = {0};
   UL_INFO.crc_ind.crc_list = UL_INFO.crc_pdu_list;
   UL_INFO.rx_ind.pdu_list = UL_INFO.rx_pdu_list;
@@ -1058,8 +1060,8 @@ int main(int argc, char *argv[])
   //for (int i=0;i<16;i++) printf("%f\n",gaussdouble(0.0,1.0));
   int read_errors=0;
 
-  int slot_offset = gNB->frame_parms.get_samples_slot_timestamp(slot, &gNB->frame_parms, 0);
-  int slot_length = slot_offset - gNB->frame_parms.get_samples_slot_timestamp(slot - 1, &gNB->frame_parms, 0);
+  int slot_offset = get_samples_slot_timestamp(&gNB->frame_parms, slot);
+  int slot_length = slot_offset - get_samples_slot_timestamp(&gNB->frame_parms, slot - 1);
 
   if (input_fd != NULL)	{
     // 800 samples is N_TA_OFFSET for FR1 @ 30.72 Ms/s,
@@ -1270,7 +1272,7 @@ int main(int argc, char *argv[])
           srs_pdu->subcarrier_spacing = gNB->frame_parms.subcarrier_spacing;
           srs_pdu->num_ant_ports = n_tx == 4 ? 2 : n_tx == 2 ? 1 : 0;
           srs_pdu->sequence_id = 40;
-          srs_pdu->time_start_position = gNB->frame_parms.symbols_per_slot - 1;
+          srs_pdu->time_start_position = 0;
           srs_pdu->config_index = rrc_get_max_nr_csrs(srs_pdu->bwp_size, srs_pdu->bandwidth_index);
           srs_pdu->resource_type = NR_SRS_Resource__resourceType_PR_periodic;
           srs_pdu->t_srs = 1;
@@ -1284,15 +1286,15 @@ int main(int argc, char *argv[])
           srs_pdu->beamforming.prg_size = 1;
         }
 
+        /* load FAPI into RX of L1 */
+        nr_save_ul_tti_req(gNB, &Sched_INFO->UL_tti_req);
+
         /// UE UL PDUs
 
         UE->ul_harq_processes[harq_pid].round = round;
         UE_proc.nr_slot_tx = slot;
         UE_proc.frame_tx = frame;
         UE_proc.gNB_id = 0;
-
-        // prepare ULSCH/PUSCH reception
-        nr_schedule_response(Sched_INFO);
 
         // --------- setting parameters for UE --------
         nr_scheduled_response_t scheduled_response = {.ul_config = &ul_config, .phy_data = (void *)&phy_data};
@@ -1368,6 +1370,7 @@ int main(int argc, char *argv[])
           srs_config_pdu->sequence_id = 40;
           srs_config_pdu->resource_type = NR_SRS_Resource__resourceType_PR_periodic;
           srs_config_pdu->t_srs = 1;
+          srs_config_pdu->time_start_position = 0;
         }
 
         for (int i = 0; i < (TBS / 8); i++)
@@ -1379,7 +1382,7 @@ int main(int argc, char *argv[])
 
           /////////////////////////phy_procedures_nr_ue_TX///////////////////////
           ///////////
-          int slot_start = UE->frame_parms.get_samples_slot_timestamp(slot, &UE->frame_parms, 0);
+          int slot_start = get_samples_slot_timestamp(&UE->frame_parms, slot);
           c16_t *tx[UE->frame_parms.nb_antennas_tx];
           for (int i = 0; i < UE->frame_parms.nb_antennas_tx; i++)
             tx[i] = UE->common_vars.txData[i] + slot_start;
@@ -1397,36 +1400,22 @@ int main(int argc, char *argv[])
           }
           ///////////
           ////////////////////////////////////////////////////
-          tx_offset = gNB->frame_parms.get_samples_slot_timestamp(slot, &gNB->frame_parms, 0);
-          txlev_sum = 0;
-          for (int aa = 0; aa < UE->frame_parms.nb_antennas_tx; aa++) {
-            atxlev[aa] =
-                signal_energy((int32_t *)&UE->common_vars
-                                  .txData[aa][tx_offset + 5 * gNB->frame_parms.ofdm_symbol_size
-                                              + 4 * gNB->frame_parms.nb_prefix_samples + gNB->frame_parms.nb_prefix_samples0],
-                              gNB->frame_parms.ofdm_symbol_size + gNB->frame_parms.nb_prefix_samples);
-
-            txlev_sum += atxlev[aa];
-
-            if (n_trials == 1)
-              printf("txlev[%d] = %d (%f dB) txlev_sum %d\n", aa, atxlev[aa], 10 * log10((double)atxlev[aa]), txlev_sum);
-          }
+          // Compute transmitter energy level
+          tx_offset = get_samples_slot_timestamp(&gNB->frame_parms, slot);
+          int symbol_offset = tx_offset + 5 * gNB->frame_parms.ofdm_symbol_size + 4 * gNB->frame_parms.nb_prefix_samples
+                              + gNB->frame_parms.nb_prefix_samples0;
+          int symbol_length = gNB->frame_parms.ofdm_symbol_size + gNB->frame_parms.nb_prefix_samples;
+          txlev_sum = compute_tx_energy_level(UE->common_vars.txData,
+                                              UE->frame_parms.nb_antennas_tx,
+                                              symbol_offset,
+                                              symbol_length,
+                                              n_trials);
         } else
           n_trials = 1;
 
         if (input_fd == NULL) {
-          // Justification of division by precod_nbr_layers:
-          // When the channel is the identity matrix, the results in terms of SNR should be almost equal for 2x2 and 4x4.
-          sigma_dB =
-              10 * log10((double)txlev_sum / precod_nbr_layers * ((double)gNB->frame_parms.ofdm_symbol_size / (12 * nb_rb))) - SNR;
-          sigma = pow(10, sigma_dB / 10);
-
-          if (n_trials == 1)
-            printf("sigma %f (%f dB), txlev_sum %f (factor %f)\n",
-                   sigma,
-                   sigma_dB,
-                   10 * log10((double)txlev_sum),
-                   (double)(double)gNB->frame_parms.ofdm_symbol_size / (12 * nb_rb));
+          double sigma =
+              compute_noise_variance(txlev_sum, gNB->frame_parms.ofdm_symbol_size, nb_rb, precod_nbr_layers, SNR, n_trials);
 
           for (i = 0; i < slot_length; i++) {
             for (int aa = 0; aa < UE->frame_parms.nb_antennas_tx; aa++) {
@@ -1457,26 +1446,20 @@ int main(int argc, char *argv[])
         UL_INFO.crc_ind.number_crcs = 0;
         UL_INFO.srs_ind.number_of_pdus = 0;
 
-        for(uint8_t symbol = 0; symbol < (gNB->frame_parms.Ncp == EXTENDED ? 12 : 14); symbol++) {
-          for (int aa = 0; aa < gNB->frame_parms.nb_antennas_rx; aa++)
-            nr_slot_fep_ul(&gNB->frame_parms,
-                           (int32_t *)rxdata[aa],
-                           (int32_t *)gNB->common_vars.rxdataF[0][aa],
-                           symbol,
-                           slot,
-                           0);
-        }
+        //----------- OFDM Demodulation and RX rotation--------------------------
+        bool was_symbol_used[14] = {0};
         int offset = (slot & 3) * gNB->frame_parms.symbols_per_slot * gNB->frame_parms.ofdm_symbol_size;
-        for (int aa = 0; aa < gNB->frame_parms.nb_antennas_rx; aa++)  {
-          const unsigned int max_symb = (gNB->frame_parms.Ncp == EXTENDED) ? 12 : 14;
-          for (int sym = 0; sym < max_symb; sym++)
-            apply_nr_rotation_symbol_RX(&gNB->frame_parms,
-                                        gNB->common_vars.rxdataF[0][aa] + offset + sym * gNB->frame_parms.ofdm_symbol_size,
-                                        gNB->frame_parms.symbol_rotation[1],
-                                        gNB->frame_parms.N_RB_UL,
-                                        slot,
-                                        sym);
+        for (int i = 0; i < 14; i++) {
+          was_symbol_used[i] = true;
         }
+        nr_ofdm_demod_and_rx_rotation(rxdata,
+                                      gNB->common_vars.rxdataF[0],
+                                      &gNB->frame_parms,
+                                      gNB->frame_parms.nb_antennas_rx,
+                                      slot,
+                                      offset,
+                                      link_type_ul,
+                                      was_symbol_used);
 
         ul_proc_error = phy_procedures_gNB_uespec_RX(gNB, frame, slot, &UL_INFO);
 
@@ -1739,7 +1722,7 @@ int main(int argc, char *argv[])
       printStatIndent2(&gNB->rx_pusch_symbol_processing_stats, "RX PUSCH Symbol Processing time");
       printStatIndent(&gNB->ulsch_decoding_stats,"ULSCH total decoding time");
       printStatIndent2(&gNB->ts_deinterleave, "ULSCH segment deinterleaving time");
-      printStatIndent2(&gNB->ts_rate_unmatch, "ULSCH segment rate recovery time");
+      printStatIndent2(&gNB->ts_rate_unmatch, "ULSCH segment rate matching time");
       printStatIndent2(&gNB->ts_ldpc_decode, "ULSCH segments decoding time");
       printStatIndent(&gNB->rx_srs_stats,"RX SRS time");
       printStatIndent2(&gNB->generate_srs_stats,"Generate SRS sequence time");

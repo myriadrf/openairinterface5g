@@ -63,7 +63,7 @@ gNBs:
         prach_ConfigurationIndex: 98
         #prach_msg1_FDM
         #0 = one, 1=two, 2=four, 3=eight
-        prach_msg1_FDM: 0
+        prach_msg1_FDM: 1
         prach_msg1_FrequencyStart: 0
         zeroCorrelationZoneConfig: 12
         preambleReceivedTargetPower: -104
@@ -99,7 +99,7 @@ gNBs:
         pucchGroupHopping: 0
         hoppingId: 40
         p0_nominal: -90
-        ssb_PositionsInBurst_Bitmap: 1
+        ssb_PositionsInBurst_Bitmap: 2
         # ssb_periodicityServingCell
         # 0 = ms5, 1=ms10, 2=ms20, 3=ms40, 4=ms80, 5=ms160, 6=spare2, 7=spare1
         ssb_periodicityServingCell: 2
@@ -146,6 +146,7 @@ MACRLCs:
     tr_n_preference: local_RRC
     pusch_TargetSNRx10: 200
     pucch_TargetSNRx10: 200
+    stats_max_ue: 17
 
 L1s:
   - num_cc: 1

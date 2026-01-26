@@ -114,7 +114,7 @@ typedef enum {
 #define GNB_CONFIG_STRING_PDSCHANTENNAPORTS_N2          "pdsch_AntennaPorts_N2"
 #define GNB_CONFIG_STRING_PDSCHANTENNAPORTS_XP          "pdsch_AntennaPorts_XP"
 #define GNB_CONFIG_STRING_PUSCHANTENNAPORTS             "pusch_AntennaPorts"
-#define GNB_CONFIG_STRING_SIB1TDA                       "sib1_tda"
+#define GNB_CONFIG_STRING_DOTCI                         "do_TCI"
 #define GNB_CONFIG_STRING_DOCSIRS                       "do_CSIRS"
 #define GNB_CONFIG_STRING_DOSRS                         "do_SRS"
 #define GNB_CONFIG_STRING_NRCELLID                      "nr_cellid"
@@ -179,7 +179,7 @@ typedef enum {
 {GNB_CONFIG_STRING_PDSCHANTENNAPORTS_N2, "vert. log. antenna ports", 0, .iptr=NULL, .defintval=1,                 TYPE_INT,       0},  \
 {GNB_CONFIG_STRING_PDSCHANTENNAPORTS_XP, "XP log. antenna ports",   0, .iptr=NULL,  .defintval=1,                 TYPE_INT,       0},  \
 {GNB_CONFIG_STRING_PUSCHANTENNAPORTS,            NULL,   0,            .iptr=NULL,  .defintval=1,                 TYPE_INT,       0},  \
-{GNB_CONFIG_STRING_SIB1TDA,                      NULL,   0,            .iptr=NULL,  .defintval=1,                 TYPE_INT,       0},  \
+{GNB_CONFIG_STRING_DOTCI,                        NULL,   0,            .iptr=NULL,  .defintval=0,                 TYPE_INT,       0},  \
 {GNB_CONFIG_STRING_DOCSIRS,                      NULL,   0,            .iptr=NULL,  .defintval=0,                 TYPE_INT,       0},  \
 {GNB_CONFIG_STRING_DOSRS,                        NULL,   0,            .iptr=NULL,  .defintval=0,                 TYPE_INT,       0},  \
 {GNB_CONFIG_STRING_NRCELLID,                     NULL,   0,            .u64ptr=NULL,.defint64val=1,               TYPE_UINT64,    0},  \
@@ -225,7 +225,7 @@ typedef enum {
 #define GNB_PDSCH_ANTENNAPORTS_N2_IDX   14
 #define GNB_PDSCH_ANTENNAPORTS_XP_IDX   15
 #define GNB_PUSCH_ANTENNAPORTS_IDX      16
-#define GNB_SIB1_TDA_IDX                17
+#define GNB_DO_TCI_IDX                  17
 #define GNB_DO_CSIRS_IDX                18
 #define GNB_DO_SRS_IDX                  19
 #define GNB_NRCELLID_IDX                20

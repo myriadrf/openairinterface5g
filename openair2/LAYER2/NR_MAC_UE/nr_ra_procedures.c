@@ -190,7 +190,7 @@ static void select_preamble_group(NR_UE_MAC_INST_t *mac)
   // else if Msg3 is being retransmitted, we keep what used in first transmission of Msg3
 }
 
-static ssb_ro_preambles_t get_ssb_ro_preambles_4step(struct NR_RACH_ConfigCommon__ssb_perRACH_OccasionAndCB_PreamblesPerSSB *config)
+ssb_ro_preambles_t get_ssb_ro_preambles_4step(struct NR_RACH_ConfigCommon__ssb_perRACH_OccasionAndCB_PreamblesPerSSB *config)
 {
   ssb_ro_preambles_t ret = {0};
   switch (config->present) {
@@ -293,9 +293,7 @@ static void config_preamble_index(NR_UE_MAC_INST_t *mac)
   bool groupBconfigured = false;
   int preamb_ga = 0;
   if (ra->ra_type == RA_4_STEP) {
-    AssertFatal(nr_rach_ConfigCommon->ssb_perRACH_OccasionAndCB_PreamblesPerSSB,
-                "Not expeting ssb_perRACH_OccasionAndCB_PreamblesPerSSB to be NULL here\n");
-    ra->ssb_ro_config = get_ssb_ro_preambles_4step(nr_rach_ConfigCommon->ssb_perRACH_OccasionAndCB_PreamblesPerSSB);
+    ra->ssb_ro_config = mac->ssb_ro_preambles;
     if (nr_rach_ConfigCommon->totalNumberOfRA_Preambles)
       nb_of_preambles = *nr_rach_ConfigCommon->totalNumberOfRA_Preambles;
     // Amongst the contention-based Random Access Preambles associated with an SSB the first numberOfRA-PreamblesGroupA
@@ -321,7 +319,7 @@ static void config_preamble_index(NR_UE_MAC_INST_t *mac)
     if (twostep->msgA_SSB_PerRACH_OccasionAndCB_PreamblesPerSSB_r16)
       ra->ssb_ro_config = get_ssb_ro_preambles_2step(twostep->msgA_SSB_PerRACH_OccasionAndCB_PreamblesPerSSB_r16);
     else
-      ra->ssb_ro_config = get_ssb_ro_preambles_4step(nr_rach_ConfigCommon->ssb_perRACH_OccasionAndCB_PreamblesPerSSB);
+      ra->ssb_ro_config = mac->ssb_ro_preambles;
     if (twostep->msgA_TotalNumberOfRA_Preambles_r16)
       nb_of_preambles = *twostep->msgA_TotalNumberOfRA_Preambles_r16;
   }
@@ -777,13 +775,12 @@ static int nr_get_RA_window_4Step(long ra_ResponseWindow)
   return 0;
 }
 
-static void setup_ra_response_window(RA_config_t *ra,
-                                     int slots_per_frame,
-                                     NR_NTN_Config_r17_t *ntn_Config_r17,
+static void setup_ra_response_window(NR_UE_MAC_INST_t *mac,
+                                     RA_config_t *ra,
                                      NR_RACH_ConfigGeneric_t *configGeneric,
-                                     NR_RACH_ConfigGenericTwoStepRA_r16_t *twostep,
-                                     ntn_timing_advance_componets_t *ntn_ta)
+                                     NR_RACH_ConfigGenericTwoStepRA_r16_t *twostep)
 {
+  const int slots_per_frame = mac->frame_structure.numb_slots_frame;
   int respwind_value = 0;
   if (ra->ra_type == RA_2_STEP) {
     long *msgB_ResponseWindow = twostep->msgB_ResponseWindow_r16;
@@ -816,13 +813,8 @@ static void setup_ra_response_window(RA_config_t *ra,
       LOG_E(NR_MAC, "RA-ResponseWindow need to be configured to a value lower than or equal to 10 ms\n");
   }
 
-  int ta_Common_slots = 0;
-  if (ntn_Config_r17) {
-    const double ta_Common_ms = get_total_TA_ms(ntn_ta);
-    ta_Common_slots = (int)ceil(ta_Common_ms * slots_per_frame / 10);
-  }
-
-  ra->response_window_setup_time = respwind_value + ta_Common_slots;
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->phy_config.config_req.ntn_config, mac->current_UL_BWP->scs);
+  ra->response_window_setup_time = respwind_value + ntn_ue_koffset;
 }
 
 // Random Access procedure initialization as per 5.1.1 and initialization of variables specific
@@ -1026,12 +1018,8 @@ bool init_RA(NR_UE_MAC_INST_t *mac, int frame)
   else
     ra->num_fd_occasions = 1 << rach_ConfigGeneric->msg1_FDM;
 
-  setup_ra_response_window(ra,
-                           mac->frame_structure.numb_slots_frame,
-                           mac->sc_info.ntn_Config_r17,
-                           rach_ConfigGeneric,
-                           twostep_generic,
-                           &mac->ntn_ta);
+  setup_ra_response_window(mac, ra, rach_ConfigGeneric, twostep_generic);
+
   return true;
 }
 
@@ -1039,16 +1027,15 @@ void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac, uint8_t CC_id, frame_t frameP, s
 {
   RA_config_t *ra = &mac->ra;
   NR_RACH_ConfigCommon_t *nr_rach_ConfigCommon = mac->current_UL_BWP->rach_ConfigCommon;
-  const double ta_Common_ms = get_total_TA_ms(&mac->ntn_ta);
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->phy_config.config_req.ntn_config, mac->current_UL_BWP->scs);
   const int slots_per_ms = mac->frame_structure.numb_slots_frame / 10;
 
   // start contention resolution timer
   const int RA_contention_resolution_timer_ms = (nr_rach_ConfigCommon->ra_ContentionResolutionTimer + 1) << 3;
   const int RA_contention_resolution_timer_slots = RA_contention_resolution_timer_ms * slots_per_ms;
-  const int ta_Common_slots = (int)ceil(ta_Common_ms * slots_per_ms);
 
   // timer step 1 slot and timer target given by ra_ContentionResolutionTimer + ta-Common-r17
-  nr_timer_setup(&ra->contention_resolution_timer, RA_contention_resolution_timer_slots + ta_Common_slots, 1);
+  nr_timer_setup(&ra->contention_resolution_timer, RA_contention_resolution_timer_slots + ntn_ue_koffset, 1);
   nr_timer_start(&ra->contention_resolution_timer);
 
   ra->ra_state = nrRA_WAIT_CONTENTION_RESOLUTION;
@@ -1127,9 +1114,9 @@ void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const uint8_t gNB_index, const frame
   RA_config_t *ra = &mac->ra;
 
   if (ra->cfra) {
-    LOG_I(MAC, "[UE %d][%d.%d][RAPROC] RA procedure succeeded. CFRA: RAR successfully received.\n", mac->ue_id, frame, slot);
+    LOG_A(NR_MAC, "[UE %d][%d.%d][RAPROC] RA procedure succeeded. CFRA: RAR successfully received.\n", mac->ue_id, frame, slot);
   } else {
-    LOG_A(MAC,
+    LOG_A(NR_MAC,
           "[UE %d][%d.%d][RAPROC] %d-Step RA procedure succeeded. CBRA: Contention Resolution is successful.\n",
           mac->ue_id,
           frame,
@@ -1139,6 +1126,10 @@ void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const uint8_t gNB_index, const frame
     ra->t_crnti = 0;
     nr_timer_stop(&ra->contention_resolution_timer);
   }
+
+  // rach-ConfigDedicated is one shot configuration to be used only for a specific instance of reconfiguration with sync
+  if (ra->rach_ConfigDedicated)
+    asn1cFreeStruc(asn_DEF_NR_RACH_ConfigDedicated, ra->rach_ConfigDedicated);
 
   ra->RA_active = false;
   mac->msg3_C_RNTI = false;

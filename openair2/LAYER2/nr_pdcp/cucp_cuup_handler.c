@@ -153,7 +153,7 @@ static void e1_add_bearers(const int ue_id, const NR_DRB_ToAddModList_t *addMod,
     // get SDAP config
     sdap_config_t sdap = nr_sdap_get_config(GNB_FLAG_YES, drb->cnAssociation->choice.sdap_Config, drb->drb_Identity);
     // add SDAP entity
-    nr_sdap_addmod_entity(GNB_FLAG_YES, ue_id, sdap);
+    nr_sdap_addmod_entity(GNB_FLAG_YES, ue_id, &sdap);
     // add PDCP entity
     nr_pdcp_add_drb(GNB_FLAG_YES, ue_id, drb->pdcp_Config, &sdap, sp);
   }
@@ -259,17 +259,58 @@ void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
   get_e1_if()->bearer_setup_response(&resp);
 }
 
+static void release_gtpu_tunnel(uint32_t ue_id, int pdusession_id)
+{
+  instance_t n3inst = get_n3_gtp_instance();
+
+  // Handle N3 tunnel (1 tunnel per PDU session)
+  if (n3inst >= 0) {
+    LOG_I(E1AP, "UE %u: Deleting N3 tunnel for PDU session %d\n", ue_id, pdusession_id);
+    int result = newGtpuDeleteOneTunnel(n3inst, ue_id, pdusession_id);
+    if (result == GTPNOK) {
+      LOG_E(E1AP, "UE %u: Failed to delete N3 tunnel for PDU session %d\n", ue_id, pdusession_id);
+    }
+  }
+}
+
+static void release_f1_drbs(uint32_t ue_id, int pdusession_id)
+{
+  instance_t f1inst = get_f1_gtp_instance();
+  // Handle F1 tunnels (1 tunnel per DRB, fetch PDCP entities and get DRB IDs)
+  int drb_ids[MAX_DRBS_PER_UE];
+  int n_drbs = nr_pdcp_get_drb_ids_for_pdusession(ue_id, pdusession_id, drb_ids);
+  if (n_drbs > 0) {
+    LOG_I(E1AP, "UE %u: Deleting %d F1 tunnels for PDU session %d\n", ue_id, n_drbs, pdusession_id);
+    // Delete each F1 tunnel using the DRB IDs
+    for (int i = 0; i < n_drbs; i++) {
+      int drb_id = drb_ids[i];
+      if (f1inst >= 0) {
+        int result = newGtpuDeleteOneTunnel(f1inst, ue_id, drb_id);
+        if (result == GTPNOK) {
+          LOG_E(E1AP, "UE %u: Failed to delete F1 tunnel for DRB %d\n", ue_id, drb_id);
+        }
+      }
+      // Release PDCP entity
+      nr_pdcp_release_drb(ue_id, drb_id);
+    }
+  } else {
+    LOG_W(E1AP, "UE %u: No DRBs found for PDU session %d\n", ue_id, pdusession_id);
+  }
+}
+
 /**
  * @brief Fill Bearer Context Modification Response and send to callback
  */
 void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req)
 {
-  AssertFatal(req->numPDUSessionsMod > 0, "need at least one PDU session to modify\n");
+  AssertFatal(req->numPDUSessionsMod > 0 || req->numPDUSessionsRem > 0,
+              "need at least one PDU session to modify or release (mod=%u, rel=%u)\n",
+              req->numPDUSessionsMod,
+              req->numPDUSessionsRem);
 
   e1ap_bearer_modif_resp_t modif = {
       .gNB_cu_cp_ue_id = req->gNB_cu_cp_ue_id,
       .gNB_cu_up_ue_id = req->gNB_cu_up_ue_id,
-      .numPDUSessionsMod = req->numPDUSessionsMod,
   };
 
   instance_t f1inst = get_f1_gtp_instance();
@@ -284,6 +325,7 @@ void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req)
           req->pduSessionMod[i].numDRB2Modify);
     modif.pduSessionMod[i].id = req->pduSessionMod[i].sessionId;
     modif.pduSessionMod[i].numDRBModified = req->pduSessionMod[i].numDRB2Modify;
+    modif.numPDUSessionsMod++;
     /* DRBs to modify */
     for (int j = 0; j < req->pduSessionMod[i].numDRB2Modify; j++) {
       const DRB_nGRAN_to_mod_t *to_modif = &req->pduSessionMod[i].DRBnGRanModList[j];
@@ -345,6 +387,15 @@ void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req)
       }
 
     }
+  }
+
+  /* PDU Session Resource To Remove List (see 9.3.3.12 of TS 38.463) */
+  for (int i = 0; i < req->numPDUSessionsRem; i++) {
+    modif.pduSessionMod[i].id = req->pduSessionRem[i].sessionId;
+    modif.numPDUSessionsMod++;
+    release_gtpu_tunnel(req->gNB_cu_up_ue_id, req->pduSessionRem[i].sessionId);
+    release_f1_drbs(req->gNB_cu_up_ue_id, req->pduSessionRem[i].sessionId);
+    nr_sdap_delete_entity(req->gNB_cu_up_ue_id, req->pduSessionRem[i].sessionId);
   }
 
   get_e1_if()->bearer_modif_response(&modif);

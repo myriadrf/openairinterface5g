@@ -100,9 +100,6 @@ typedef struct gtpv1u_gnb_delete_tunnel_req_s gtpv1u_gnb_delete_tunnel_req_t;
                                gtpCallback callBack,
                                gtpCallbackSDAP callBackSDAP);
 
-  int gtpv1u_delete_ngu_tunnel( const instance_t instance,
-                                gtpv1u_gnb_delete_tunnel_req_t *req);
-
   int gtpv1u_update_ue_id(const instance_t instanceP, ue_id_t old_ue_id, ue_id_t new_ue_id);
 
   // New API
@@ -124,7 +121,6 @@ typedef struct gtpv1u_gnb_delete_tunnel_req_s gtpv1u_gnb_delete_tunnel_req_t;
 
   int newGtpuDeleteOneTunnel(instance_t instance, ue_id_t ue_id, int rb_id);
   int newGtpuDeleteAllTunnels(instance_t instance, ue_id_t ue_id);
-  int newGtpuDeleteTunnels(instance_t instance, ue_id_t ue_id, int nbTunnels, int *pdusession_id);
 
   void gtpv1uSendDirect(instance_t instance, ue_id_t ue_id, int bearer_id, uint8_t *buf, size_t len, bool seqNumFlag, bool npduNumFlag);
   void gtpv1uSendDirectWithNRUSeqNum(instance_t instance,

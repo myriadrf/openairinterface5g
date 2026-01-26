@@ -1,22 +1,10 @@
-<table style="border-collapse: collapse; border: none;">
-  <tr style="border-collapse: collapse; border: none;">
-    <td style="border-collapse: collapse; border: none;">
-      <a href="http://www.openairinterface.org/">
-         <img src="./images/oai_final_logo.png" alt="" border=3 height=50 width=150>
-         </img>
-      </a>
-    </td>
-    <td style="border-collapse: collapse; border: none; vertical-align: center;">
-      <b><font size = "5">OAI 7.2 Fronthaul Interface 5G SA Tutorial</font></b>
-    </td>
-  </tr>
-</table>
+# OAI 7.2 Fronthaul Interface Tutorial
 
 **Table of Contents**
 
 [[_TOC_]]
 
-# Prerequisites
+## Prerequisites
 
 The hardware on which we have tried this tutorial:
 
@@ -87,21 +75,21 @@ Tested libxran releases:
 
 **Note**: The libxran driver of OAI identifies the above E release version as "5.1.0" (E is fifth letter, then 1.0), and the above F release as "6.1.0".
 
-## Configure your server
+### Configure your server
 
 1. Disable Hyperthreading (HT) in your BIOS. In all our servers HT is always disabled.
 2. We recommend you to start with a fresh installation of OS (either RHEL or Ubuntu). You have to install realtime kernel on your OS (Operating System). Based on your OS you can search how to install realtime kernel.
 3. Install realtime kernel for your OS
 4. Change the boot commands based on the below section. They can be performed either via `tuned` or via manually building the kernel
 
-### CPU allocation
+#### CPU allocation
 
 **This section is important to read, regardless of the operating system you are using.**
 
 Your server could be:
 
-* One NUMA node (See [one NUMA node example](#111-one-numa-node)): all the processors are sharing a single memory system.
-* Two NUMA nodes (see [two NUMA nodes example](#112-two-numa-node)): processors are grouped in 2 memory systems.
+* One NUMA node (See [one NUMA node example](#one-numa-node)): all the processors are sharing a single memory system.
+* Two NUMA nodes (see [two NUMA nodes example](#two-numa-nodes)): processors are grouped in 2 memory systems.
   - Usually the even (ie `0,2,4,...`) CPUs are on the 1st socket
   - And the odd (ie (`1,3,5,...`) CPUs are on the 2nd socket
 
@@ -137,7 +125,7 @@ tuned-adm profile realtime
 
 **Checkout anyway the examples below.**
 
-### One NUMA Node
+#### One NUMA Node
 
 Below is the output of `/proc/cmdline` of a single NUMA node server,
 
@@ -153,7 +141,7 @@ isolcpus=0-15 nohz_full=0-15 rcu_nocbs=0-15 kthread_cpus=16-31 rcu_nocb_poll nos
 
 Example taken for AMD EPYC 9374F 32-Core Processor
 
-### Two NUMA Nodes
+#### Two NUMA Nodes
 
 Below is the output of `/proc/cmdline` of a two NUMA node server,
 
@@ -170,7 +158,7 @@ mitigations=off usbcore.autosuspend=-1 intel_iommu=on intel_iommu=pt selinux=0 e
 
 Example taken for Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
 
-### Common
+#### Common
 
 Configure your servers to maximum performance mode either via OS or in BIOS. If you want to disable CPU sleep state via OS then use the below command:
 
@@ -187,7 +175,7 @@ The above information we have gathered either from O-RAN documents or via our ow
 2. [O-RAN Cloud Platform Reference Designs 2.0,O-RAN.WG6.CLOUD-REF-v02.00,February 2021](https://orandownloadsweb.azurewebsites.net/specifications)
 
 
-## PTP configuration
+### PTP configuration
 
 **Note**: You may run OAI with O-RAN 7.2 Fronthaul without a RU attached (e.g. for benchmarking).
 In such case, you can skip PTP configuration and go to DPDK section.
@@ -265,7 +253,7 @@ ExecStart=/usr/sbin/phc2sys $OPTIONS
 WantedBy=multi-user.target
 ```
 
-### Debugging PTP issues
+#### Debugging PTP issues
 
 You can see these steps in case your ptp logs have erorrs or `rms` reported in `ptp4l` logs is more than 100ms.
 Beware that PTP issues may show up only when running OAI and XRAN. If you are using the `ptp4l` service, have a look back in time in the journal: `journalctl -u ptp4l.service -S <hours>:<minutes>:<seconds>`
@@ -283,7 +271,7 @@ timedatectl | grep NTP
 timedatectl set-ntp false
 ```
 
-## DPDK (Data Plane Development Kit)
+### DPDK (Data Plane Development Kit)
 
 Download DPDK version 20.11.9.
 
@@ -296,7 +284,7 @@ cd
 wget http://fast.dpdk.org/rel/dpdk-20.11.9.tar.xz
 ```
 
-### DPDK Compilation and Installation
+#### DPDK Compilation and Installation
 
 ```bash
 # Installing meson : it should pull ninja-build and compiler packages
@@ -311,7 +299,7 @@ ninja -C build
 sudo ninja install -C build
 ```
 
-### Verify the installation is complete
+#### Verify the installation is complete
 
 Check if the LD cache contains the DPDK Shared Objects after update:
 
@@ -365,7 +353,7 @@ export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/lib64/pkgconfig/
 pkg-config --libs libdpdk --static
 ```
 
-### If you want to de-install this version of DPDK
+#### If you want to de-install this version of DPDK
 
 Go back to the version folder you used to build and install
 
@@ -374,7 +362,7 @@ cd ~/dpdk-stable-20.11.9
 sudo ninja deinstall -C build
 ```
 
-# Build OAI-FHI gNB
+## Build OAI-FHI gNB
 
 Clone OAI code base in a suitable repository, here we are cloning in `~/openairinterface5g` directory,
 
@@ -383,11 +371,11 @@ git clone https://gitlab.eurecom.fr/oai/openairinterface5g.git ~/openairinterfac
 cd ~/openairinterface5g/
 ```
 
-## Build ORAN Fronthaul Interface Library
+### Build ORAN Fronthaul Interface Library
 
 Download ORAN FHI DU library, checkout the correct version, and apply the correct patch (available in `oai_folder/cmake_targets/tools/oran_fhi_integration_patches`).
 
-### E release
+#### E release
 ```bash
 git clone https://gerrit.o-ran-sc.org/r/o-du/phy.git ~/phy
 cd ~/phy
@@ -395,7 +383,7 @@ git checkout oran_e_maintenance_release_v1.0
 git apply ~/openairinterface5g/cmake_targets/tools/oran_fhi_integration_patches/E/oaioran_E.patch
 ```
 
-### F release
+#### F release
 ```bash
 git clone https://gerrit.o-ran-sc.org/r/o-du/phy.git ~/phy
 cd ~/phy
@@ -426,7 +414,7 @@ WIRELESS_SDK_TOOLCHAIN=gcc RTE_SDK=~/dpdk-stable-20.11.9/ XRAN_DIR=~/phy/fhi_lib
 The shared library object `~/phy/fhi_lib/lib/build/libxran.so` must be present
 before proceeding.
 
-## For Arm targets only: Install the Arm RAN Acceleration library
+### For Arm targets only: Install the Arm RAN Acceleration library
 
 DU execution on Arm systems is yet not functional.
 This feature is intended to enable experiments and future improvements on Arm systems.
@@ -451,7 +439,7 @@ Once ArmRAL is configured at your convenience and built, you can install it:
 ninja install
 ```
 
-## Build OAI gNB
+### Build OAI gNB
 
 You can now proceed building OAI. You build it the same way as for other
 radios, providing option `-t oran_fhlib_5g`. Additionally, you need to provide
@@ -520,20 +508,20 @@ or with `cmake` like so
     cmake .. -GNinja -DOAI_FHI72=ON -Dxran_LOCATION=$HOME/phy/fhi_lib/lib -DOAI_FHI72_USE_POLLING=ON
     ninja oran_fhlib_5g
 
-# Configuration
+## Configuration
 
 RU and DU configurations have a circular dependency: you have to configure DU MAC address in the RU configuration and the RU MAC address, VLAN and Timing advance parameters in the DU configuration.
 
 **Note**: You may run OAI with O-RAN 7.2 Fronthaul without a RU attached (e.g. for benchmarking).
 In such case, skip RU configuration and only configure Network Interfaces, DPDK VFs and OAI configuration by using arbitrary values for RU MAC addresses and VLAN tags.
 
-## Configure the RU
+### Configure the RU
 
 Contact the RU vendor and get the configuration manual to understand the below commands. The below configuration only corresponds to the RU firmware version indicated at the start of this document. If your firmware version does not correspond to the indicated version, then please don't try these commands.
 
 **NOTE**: Please understand all the changes you are doing at the RU, especially if you are manipulating anything related to output power. 
 
-### Benetel 650
+#### Benetel 650
 
 The OAI configuration file [`gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf) corresponds to:
 - TDD pattern `DDDSU`, 2.5ms
@@ -541,7 +529,7 @@ The OAI configuration file [`gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf`]
 - MTU 9600
 - 4TX4R
 
-#### RU configuration
+##### RU configuration
 
 After switching on the radio or rebooting, wait for the radio bring up to complete, which you can follow using `tail -f  /tmp/logs/radio_status`. Once you will see `[INFO] Radio bringup complete`, you can configure the RU via editing `/etc/ru_config.cfg`
 
@@ -559,7 +547,7 @@ flexran_prach_workaround=disabled
 dl_ul_tuning_special_slot=0xfd00000
 ```
 
-### Benetel 550
+#### Benetel 550
 
 The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf) corresponds to:
 - TDD pattern `DDDDDDDSUU`, 5ms
@@ -567,7 +555,7 @@ The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf`](..
 - MTU 9600
 - 4TX4R
 
-#### RU configuration
+##### RU configuration
 
 After switching on the radio or rebooting, wait for the radio bring up to complete, which you can follow using `tail -f  /tmp/logs/radio_status`. Once you will see `[INFO] Radio bringup complete`, you can configure the RU via editing `/etc/ru_config.cfg`
 
@@ -585,7 +573,7 @@ flexran_prach_workaround=disabled
 dl_tuning_special_slot=0x13b6
 ```
 
-### LITEON
+#### LITEON
 
 The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-liteon.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-liteon.conf) corresponds to:
 - TDD pattern `DDDSU`, 2.5ms
@@ -593,7 +581,7 @@ The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-liteon.conf`](../tar
 - MTU 1500
 - MTU 9600: v02.00.10
 
-#### RU configuration
+##### RU configuration
 
 SSH to the unit as user `user`. Write `enable` in the terminal to enter the configuration console; the password should be in the user guide. Use the command `show oru-status` to check the RU status. The output should be similar to:
 ```bash
@@ -623,7 +611,7 @@ jumboframe 1 # enable jumbo frame
 ...
 ```
 
-### VVDN LPRU
+#### VVDN LPRU
 
 **Version 3.x**
 
@@ -632,7 +620,7 @@ The OAI configuration file [`gnb.sa.band77.273prb.fhi72.4x4-vvdn.conf`](../targe
 - Bandwidth 100MHz
 - MTU 9600
 
-#### RU configuration
+##### RU configuration
 
 Check in the RU user manual how to configure the center frequency. There are multiple ways to do it. We set the center frequency by editing `sysrepocfg` database. You can use `sysrepocfg --edit=vi -d running` to do the same. You can edit the `startup` database to make the center frequency change persistent. 
 
@@ -676,7 +664,7 @@ mw.l a0050010 <YOUR-RU-VLAN>3 # e.g. VLAN = 4 => `mw.l a0050010 43`
 sysrepocfg --edit=vi -d running
 ```
 
-### Metanoia RU
+#### Metanoia RU
 
 **Version 2.0.6**
 
@@ -697,7 +685,7 @@ The RU configuration is stored in `/etc/rumanager.conf`. The required modificati
 
 At this stage, RU must be rebooted so the changes apply.
 
-### Foxconn RPQN RU
+#### Foxconn RPQN RU
 
 **Version v3.1.15q.551_rc10**
 
@@ -706,7 +694,7 @@ The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4X4-foxconn.conf`](../ta
 - Bandwidth 100MHz
 - MTU 9600
 
-#### RU configuration
+##### RU configuration
 
 After switching on or rebooting the RU, the `/home/root/test/init_rrh_config_enable_cuplane` script should be run.
 
@@ -731,7 +719,7 @@ RU must be rebooted so the changes apply.
 - The measured throughput was **520 Mbps DL** and **40 Mbps UL**.
 - With newer OAI versions, throughput degrades. This issue is currently under investigation.
 
-## Configure Network Interfaces and DPDK VFs
+### Configure Network Interfaces and DPDK VFs
 
 The 7.2 fronthaul uses the xran library, which requires DPDK. In this step, we
 need to configure network interfaces to send data to the RU, and configure DPDK
@@ -767,7 +755,7 @@ in the below command and configure VLAN on the switch as "access VLAN". In case
 the MTU is different than 1500, you have to update the MTU on the switch
 interface as well.
 
-### Set maximum ring buffers:
+#### Set maximum ring buffers:
 
 As a first step, please set up the maximum allowed buffer size to your desired interface. To check the maximum value, please execute the following command:
 ```bash
@@ -782,7 +770,7 @@ MAX_RING_BUFFER_SIZE=<YOUR_PHYSICAL_INTERFACE_MAX_BUFFER_SIZE>
 sudo ethtool -G $IF_NAME rx $MAX_RING_BUFFER_SIZE tx $MAX_RING_BUFFER_SIZE
 ```
 
-### Set the maximum MTU in the physical interface:
+#### Set the maximum MTU in the physical interface:
 ```bash
 set -x
 IF_NAME=<YOUR_PHYSICAL_INTERFACE_NAME>
@@ -791,9 +779,9 @@ MTU=<RU_MTU>
 sudo ip link set $IF_NAME mtu $MTU
 ```
 
-### (Re-)create VF(s)
+#### (Re-)create VF(s)
 
-#### one VF
+##### one VF
 
 ```bash
 set -x
@@ -808,7 +796,7 @@ sudo sh -c 'echo 1 > /sys/class/net/$IF_NAME/device/sriov_numvfs'
 sudo ip link set $IF_NAME vf 0 mac $DU_CU_PLANE_MAC_ADD vlan $VLAN mtu $MTU spoofchk off # set CU planes PCI address
 ```
 
-#### two VFs
+##### two VFs
 
 ```bash
 set -x
@@ -866,12 +854,12 @@ The hardware card `31:00.1` has two associated virtual functions `31:06.0` and
 `31:06.1`.
 </details>
 
-### Bind VF(s)
+#### Bind VF(s)
 
 Now, unbind any pre-existing DPDK devices, load the "Virtual Function I/O"
 driver `vfio_pci` or `mlx5_core`, and bind DPDK to these devices.
 
-#### Bind one VF
+##### Bind one VF
 
 ```bash
 set -x
@@ -883,7 +871,7 @@ sudo modprobe $DRIVER
 sudo /usr/local/bin/dpdk-devbind.py --bind $DRIVER $CU_PLANE_PCI_BUS_ADD
 ```
 
-#### Bind two VFs
+##### Bind two VFs
 
 ```bash
 set -x
@@ -933,7 +921,7 @@ sudo /usr/local/bin/dpdk-devbind.py --bind $DRIVER $C_PLANE_PCI_BUS_ADD
 
 
 
-## Configure OAI gNB
+### Configure OAI gNB
 
 **Beware in the following section to let in the range of isolated cores the parameters that should be (i.e. `L1s.L1_rx_thread_core`, `L1s.L1_tx_thread_core`, `RUs.ru_thread_core`, `fhi_72.io_core` and `fhi_72.worker_cores`)**
 
@@ -1026,7 +1014,7 @@ Layer mapping (eAxC offsets) happens as follows:
 - At the moment, OAI is compatible with CAT A O-RU only. Therefore, SRS is not supported.
 - XRAN retrieves DU MAC address with `rte_eth_macaddr_get()` function. Hence, `fhi_72.du_addr` parameter is not taken into account.
 
-# Start and Operation of OAI gNB
+## Start and Operation of OAI gNB
 
 Run the `nr-softmodem` from the build directory:
 ```bash
@@ -1114,7 +1102,7 @@ not working, and UEs might not be able to attach or reach good performance.
 Also, you can try to compile with polling (see [the build
 section](.#build-oai-gnb)) to see if it resolves the problem.
 
-# Operation with multiple RUs
+## Operation with multiple RUs
 
 It is possible to connect up to 4 RUs to one DU at the same time and operate
 them either with a single antenna array or a distributed antenna array.  This
@@ -1123,24 +1111,32 @@ The assumed configuration is that with N RUs each having an M×M configuration,
 we effectively reach an (N×M)×(N×M) configuration.
 
 Some caveats:
-- Since it's a distributed antenna, this implies that this setup will deploy a
+- Even in case of a distributed antenna, this setup will deploy a
   single cell only -- multiple cells on different RUs are not supported.
 - All RUs should use the same MTU, so either "normal" (1500 byte) MTU or jumbo
   frames, but not a mix of both.
 - We tested only two RUs as of now, i.e., an 8×8 configuration.
-- Testing is currently limited to 4 logical antenna ports in DL; in UL, up to 8 can be used.
+- In case of a single array is currently limited to 4 logical antenna ports in DL;
+  in UL, up to 8 can be used.
 
-For two RUs each using a 4x4 configuration, make sure to configure the 8x8
-configuration, i.e., set `nb_tx` and `nb_rx` under `RUs` to 8 each (NOT two
-`RUs`!). Also, set the antenna port information as listed above, i.e.,
+For two RUs using a 8x8 configuration, i.e. a single antenna system, the reference DU configuration file is
+[`gnb-du.sa.band77.273prb.fhi72.8x8-benetel650_650.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.8x8-benetel650_650.conf).
 
-```
-pdsch_AntennaPorts_XP = 2;
-pdsch_AntennaPorts_N1 = 2;
-pusch_AntennaPorts    = 8;
-maxMIMO_layers        = 2;
-```
-Once testing for 8 antenna ports in DL is complete, we will change pdsch_AntennaPorts_N1 to 4.
+For two RUs each using a 4x4 configuration, i.e. a distributed antenna system (DAS),
+we use the analog beamforming implementation. More details can be found in
+[this document](./analog_beamforming.md). It is important to note that
+the configuration file should be set as a 4x4 scenario and each RU would be given a
+different beam. The reference DU configuration file is [`gnb-du.sa.band77.273prb.fhi72.4x4-das-benetel650_650.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.4x4-das-benetel650_650.conf).
+
+DAS is enabled by setting to 1 the parameter `enable_das` in `L1` section.
+
+The following parameters shall be configured on the gNB in the `MACRLC` section:
+- `set_analog_beamforming`
+- `beam_duration`
+- `beams_per_period`
+
+For guidance on how to set these parameters please refer to
+the [analog beamforming document](./analog_beamforming.md).
 
 Next, configure the `fhi_72` section as indicated below:
 
@@ -1202,9 +1198,6 @@ fhi_72 = {
 ```
 </details>
 
-Compare also with the example (DU) configuration in
-[`gnb-du.sa.band77.273prb.fhi72.8x8-benetel650_650.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.8x8-benetel650_650.conf).
-
 Afterwards, start the gNB with the modified configuration file. If everything
 went well, you should see the RU counters for both RUs go up:
 
@@ -1234,7 +1227,7 @@ Note the eight entries after `avg_IO`.
 You should be able to connect a UE now.
 
 
-# OAI Management Plane
+## OAI Management Plane
 In OAI gNB, we support:
 * Configuration Management: interface(s) creation, configuration of RU CU-planes, Tx/Rx antennas, and Tx/Rx carriers.
 * Performance Management: activation/deactivation of available RU performance measurements and its notification reception with 10s periodicity:
@@ -1243,13 +1236,13 @@ In OAI gNB, we support:
 ```
 
 The reference specifications:
-* `O-RAN.WG4.MP.0-v05.00`
-* `O-RAN.WG4.MP-YANGs-v04.00`
+* `O-RAN.WG4.MP.0-R004-v16.01`
+* `O-RAN.WG4.MP-YANGs-R004-v16.01`
 
-## M-plane prerequisites
+### M-plane prerequisites
 Before proceeding, please make sure you have a support for 7.2 interface, as described in [Prerequisites](#prerequisites).
 
-### DHCP server
+#### DHCP server
 The M-plane requires a DHCP server, where the M-plane connection can be established over untagged or tagged VLAN. We tested with untagged (the default VLAN is 1).
 Please modify `/etc/dhcp/dhcpd.conf` configuration based on your testbed.
 
@@ -1296,7 +1289,7 @@ Please, configure the interface as:
 sudo ip address add 192.168.80.1/24 dev <interface>
 ```
 
-### Mandatory packages
+#### Mandatory packages
 * On Fedora (we haven't yet tested RHEL):
 ```bash
 sudo dnf install pcre-devel libssh-devel libxml2-devel libyang2-devel libnetconf2-devel
@@ -1366,9 +1359,9 @@ sudo ldconfig
 If you would like to install these libraries in the custom path, please replace `/usr/local` default path to e.g. `/opt/mplane-v2`.
 
 ## Benetel O-RU
-Note: Only v1.2.2 RAN550 and RAN650 have been successfully tested.
+Note: RAN550/650 v1.2.2 and v1.4.1 have been successfully tested.
 
-### One time steps
+#### One time steps
 Connect to the RU as user `root`, enable the mplane service, and reboot:
 ```bash
 ssh root@<ru-ip-address>
@@ -1393,13 +1386,15 @@ echo "<DU-pub-key>" >>  ~/.ssh/authorized_keys
 ```
 
 
-## gNB configuration
+### gNB configuration
 The reference gNB configuration file for one Benetel RAN550:
 [`gnb.sa.band78.273prb.fhi72.4x4-benetel550-mplane.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-benetel550-mplane.conf)
 The reference DU configuration file for two Benetel RAN650:
 [gnb-du.sa.band77.273prb.fhi72.8x8-benetel650_650-mplane.conf](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.8x8-benetel650_650-mplane.conf)
 
 In order to run gNB/DU with M-plane, we need to modify Tx gain `att_tx` in RU section, as well as the `fhi_72` section in the configuration file.
+
+**Important note: Benetel v1.4.1 requires only one VF if the same VLAN tag is used for both C-/U-planes. Otherwise, C-plane will not be properly configured. Benetel v1.2.2 will receive the C-plane packets no matter the DU MAC address value.**
 Example for one RU:
 ```bash
 fhi_72 = {
@@ -1474,7 +1469,7 @@ The following parameters are retrieved from the RU and forwarded to the xran:
 * `IQ compression`: if RU supports multiple, the first value in the list is taken; please note that the same value is used for PxSCH/PRACH
 * `PRACH offset`: hardcoded based on the RU vendor (i.e. for Benetel `max(Nrx,Ntx)`)
 
-## Build and compile gNB
+### Build and compile gNB
 The following cmake options are available:
 * `OAI_FHI72` = CUS support
 * `OAI_FHI72_MPLANE` = M support
@@ -1483,7 +1478,7 @@ Compiled libraries:
 * `OAI_FHI72` <=> `oran_fhlib_5g`
 * `OAI_FHI72` && `OAI_FHI72_MPLANE` <=> `oran_fhlib_5g` (CUS) && `oran_fhlib_5g_mplane` (CUSM)
 
-### Using build_oai script
+#### Using build_oai script
 ```bash
 git clone https://gitlab.eurecom.fr/oai/openairinterface5g.git ~/openairinterface5g
 cd ~/openairinterface5g/cmake_targets/
@@ -1494,7 +1489,7 @@ cd ~/openairinterface5g/cmake_targets/
 PKG_CONFIG_PATH=/opt/mplane-v2/lib/pkgconfig ./build_oai --gNB --ninja -t oran_fhlib_5g_mplane --cmake-opt -Dxran_LOCATION=$HOME/phy/fhi_lib/lib
 ```
 
-### Using cmake directly
+#### Using cmake directly
 ```bash
 git clone https://gitlab.eurecom.fr/oai/openairinterface5g.git ~/openairinterface5g
 cd ~/openairinterface5g/
@@ -1505,7 +1500,7 @@ PKG_CONFIG_PATH=/opt/mplane-v2/lib/pkgconfig cmake .. -GNinja -DOAI_FHI72=ON -DO
 ninja nr-softmodem oran_fhlib_5g_mplane params_libconfig
 ```
 
-## Start the gNB
+### Start the gNB
 Run the `nr-softmodem` from the build directory:
 ```bash
 cd ~/openairinterface5g/cmake_targets/ran_build/build
@@ -1573,14 +1568,14 @@ sequenceDiagram
 
 
 <details>
-<summary>4x4 MIMO and 100MHz BW with Benetel 550 RU example run</summary>
+<summary>4x4 MIMO and 100MHz BW with Benetel 550 RU v1.2.2 example run</summary>
 
 ```
 [HW]   [MPLANE] RPC request to RU "192.168.80.9" = <connect> with username "oranbenetel" and port ID "830".
 [HW]   [MPLANE] Successfuly connected to RU "192.168.80.9" with username "oranbenetel" and port ID "830".
 [HW]   [MPLANE] RPC request to RU "192.168.80.9" = <get> operational datastore.
 [HW]   [MPLANE] Successfully retrieved operational datastore from RU "192.168.80.9".
-[HW]   [MPLANE] RU is already PTP synchronized.
+[HW]   [MPLANE] RU is in "LOCKED" sync state.
 [HW]   [MPLANE] RPC request to RU "192.168.80.9" = <subscribe> with stream "NETCONF" and filter "(null)".
 [HW]   [MPLANE] RPC reply = OK.
 [HW]   [MPLANE] Successfully subscribed to all notifications from RU "192.168.80.9".
@@ -2223,6 +2218,861 @@ sequenceDiagram
 ```
 </details>
 
+<details>
+<summary>4x4 MIMO and 100MHz BW with Benetel 550 RU v1.4.1 example run</summary>
+
+```
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <connect> with username "oranbenetel" and port ID "830".
+[HW]   [MPLANE] Successfuly connected to RU "192.168.81.4" with username "oranbenetel" and port ID "830".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get> operational datastore.
+[HW]   [MPLANE] Successfully retrieved operational datastore from RU "192.168.81.4".
+[HW]   [MPLANE] RU is already PTP synchronized.
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <subscribe> with stream "NETCONF" and filter "(null)".
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully subscribed to all notifications from RU "192.168.81.4".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = "<supervision-watchdog-reset xmlns="urn:o-ran:supervision:1.0">
+<supervision-notification-interval>65535</supervision-notification-interval>
+<guard-timer-overhead>65535</guard-timer-overhead>
+</supervision-watchdog-reset>".
+[HW]   [MPLANE] Successfully updated supervision timer to (65535+65535)[s] for RU "192.168.81.4".
+[HW]   [MPLANE] Watchdog timer answer: 
+	<next-update-at xmlns="urn:o-ran:supervision:1.0">2025-08-29T06:49:32+02:00</next-update-at>
+
+[HW]   [MPLANE] Interface MTU 1500 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9600.
+[HW]   [MPLANE] IQ bitwidth 16 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9.
+[HW]   [MPLANE] Storing the following information to forward to xran:
+    RU MAC address 70:b3:d5:e1:5b:81
+    MTU 9600
+    IQ bitwidth 9
+    PRACH offset 4
+    DU port bitmask 61440
+    Band sector bitmask 3840
+    CC ID bitmask 240
+    RU port ID bitmask 15
+    DU port ID 0
+    Band sector ID 0
+    CC ID 0
+    RU port ID 0
+    max Tx gain 24.0
+[HW]   [MPLANE] Successfully retrieved all the U-plane info - interface name, TX/RX carrier names, and TX/RX endpoint names.
+[HW]   [MPLANE] Successfully retreived all performance measurement names.
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-yang-metadata".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "yang".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-inet-types".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-yang-types".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-yang-schema-mount".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-yang-structure-ext".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-datastores".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "sysrepo".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-netconf-acm".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-factory-default".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "sysrepo-factory-default".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-yang-library".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "sysrepo-monitoring".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "sysrepo-plugind".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-netconf".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-netconf-with-defaults".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-netconf-notifications".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-origin".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-netconf-monitoring".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "ietf-netconf-nmda".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <get-schema> for module "nc-notifications".
+[HW]   [MPLANE] [LIBYANG] ERROR: Data model "notifications" not found in local searchdirs. (path: (null)).
+[HW]   [MPLANE] [LIBYANG] ERROR: Loading "notifications" module failed. (path: (null)).
+[HW]   [MPLANE] [LIBYANG] ERROR: Parsing module "nc-notifications" failed. (path: (null)).
+[HW]   [MPLANE] Unable to load module "nc-notifications" from RU "192.168.81.4".
+[HW]   [MPLANE] Unable to load all yang modules from operational datastore for RU "192.168.81.4". Using yang models present in "models" subfolder.
+[HW]   [MPLANE] Successfully loaded all yang modules for RU "192.168.81.4".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <edit-config>:
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>INTERFACE_0</name>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:l2vlan</type>
+    <enabled>true</enabled>
+    <mac-address xmlns="urn:o-ran:interfaces:1.0">70:b3:d5:e1:5b:81</mac-address>
+    <base-interface xmlns="urn:o-ran:interfaces:1.0">eth0</base-interface>
+    <vlan-id xmlns="urn:o-ran:interfaces:1.0">3</vlan-id>
+  </interface>
+</interfaces>
+<performance-measurement-objects xmlns="urn:o-ran:performance-management:1.0">
+  <rx-window-measurement-interval>10</rx-window-measurement-interval>
+  <tx-measurement-interval>10</tx-measurement-interval>
+  <notification-interval>10</notification-interval>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_ON_TIME</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_EARLY</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_LATE</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_TOTAL</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_ON_TIME_C</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_EARLY_C</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_LATE_C</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <tx-measurement-objects>
+    <measurement-object>TX_TOTAL</measurement-object>
+    <active>false</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </tx-measurement-objects>
+</performance-measurement-objects>
+<processing-elements xmlns="urn:o-ran:processing-element:1.0">
+  <transport-session-type>ETH-INTERFACE</transport-session-type>
+  <ru-elements>
+    <name>PLANE_0</name>
+    <transport-flow>
+      <interface-name>INTERFACE_0</interface-name>
+      <eth-flow>
+        <ru-mac-address>70:b3:d5:e1:5b:81</ru-mac-address>
+        <vlan-id>3</vlan-id>
+        <o-du-mac-address>00:11:22:33:44:66</o-du-mac-address>
+      </eth-flow>
+    </transport-flow>
+  </ru-elements>
+</processing-elements>
+<user-plane-configuration xmlns="urn:o-ran:uplane-conf:1.0">
+  <low-level-tx-links>
+    <name>PdschLink0</name>
+    <processing-element>PLANE_0</processing-element>
+    <tx-array-carrier>TxArray0</tx-array-carrier>
+    <low-level-tx-endpoint>LowLevelTxEndpoint0</low-level-tx-endpoint>
+  </low-level-tx-links>
+  <low-level-tx-links>
+    <name>PdschLink1</name>
+    <processing-element>PLANE_0</processing-element>
+    <tx-array-carrier>TxArray1</tx-array-carrier>
+    <low-level-tx-endpoint>LowLevelTxEndpoint1</low-level-tx-endpoint>
+  </low-level-tx-links>
+  <low-level-tx-links>
+    <name>PdschLink2</name>
+    <processing-element>PLANE_0</processing-element>
+    <tx-array-carrier>TxArray2</tx-array-carrier>
+    <low-level-tx-endpoint>LowLevelTxEndpoint2</low-level-tx-endpoint>
+  </low-level-tx-links>
+  <low-level-tx-links>
+    <name>PdschLink3</name>
+    <processing-element>PLANE_0</processing-element>
+    <tx-array-carrier>TxArray3</tx-array-carrier>
+    <low-level-tx-endpoint>LowLevelTxEndpoint3</low-level-tx-endpoint>
+  </low-level-tx-links>
+  <low-level-rx-links>
+    <name>PuschLink0</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray0</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxEndpoint0</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PrachLink0</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray0</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxPrachEndpoint0</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PuschLink1</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray1</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxEndpoint1</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PrachLink1</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray1</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxPrachEndpoint1</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PuschLink2</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray2</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxEndpoint2</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PrachLink2</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray2</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxPrachEndpoint2</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PuschLink3</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray3</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxEndpoint3</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-rx-links>
+    <name>PrachLink3</name>
+    <processing-element>PLANE_0</processing-element>
+    <rx-array-carrier>RxArray3</rx-array-carrier>
+    <low-level-rx-endpoint>LowLevelRxPrachEndpoint3</low-level-rx-endpoint>
+  </low-level-rx-links>
+  <low-level-tx-endpoints>
+    <name>LowLevelTxEndpoint0</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>0</eaxc-id>
+    </e-axcid>
+  </low-level-tx-endpoints>
+  <low-level-tx-endpoints>
+    <name>LowLevelTxEndpoint1</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>1</eaxc-id>
+    </e-axcid>
+  </low-level-tx-endpoints>
+  <low-level-tx-endpoints>
+    <name>LowLevelTxEndpoint2</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>2</eaxc-id>
+    </e-axcid>
+  </low-level-tx-endpoints>
+  <low-level-tx-endpoints>
+    <name>LowLevelTxEndpoint3</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>3</eaxc-id>
+    </e-axcid>
+  </low-level-tx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxEndpoint0</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>0</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxPrachEndpoint0</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>4</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxEndpoint1</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>1</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxPrachEndpoint1</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>5</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxEndpoint2</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>2</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxPrachEndpoint2</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>6</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxEndpoint3</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>3</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <low-level-rx-endpoints>
+    <name>LowLevelRxPrachEndpoint3</name>
+    <compression>
+      <iq-bitwidth>9</iq-bitwidth>
+      <compression-type>STATIC</compression-type>
+    </compression>
+    <frame-structure>193</frame-structure>
+    <cp-type>NORMAL</cp-type>
+    <cp-length>352</cp-length>
+    <cp-length-other>288</cp-length-other>
+    <offset-to-absolute-frequency-center>0</offset-to-absolute-frequency-center>
+    <ul-fft-sampling-offsets>
+      <scs>KHZ_30</scs>
+      <ul-fft-sampling-offset>0</ul-fft-sampling-offset>
+    </ul-fft-sampling-offsets>
+    <e-axcid>
+      <o-du-port-bitmask>61440</o-du-port-bitmask>
+      <band-sector-bitmask>3840</band-sector-bitmask>
+      <ccid-bitmask>240</ccid-bitmask>
+      <ru-port-bitmask>15</ru-port-bitmask>
+      <eaxc-id>7</eaxc-id>
+    </e-axcid>
+    <non-time-managed-delay-enabled>true</non-time-managed-delay-enabled>
+  </low-level-rx-endpoints>
+  <tx-array-carriers>
+    <name>TxArray0</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <gain>24.0</gain>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+  </tx-array-carriers>
+  <tx-array-carriers>
+    <name>TxArray1</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <gain>24.0</gain>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+  </tx-array-carriers>
+  <tx-array-carriers>
+    <name>TxArray2</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <gain>24.0</gain>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+  </tx-array-carriers>
+  <tx-array-carriers>
+    <name>TxArray3</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <gain>24.0</gain>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+  </tx-array-carriers>
+  <rx-array-carriers>
+    <name>RxArray0</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+    <gain-correction>0.0</gain-correction>
+    <n-ta-offset>0</n-ta-offset>
+  </rx-array-carriers>
+  <rx-array-carriers>
+    <name>RxArray1</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+    <gain-correction>0.0</gain-correction>
+    <n-ta-offset>0</n-ta-offset>
+  </rx-array-carriers>
+  <rx-array-carriers>
+    <name>RxArray2</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+    <gain-correction>0.0</gain-correction>
+    <n-ta-offset>0</n-ta-offset>
+  </rx-array-carriers>
+  <rx-array-carriers>
+    <name>RxArray3</name>
+    <absolute-frequency-center>623334</absolute-frequency-center>
+    <center-of-channel-bandwidth>3350010000</center-of-channel-bandwidth>
+    <channel-bandwidth>100000000</channel-bandwidth>
+    <active>ACTIVE</active>
+    <downlink-radio-frame-offset>0</downlink-radio-frame-offset>
+    <downlink-sfn-offset>0</downlink-sfn-offset>
+    <gain-correction>0.0</gain-correction>
+    <n-ta-offset>0</n-ta-offset>
+  </rx-array-carriers>
+</user-plane-configuration>
+
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully edited the candidate datastore for RU "192.168.81.4".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <validate> candidate datastore.
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully validated candidate datastore for RU "192.168.81.4".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <commit> candidate datastore.
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully commited configuration into running datastore for RU "192.168.81.4".
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.335228846+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray0",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.368360865+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray1",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.414703766+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray2",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.452921618+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray3",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.471419021+00:00)
+{
+  "ietf-netconf-notifications:netconf-config-change": {
+    "changed-by": {
+      "username": "root",
+      "session-id": 0
+    },
+    "datastore": "running",
+    "edit": [
+      {
+        "target": "/ietf-interfaces:interfaces/interface[name='INTERFACE_0']",
+        "operation": "create"
+      },
+      {
+        "target": "/ietf-interfaces:interfaces/interface[name='INTERFACE_0']/name",
+        "operation": "create"
+      },
+...
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.678251110+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray0",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.715498360+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray1",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.830268973+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray2",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:19.853387657+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray3",
+        "state": "BUSY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.515262267+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray0",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.535692962+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray1",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.557423764+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray2",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.579066867+00:00)
+{
+  "o-ran-uplane-conf:rx-array-carriers-state-change": {
+    "rx-array-carriers": [
+      {
+        "name": "RxArray3",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.604192995+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray0",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.629830498+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray1",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.651062685+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray2",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] Received notification from RU "192.168.81.4" at (2025-08-28T10:37:24.672865767+00:00)
+{
+  "o-ran-uplane-conf:tx-array-carriers-state-change": {
+    "tx-array-carriers": [
+      {
+        "name": "TxArray3",
+        "state": "READY"
+      }
+    ]
+  }
+}
+
+[HW]   [MPLANE] RU "192.168.81.4" is now ready.
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <edit-config>:
+<performance-measurement-objects xmlns="urn:o-ran:performance-management:1.0">
+  <rx-window-measurement-interval>10</rx-window-measurement-interval>
+  <tx-measurement-interval>10</tx-measurement-interval>
+  <notification-interval>10</notification-interval>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_ON_TIME</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_EARLY</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_LATE</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_TOTAL</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_ON_TIME_C</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_EARLY_C</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <rx-window-measurement-objects>
+    <measurement-object>RX_LATE_C</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </rx-window-measurement-objects>
+  <tx-measurement-objects>
+    <measurement-object>TX_TOTAL</measurement-object>
+    <active>true</active>
+    <object-unit>RU</object-unit>
+    <report-info>COUNT</report-info>
+  </tx-measurement-objects>
+</performance-measurement-objects>
+
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully edited the candidate datastore for RU "192.168.81.4".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <validate> candidate datastore.
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully validated candidate datastore for RU "192.168.81.4".
+[HW]   [MPLANE] RPC request to RU "192.168.81.4" = <commit> candidate datastore.
+[HW]   [MPLANE] RPC reply = OK.
+[HW]   [MPLANE] Successfully commited configuration into running datastore for RU "192.168.81.4".
+[HW]   [MPLANE] Sucessfully activated PM after start-up procedure for RU "192.168.81.4".
+```
+</details>
 
 Note: If you wish to run the fronthaul without M-plane, no need for recompilation, as the library `oran_fhlib_5g` already exists.
 The only mandatory step is to link `oran_fhlib_5g` to `oai_transpro` library.
@@ -2234,7 +3084,7 @@ sudo ./nr-softmodem -O <without-mplane-configuration file> --thread-pool <list o
 ```
 
 
-# Contact in case of questions
+## Contact in case of questions
 
 You can ask your question on the [mailing lists](https://gitlab.eurecom.fr/oai/openairinterface5g/-/wikis/MailingList).
 

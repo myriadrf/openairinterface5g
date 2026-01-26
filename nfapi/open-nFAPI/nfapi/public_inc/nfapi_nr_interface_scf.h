@@ -512,8 +512,6 @@ typedef struct {
 typedef struct {
   nfapi_uint8_tlv_t num_beams_period_vendor_ext;
   nfapi_uint8_tlv_t analog_bf_vendor_ext;
-  nfapi_uint8_tlv_t total_num_beams_vendor_ext;
-  nfapi_uint8_tlv_t *analog_beam_list;
 } nfapi_nr_analog_beamforming_ve_t;
 
 // ERROR enums
@@ -1481,7 +1479,10 @@ typedef enum {
   NFAPI_NR_UL_CONFIG_PUCCH_PDU_TYPE,
   NFAPI_NR_UL_CONFIG_SRS_PDU_TYPE,
 } nfapi_nr_ul_config_pdu_type_e;
-
+static const char* const txt_nfapi_nr_ul_config_pdu_type[] = {"NFAPI_NR_UL_CONFIG_PRACH_PDU_TYPE",
+                                                              "NFAPI_NR_UL_CONFIG_PUSCH_PDU_TYPE",
+                                                              "NFAPI_NR_UL_CONFIG_PUCCH_PDU_TYPE",
+                                                              "NFAPI_NR_UL_CONFIG_SRS_PDU_TYPE"};
 typedef struct
 {
   uint16_t pdu_type;//0: PRACH PDU, 1: PUSCH PDU, 2: PUCCH PDU, 3: SRS PDU

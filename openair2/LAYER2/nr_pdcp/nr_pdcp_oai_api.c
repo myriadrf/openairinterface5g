@@ -653,6 +653,30 @@ void nr_pdcp_add_srbs(eNB_flag_t enb_flag,
     LOG_W(PDCP, "nr_pdcp_add_srbs() with void list\n");
 }
 
+/** @brief Get DRB IDs for a specific PDU session */
+int nr_pdcp_get_drb_ids_for_pdusession(ue_id_t ue_id, long pdusession_id, int *drb_ids)
+{
+  int num_found = 0;
+  nr_pdcp_manager_lock(nr_pdcp_ue_manager);
+  nr_pdcp_ue_t *ue = nr_pdcp_manager_get_ue(nr_pdcp_ue_manager, ue_id);
+  if (ue) {
+    for (int i = 0; i < MAX_DRBS_PER_UE; i++) {
+      nr_pdcp_entity_t *drb = ue->drb[i];
+      if (drb && drb->pdusession_id == pdusession_id) {
+        if (num_found < MAX_DRBS_PER_UE) {
+          drb_ids[num_found] = drb->rb_id;
+          num_found++;
+        } else {
+          LOG_W(PDCP, "Found more DRBs than MAX_DRBS_PER_UE=%d\n", MAX_DRBS_PER_UE);
+          break;
+        }
+      }
+    }
+  }
+  nr_pdcp_manager_unlock(nr_pdcp_ue_manager);
+  return num_found;
+}
+
 uint64_t get_pdcp_optmask(void)
 {
   return pdcp_optmask;

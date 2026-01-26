@@ -21,7 +21,7 @@ extern uint16_t ue_id_g;
 #define  CONFIG_HLP_INITIAL_FO             "Initially compensated DL frequency offset (e.g. known Doppler shift in NTN LEO scenario)\n"
 #define  CONFIG_HLP_FREQ_SYNC_P            "coefficient for Proportional part of continuous frequency offset compensation PI controller\n"
 #define  CONFIG_HLP_FREQ_SYNC_I            "coefficient for Integrating part of continuous frequency offset compensation PI controller\n"
-#define  CONFIG_HLP_CONT_FO_COMP           "Enable continuous frequency offset (FO) estimation and compensation and specify main FO source (1 = local oscillator, 2 = Doppler shift)\n"
+#define  CONFIG_HLP_CONT_FO_COMP           "Enable continuous frequency offset (FO) estimation and (pre-)compensation and specify main FO source (1 = local oscillator, 2 = Doppler shift, 3 = Don't consider residual DL FO in UL FO pre-compensation)\n"
 #define  CONFIG_HLP_AGC                    "Rx Gain control used for UE\n"
 #define  CONFIG_HLP_NUM_UL_ACTORS          "Number of UL actors to use. Set to 0 to disable UL actor framework and do processing inline\n"
 #define  CONFIG_HLP_NUM_DL_ACTORS          "Number of DL actors to use. Set to 0 to disable DL actor framework and do processing inline\n"

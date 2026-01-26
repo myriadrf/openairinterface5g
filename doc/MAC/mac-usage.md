@@ -4,7 +4,7 @@ out the various configuration options that influence its behavior.
 
 [[_TOC_]]
 
-# General
+## General
 
 The 5G MAC scheduler is a proportional fair (PF) scheduler, "approximating
 wide-band CQI" (for lack of a better term, but CQI is typically used for PF)
@@ -67,7 +67,7 @@ happen.
 Say we have 0% PDCCH success rate (radio link failure scenario) but `pdcch_cl_adjust` is 0 indicating
 perfect PDCCH channel. it would take ~18 PDCCH failures to reach maximum aggregation level.
 
-# Periodic output and interpretation
+## Periodic output and interpretation
 
 The scheduler periodically outputs statistics that can help you judge the radio
 channel quality, i.e., why a UE does not perform as you would expect. The
@@ -90,6 +90,7 @@ UE 2460: LCID 4: TX     1526169592 RX          16152 bytes
 ```
 
 In the first line,
+
 * `UE RNTI` (here `2460`): this is also used as the DU UE ID over F1; each line
   is prepended with the RNTI
 * `CU UE ID` (`2`): separate identifier from the RNTI to handle multiple
@@ -109,6 +110,7 @@ In the first line,
 The second and third line reflect channel state information (CSI) as
 reported by the UE, and only appear if CSI-RS/SRS are enabled and _received_
 (for some bands, they cannot be enabled):
+
 * `CQI` (`15`): the channel quality indicator is a number between 0 and 15. It
   indicates the achievable spectral efficiency of the UE. 15 means highest, 0
   is lowest. This corresponds to a 4-bit table in 38.214 with actual spectral
@@ -121,6 +123,7 @@ reported by the UE, and only appear if CSI-RS/SRS are enabled and _received_
 * `UL-RI`, `TPMI`: same as DL.
 
 The fourth and fifth line show HARQ-related information:
+
 * `dlsch_rounds A/B/C/D` (`32917/5113/1504/560`). This is the number of
   transmissions by the gNB for each round of the HARQ protocol. `A` is the first
   round, B is the second, etc. If `A` is high and `B` is low, `C` is lower and `D` is
@@ -168,6 +171,7 @@ The fourth and fifth line show HARQ-related information:
   but could not allocate the DCI.
 
 In the last lines:
+
 * `MAC` shows the amount of MAC PDU bytes scheduled in transmit (`TX`,
   `1530943191`) and receive (`RX`, `194148`) directions
 * `LCID X` shows the amount of MAC SDU/RLC PDU data for Logical Channel ID with
@@ -175,9 +179,9 @@ In the last lines:
   and 2. LCIDs 4 and onward are mapped to DRBs 1 onward. If you have an LCID 4,
   it means you have a PDU session.
 
-# Configuration of the MAC
+## Configuration of the MAC
 
-## Split-related options (running in a DU)
+### Split-related options (running in a DU)
 
 See [nFAPI documentation](../nfapi.md) or [Aerial
 tutorial](../Aerial_FAPI_Split_Tutorial.md) for information about the (n)FAPI
@@ -185,7 +189,7 @@ split.
 
 See [F1 documentation](../F1AP/F1-design.md) for information about the F1 split.
 
-## MAC scheduler-related configuration options
+### MAC scheduler-related configuration options
 
 The following options have an influence on the MAC scheduler operation (for all
 UEs, if applicable), either on the MAC scheduler operation directly or how a UE
@@ -236,6 +240,9 @@ In the `MACRLCs` section of the gNB/DU configuration file:
    case RSSI reaches the threshold and prevents ADC railing. Unit depends on
    RSSI reporting config.
 * `pucch_RSSI_Threshold`: Same as above but for PUCCH
+* `stats_max_ue` (default 8): maximum number of UEs to show in periodical
+  stats; beyond this number, periodical statistics will be disabled (it can
+  still be seen in `nrMAC_stats.log`. Use `0` to disable periodical stats.
 
 In the `gNBs` section of the gNB/DU configuration file: some of the parameters
 affect RRC configuration (CellGroupConfig) of a UE, and are therefore listed
@@ -252,8 +259,6 @@ configuration](../RRC/rrc-usage.md) as well for SIB configuration.
 * `pusch_AntennaPorts` (default 1): number of antenna ports in PUSCH
 * `maxMIMO_layers` (default -1=unlimited): maximum number of MIMO layers to use
   in downlink
-* `sib1_tda` (default 1): time domain allocation (TDA) indices to use for SIB1
-  (38.214 section 5.1.2.1.1)
 * `do_CSIRS` (default 0): flag whether to use channel-state information
   reference signal (CSI-RS)
 * `do_SRS` (default 0): flag whether to use sounding reference signal (SRS)
@@ -296,7 +301,7 @@ DL-MIMO is configured using following parameters:
 `pdsch_AntennaPorts_XP` , `pdsch_AntennaPorts_N1` , `pdsch_AntennaPorts_N2`, `maxMIMO_layers`
 (see also [`RUNMODEM.md`](../RUNMODEM.md))
 
-## ServingCellConfigCommon parameters
+### ServingCellConfigCommon parameters
 
 The `gNBs` configuration section has a big structure `servingCellConfigCommon`
 that has an influence on the overall behavior of MAC and L1. As the name says,
@@ -307,19 +312,20 @@ TS 38.331, section 6.3.2 "Radio resource control information elements".
 
 Below is a description of some of these parameters.
 
-### Frequency configuration
+#### Frequency configuration
 
 There are many parameters, such as `absoluteFrequencySSB`, etc., that have an
 impact on the frequency used by the gNB. For more information, please check the
 [corresponding document](../gNB_frequency_setup.md).
 
-### TDD pattern configuration
+#### TDD pattern configuration
 
 The TDD configuration parameters allow to use one or two TDD patterns.
 
-#### Single TDD pattern
+##### Single TDD pattern
 
 Configure the TDD pattern through these options:
+
 - `dl_UL_TransmissionPeriodicity`: Refers to the UL/DL slots periodicity for
   the TDD pattern. See below for valid numbers.
 - `nrofDownlinkSlots`: Refers to the number of consecutive DL slots in the TDD
@@ -357,7 +363,7 @@ The `dl_UL_TransmissionPeriodicity` is set to `5` (2.5ms). The above figure
 shows two TDD periods over 5ms. The 10 ms frame period must be strictly
 divisible by the sum of the TDD pattern periods.
 
-#### Two TDD patterns
+##### Two TDD patterns
 
 An optional `pattern2` structure is used to signal a TDD pattern 2.
 In this case, the TDD pattern may have two extended values of 3 ms and 4 ms.
@@ -408,7 +414,7 @@ pattern2: {
 };
 ```
 
-#### UL-heavy TDD patterns
+##### UL-heavy TDD patterns
 
 "UL-heavy TDD patterns", i.e., TDD patterns that have many UL slots are
 supported. Examples for such patterns would be DSUUU or DDDSUUUUUU.
@@ -417,3 +423,29 @@ Note that you should increase the aggregation level candidates as described in
 [the corresponding section above](#pdcch-aggregation-level). This is because the
 scheduler has to schedule multiple DCIs in a single DL slots for multiple UL
 slots. As a suggestion, you could try `uess_agg_levels = [4, 2, 2, 0, 0]`.
+
+## Multiple Dedicated BWPs
+
+A maximum of 4 dedicated BWPs can be configured for a UE per standard, but only
+1 BWP can be active in UL and DL direction at a given time.  In the code we
+only configure a single BWP for the UE at a given time and we would switch by
+reconfiguring this BWP. All this procedure is transparent for users and LOGs
+mark BWP switching according to the configuration file enumeration.  It is
+possible to configure multiple dedicated BWPs and 1st active BWP via
+configuration file.
+
+### Setup of the Configuration files ##
+
+In the configuration file you have the option to select the 1st active BWP, the
+BWP location and SCS of each BWP in the following way (example with 2
+additional BWPs):
+
+```
+    first_active_bwp = 1;
+    bwp_list = ({ scs = 1; bwpStart = 0; bwpSize = 106;},
+                { scs = 1; bwpStart = 0; bwpSize = 24;});
+```
+
+This example configures 3 additional BWPs, with IDs from 1 to 3. A similar
+example can be found in configuration file
+`ci-scripts/conf_files/gnb-du.sa.band78.106prb.usrpb200.conf` tested in CI.

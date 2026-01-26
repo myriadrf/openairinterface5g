@@ -31,7 +31,6 @@
  */
 
 #define _GNU_SOURCE
-#define SPEED_OF_LIGHT 299792458
 
 #include "mac_defs.h"
 #include "NR_MAC_UE/mac_proto.h"
@@ -41,7 +40,6 @@
 #include "executables/softmodem-common.h"
 #include "SCHED_NR/phy_frame_config_nr.h"
 #include "oai_asn1.h"
-#include "executables/position_interface.h"
 
 #define ASIGN_P_VAL(dst, src) \
   do {                        \
@@ -144,9 +142,21 @@ static void config_common_ue_sa(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommo
                                           frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth);
   cfg->carrier_config.dl_bandwidth = get_supported_bw_mhz(mac->frequency_range, bw_index);
 
-  uint64_t dl_bw_khz = (12 * frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth) *
-                       (15 << frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing);
-  cfg->carrier_config.dl_frequency = (downlink_frequency[cc_idP][0]/1000) - (dl_bw_khz>>1);
+  /** Only set frequency if not already initialized (e.g., from handover reconfigurationWithSync)
+  * MAC maintains its own frequency state, don't overwrite it with command-line parameter which
+  * is related to the initial cell selection. */
+  if (cfg->carrier_config.dl_frequency == 0) {
+    // Initial cell selection: derive from command-line parameter
+    uint64_t dl_bw_khz = (12 * frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth) *
+                         (15 << frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing);
+    cfg->carrier_config.dl_frequency = (downlink_frequency[cc_idP][0]/1000) - (dl_bw_khz>>1);
+    LOG_I(NR_MAC,
+          "[UE %d] Initial cell selection: dl_frequency=%u kHz (from command-line, band=%d, scs=%ld)\n",
+          mac->ue_id,
+          cfg->carrier_config.dl_frequency,
+          mac->nr_band,
+          frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing);
+  }
 
   for (int i = 0; i < 5; i++) {
     if (i == frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing) {
@@ -167,10 +177,21 @@ static void config_common_ue_sa(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommo
                                       frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth);
   cfg->carrier_config.uplink_bandwidth = get_supported_bw_mhz(mac->frequency_range, bw_index);
 
-  if (frequencyInfoUL->absoluteFrequencyPointA == NULL)
-    cfg->carrier_config.uplink_frequency = cfg->carrier_config.dl_frequency;
-  else
-    cfg->carrier_config.uplink_frequency = cfg->carrier_config.dl_frequency + (uplink_frequency_offset[cc_idP][0] / 1000);
+  /** Only set UL frequency if not already initialized (e.g., from handover reconfigurationWithSync)
+  * MAC maintains its own frequency state, don't overwrite it with command-line parameter which
+  * is related to the initial cell selection. */
+  if (cfg->carrier_config.uplink_frequency == 0) {
+    // Initial cell selection: derive from DL frequency
+    LOG_I(NR_MAC,
+          "Initial cell selection: uplink_frequency=%u kHz (from dl_frequency=%u kHz, uplink_frequency_offset=%u kHz)\n",
+          cfg->carrier_config.uplink_frequency,
+          cfg->carrier_config.dl_frequency,
+          uplink_frequency_offset[cc_idP][0]);
+    if (frequencyInfoUL->absoluteFrequencyPointA == NULL)
+      cfg->carrier_config.uplink_frequency = cfg->carrier_config.dl_frequency;
+    else
+      cfg->carrier_config.uplink_frequency = cfg->carrier_config.dl_frequency + (uplink_frequency_offset[cc_idP][0] / 1000);
+  }
 
   for (int i = 0; i < 5; i++) {
     if (i == frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing) {
@@ -262,81 +283,91 @@ static void config_common_ue_sa(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommo
                                                                 mac->frequency_range);
     //prach_fd_occasion->num_unused_root_sequences = ???
   }
-  cfg->prach_config.ssb_per_rach = rach_ConfigCommon->ssb_perRACH_OccasionAndCB_PreamblesPerSSB->present-1;
-
 }
 
-// computes round-trip-time between ue and sat based on SIB19 ephemeris data
-static void calculate_ue_sat_ta(const position_t *position_params,
-                                const NR_PositionVelocity_r17_t *sat_pos,
-                                ntn_timing_advance_componets_t *ntn_ta)
+// prepare data for orbit propagation based on SIB19 ephemeris data to be able to compute the round-trip-time between ue and sat
+static void prepare_ue_sat_ta(const NR_PositionVelocity_r17_t *sat_pos, fapi_nr_ntn_config_t *ntn_ta)
 {
-  // get UE position coordinates
-  const position_t pos_ue = *position_params;
-
   // get sat position coordinates
   const position_t pos_sat = {sat_pos->positionX_r17 * 1.3, sat_pos->positionY_r17 * 1.3, sat_pos->positionZ_r17 * 1.3};
-
-  // calculate directional vector from SAT to UE
-  const position_t dir_sat_ue = {pos_ue.X - pos_sat.X, pos_ue.Y - pos_sat.Y, pos_ue.Z - pos_sat.Z};
-
-  // calculate distance between SAT and UE
-  double distance = sqrt(dir_sat_ue.X * dir_sat_ue.X + dir_sat_ue.Y * dir_sat_ue.Y + dir_sat_ue.Z * dir_sat_ue.Z);
 
   // get sat velocity vector
   const position_t vel_sat = {sat_pos->velocityVX_r17 * 0.06, sat_pos->velocityVY_r17 * 0.06, sat_pos->velocityVZ_r17 * 0.06};
 
-  // calculate SAT velocity towards UE
-  double velocity = (vel_sat.X * dir_sat_ue.X + vel_sat.Y * dir_sat_ue.Y + vel_sat.Z * dir_sat_ue.Z) / distance;
-
-  // calculate SAT acceleration towards UE
+  // calculate orbital radius
   const double radius_2 = pos_sat.X * pos_sat.X + pos_sat.Y * pos_sat.Y + pos_sat.Z * pos_sat.Z;
+  const double radius = sqrt(radius_2);
+
+  // calculate sat velocity magnitude
   const double vel_sat_2 = vel_sat.X * vel_sat.X + vel_sat.Y * vel_sat.Y + vel_sat.Z * vel_sat.Z;
-  const double acceleration =
-      -(pos_sat.X * dir_sat_ue.X + pos_sat.Y * dir_sat_ue.Y + pos_sat.Z * dir_sat_ue.Z) * vel_sat_2 / (radius_2 * distance);
+  const double vel_mag = sqrt(vel_sat_2);
 
-  LOG_D(NR_MAC, "Satellite velocity towards UE: %f m/s, acceleration towards UE: %f m/s²\n", velocity, acceleration);
+  double omega; // angular velocity in rad/ms
+  position_t pos_sat_90; // sat position vector in 90° orbit
+  position_t vel_sat_90; // sat velocity vector in 90° orbit
 
-  ntn_ta->N_UE_TA_adj = (2 * distance / SPEED_OF_LIGHT) * 1e3; // in ms
-  ntn_ta->N_UE_TA_drift = (2 * -velocity / SPEED_OF_LIGHT) * 1e6; // in µs/s
-  ntn_ta->N_UE_TA_drift_variant = (2 * acceleration / SPEED_OF_LIGHT) * 1e6; // in µs/s²
+  // assuming circular orbit when satellite moves faster than 1000 m/s
+  // 1000 m/s are chosen because according to Wikipedia, this seems to be a reasonable minimal
+  // orbital velocity: https://en.wikipedia.org/wiki/Orbital_speed#Tangential_velocities_at_altitude
+  if (vel_mag > 1000) {
+    omega = vel_mag / (radius * 1000);
+    double scaling = radius / vel_mag;
+    pos_sat_90 = (position_t){vel_sat.X * scaling, vel_sat.Y * scaling, vel_sat.Z * scaling};
+    scaling = -vel_mag / radius;
+    vel_sat_90 = (position_t){pos_sat.X * scaling, pos_sat.Y * scaling, pos_sat.Z * scaling};
+  } else {
+    omega = 0;
+    pos_sat_90 = pos_sat;
+    vel_sat_90 = vel_sat;
+  }
+
+  LOG_I(NR_MAC,
+        "Satellite orbital radius %f m, pos_sat_0 = {%f, %f, %f}, pos_sat_90 = {%f, %f, %f}\n",
+        radius,
+        pos_sat.X,
+        pos_sat.Y,
+        pos_sat.Z,
+        pos_sat_90.X,
+        pos_sat_90.Y,
+        pos_sat_90.Z);
+
+  LOG_I(NR_MAC,
+        "Satellite velocity %f m/s, angular velocity = %e rad/ms, vel_sat_0 = {%f, %f, %f}, vel_sat_90 = {%f, %f, %f}\n",
+        vel_mag,
+        omega,
+        vel_sat.X,
+        vel_sat.Y,
+        vel_sat.Z,
+        vel_sat_90.X,
+        vel_sat_90.Y,
+        vel_sat_90.Z);
+
+  ntn_ta->omega = omega;
+  ntn_ta->pos_sat_0 = pos_sat;
+  ntn_ta->pos_sat_90 = pos_sat_90;
+  ntn_ta->vel_sat_0 = vel_sat;
+  ntn_ta->vel_sat_90 = vel_sat_90;
 }
 
 // populate ntn_ta structure from mac
-static void configure_ntn_ta(module_id_t module_id,
-                             ntn_timing_advance_componets_t *ntn_ta,
-                             const NR_NTN_Config_r17_t *ntn_Config_r17)
+static void configure_ntn_ta(fapi_nr_ntn_config_t *ntn_ta,
+                             const NR_NTN_Config_r17_t *ntn_Config_r17,
+                             int hfn,
+                             int frame,
+                             bool is_targetcell)
 {
   if (!ntn_Config_r17)
     return;
 
-  position_t position_params = {0};
-  get_position_coordinates(module_id, &position_params);
-
   // epochTime_r17 must be present (this is assured by function `eval_epoch_time()`)
   const NR_EpochTime_r17_t *epoch_time_r17 = ntn_Config_r17->epochTime_r17;
   AssertFatal(epoch_time_r17, "epoch_time_r17 should not be NULL here\n");
+  if (epoch_time_r17->sfn_r17 >= frame)
+    ntn_ta->epoch_hfn = hfn;
+  else
+    ntn_ta->epoch_hfn = hfn + 1;
   ntn_ta->epoch_sfn = epoch_time_r17->sfn_r17;
   ntn_ta->epoch_subframe = epoch_time_r17->subFrameNR_r17;
-
-  // handle ephemerisInfo_r17
-  const NR_EphemerisInfo_r17_t *ephemeris_info = ntn_Config_r17->ephemerisInfo_r17;
-  if (ephemeris_info) {
-    if (ephemeris_info->present == NR_EphemerisInfo_r17_PR_positionVelocity_r17) {
-      const NR_PositionVelocity_r17_t *position_velocity = ephemeris_info->choice.positionVelocity_r17;
-      AssertFatal(position_velocity, "position_velocity should not be NULL here\n");
-      calculate_ue_sat_ta(&position_params, position_velocity, ntn_ta);
-    } else {
-      LOG_W(NR_MAC, "NR UE currently supports only ephemerisInfo_r17 of type positionVelocity_r17\n");
-      ntn_ta->N_UE_TA_adj = 0;
-      ntn_ta->N_UE_TA_drift = 0;
-      ntn_ta->N_UE_TA_drift_variant = 0;
-    }
-  } else { // Need R - Release if not present
-    ntn_ta->N_UE_TA_adj = 0;
-    ntn_ta->N_UE_TA_drift = 0;
-    ntn_ta->N_UE_TA_drift_variant = 0;
-  }
 
   // handle cellSpecificKoffset_r17
   if (ntn_Config_r17->cellSpecificKoffset_r17)
@@ -364,23 +395,45 @@ static void configure_ntn_ta(module_id_t module_id,
     ntn_ta->N_common_ta_drift_variant = 0;
   }
 
-  ntn_ta->ntn_params_changed = true;
-
-  LOG_D(NR_MAC,
-        "SIB19 Rxd. Epoch SFN: %d, Epoch Subframe: %d, k_offset: %ldms, N_Common_Ta: %fms, drift: %fµs/s, variant %fµs/s², "
-        "N_UE_TA: %fms, drift: %fµs/s, variant %fµs/s²\n",
+  LOG_I(NR_MAC,
+        "NTN Config Rxd. Epoch HFN: %d, Epoch SFN: %d, Epoch Subframe: %d, k_offset: %ldms, "
+        "N_Common_Ta: %fms, drift: %fµs/s, variant: %fµs/s²\n",
+        ntn_ta->epoch_hfn,
         ntn_ta->epoch_sfn,
         ntn_ta->epoch_subframe,
         ntn_ta->cell_specific_k_offset,
         ntn_ta->N_common_ta_adj,
         ntn_ta->N_common_ta_drift,
-        ntn_ta->N_common_ta_drift_variant,
-        ntn_ta->N_UE_TA_adj,
-        ntn_ta->N_UE_TA_drift,
-        ntn_ta->N_UE_TA_drift_variant);
+        ntn_ta->N_common_ta_drift_variant);
+
+  // handle ephemerisInfo_r17
+  const NR_EphemerisInfo_r17_t *ephemeris_info = ntn_Config_r17->ephemerisInfo_r17;
+  if (ephemeris_info) {
+    if (ephemeris_info->present == NR_EphemerisInfo_r17_PR_positionVelocity_r17) {
+      const NR_PositionVelocity_r17_t *position_velocity = ephemeris_info->choice.positionVelocity_r17;
+      AssertFatal(position_velocity, "position_velocity should not be NULL here\n");
+      prepare_ue_sat_ta(position_velocity, ntn_ta);
+    } else {
+      LOG_W(NR_MAC, "NR UE currently supports only ephemerisInfo_r17 of type positionVelocity_r17\n");
+      ntn_ta->omega = 0;
+      ntn_ta->pos_sat_0 = (position_t){0, 0, 0};
+      ntn_ta->pos_sat_90 = (position_t){0, 0, 0};
+      ntn_ta->vel_sat_0 = (position_t){0, 0, 0};
+      ntn_ta->vel_sat_90 = (position_t){0, 0, 0};
+    }
+  } else { // Need R - Release if not present
+    ntn_ta->omega = 0;
+    ntn_ta->pos_sat_0 = (position_t){0, 0, 0};
+    ntn_ta->pos_sat_90 = (position_t){0, 0, 0};
+    ntn_ta->vel_sat_0 = (position_t){0, 0, 0};
+    ntn_ta->vel_sat_90 = (position_t){0, 0, 0};
+  }
+
+  ntn_ta->is_targetcell = is_targetcell;
+  ntn_ta->params_changed = true;
 }
 
-static void config_common_ue(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommon_t *scc, int cc_idP)
+static void config_common_ue(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommon_t *scc, int cc_idP, int hfn, int frame)
 {
   fapi_nr_config_request_t *cfg = &mac->phy_config.config_req;
 
@@ -407,6 +460,13 @@ static void config_common_ue(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommon_t
                                                     *scc->ssbSubcarrierSpacing,
                                                     frequencyInfoDL->absoluteFrequencyPointA)
                                        / 1000; // freq in kHz
+    LOG_I(NR_MAC,
+          "[UE %d] Set dl_frequency=%u kHz (from absoluteFrequencyPointA=%ld, band=%d, scs=%ld)\n",
+          mac->ue_id,
+          cfg->carrier_config.dl_frequency,
+          frequencyInfoDL->absoluteFrequencyPointA,
+          mac->nr_band,
+          *scc->ssbSubcarrierSpacing);
 
     for (int i = 0; i < 5; i++) {
       if (i == frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing) {
@@ -547,7 +607,6 @@ static void config_common_ue(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommon_t
       prach_fd_occasion->num_root_sequences =
           compute_nr_root_seq(rach_ConfigCommon, nb_preambles, frame_type, mac->frequency_range);
 
-      cfg->prach_config.ssb_per_rach = rach_ConfigCommon->ssb_perRACH_OccasionAndCB_PreamblesPerSSB->present - 1;
       // prach_fd_occasion->num_unused_root_sequences = ???
     }
   }
@@ -555,7 +614,7 @@ static void config_common_ue(NR_UE_MAC_INST_t *mac, NR_ServingCellConfigCommon_t
   // NTN Config
   if (scc->ext2) {
     UPDATE_IE(mac->sc_info.ntn_Config_r17, scc->ext2->ntn_Config_r17, NR_NTN_Config_r17_t);
-    configure_ntn_ta(mac->ue_id, &mac->ntn_ta, mac->sc_info.ntn_Config_r17);
+    configure_ntn_ta(&mac->phy_config.config_req.ntn_config, mac->sc_info.ntn_Config_r17, hfn, frame, true);
   } else {
     asn1cFreeStruc(asn_DEF_NR_NTN_Config_r17, mac->sc_info.ntn_Config_r17);
   }
@@ -886,7 +945,8 @@ static void nr_configure_lc_config(NR_UE_MAC_INST_t *mac,
                                    nr_lcid_rb_t rb)
 {
   NR_LC_SCHEDULING_INFO *lc_sched_info = get_scheduling_info_from_lcid(mac, lc_info->lcid);
-  lc_info->rb = rb;
+  if (rb.type != NR_LCID_NONE)
+    lc_info->rb = rb;
   lc_info->rb_suspended = false;
   if (rb.type == NR_LCID_SRB && !mac_lc_config->ul_SpecificParameters) {
     // release configuration and reset to default
@@ -914,6 +974,12 @@ static void nr_configure_lc_config(NR_UE_MAC_INST_t *mac,
 static nr_lcid_rb_t configure_lcid_rb(NR_RLC_BearerConfig_t *rlc_bearer)
 {
   nr_lcid_rb_t rb;
+  if (!rlc_bearer->servedRadioBearer) {
+    LOG_W(NR_MAC, "RLC bearer config does not contain servedRadioBearer.\n");
+    rb.type = NR_LCID_NONE;
+    return rb;
+  }
+
   if (rlc_bearer->servedRadioBearer->present == NR_RLC_BearerConfig__servedRadioBearer_PR_srb_Identity) {
     rb.type = NR_LCID_SRB;
     rb.choice.srb_id = rlc_bearer->servedRadioBearer->choice.srb_Identity;
@@ -953,8 +1019,6 @@ static void configure_logicalChannelBearer(NR_UE_MAC_INST_t *mac,
     for (int i = 0; i < rlc_toadd_list->list.count; i++) {
       NR_RLC_BearerConfig_t *rlc_bearer = rlc_toadd_list->list.array[i];
       nr_lcid_rb_t rb = configure_lcid_rb(rlc_bearer);
-      if (rb.type == NR_LCID_NONE)
-        continue;
       int lc_identity = rlc_bearer->logicalChannelIdentity;
       NR_LogicalChannelConfig_t *mac_lc_config = rlc_bearer->mac_LogicalChannelConfig;
       int j;
@@ -1022,7 +1086,21 @@ static bool is_cset0_present(frequency_range_t const fr, uint8_t const kssb)
   return (fr == FR1) ? (kssb < 24) : (kssb < 12);
 }
 
-void nr_rrc_mac_config_req_mib(module_id_t module_id, int cc_idP, NR_MIB_t *mib, int sched_sib, bool barred)
+void nr_rrc_mac_sched_sib(module_id_t module_id, int sched_sib)
+{
+  NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+  if (sched_sib == 1) {
+    bool const is_c0 = is_cset0_present(mac->frequency_range, mac->ssb_subcarrier_offset);
+    mac->get_sib1 = is_c0;
+    AssertFatal(is_c0, "RRC scheduling SIB1 reception but MIB indicates no SIB1 present in current cell\n");
+  } else if (sched_sib > 1)
+    mac->get_otherSI[sched_sib - 2] = true;
+
+  if (mac->state == UE_NOT_SYNC && mac->get_sib1)
+    mac->state = UE_RECEIVING_SIB;
+}
+
+void nr_rrc_mac_config_req_mib(module_id_t module_id, int cc_idP, NR_MIB_t *mib, bool barred)
 {
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
   int ret = pthread_mutex_lock(&mac->if_mutex);
@@ -1042,22 +1120,10 @@ void nr_rrc_mac_config_req_mib(module_id_t module_id, int cc_idP, NR_MIB_t *mib,
   mac->phy_config.CC_id = cc_idP;
 
   nr_ue_decode_mib(mac, cc_idP);
-
-  if (sched_sib == 1) {
-    bool const is_c0 = is_cset0_present(mac->frequency_range, mac->ssb_subcarrier_offset);
-    mac->get_sib1 = is_c0;
-    AssertFatal(is_c0, "RRC scheduling SIB1 reception but MIB indicates no SIB1 present in current cell\n");
-  } else if (sched_sib > 1)
-    mac->get_otherSI[sched_sib - 2] = true;
-
   if (get_softmodem_params()->phy_test)
     mac->state = UE_CONNECTED;
-  else if (mac->state == UE_NOT_SYNC) {
-    if (IS_SA_MODE(get_softmodem_params()) && mac->get_sib1)
-      mac->state = UE_RECEIVING_SIB;
-    else
-      mac->state = UE_PERFORMING_RA;
-  }
+  else if (mac->state == UE_NOT_SYNC_RECONF)
+    mac->state = UE_PERFORMING_RA;
 
   ret = pthread_mutex_unlock(&mac->if_mutex);
   AssertFatal(!ret, "mutex failed %d\n", ret);
@@ -1713,10 +1779,13 @@ static void configure_common_BWP_ul(NR_UE_MAC_INST_t *mac, int bwp_id, NR_BWP_Up
       mac->sc_info.initial_ul_BWPStart = bwp->BWPStart;
     }
     if (ul_common->rach_ConfigCommon) {
-      HANDLE_SETUPRELEASE_DIRECT(bwp->rach_ConfigCommon,
-                                 ul_common->rach_ConfigCommon,
-                                 NR_RACH_ConfigCommon_t,
-                                 asn_DEF_NR_RACH_ConfigCommon);
+      // ssb_perRACH_OccasionAndCB_PreamblesPerSSB is need M
+      // if NULL we need to maintain the information
+      NR_SetupRelease_RACH_ConfigCommon_t *rachcommon = ul_common->rach_ConfigCommon;
+      if (rachcommon->present == NR_SetupRelease_RACH_ConfigCommon_PR_setup
+          && rachcommon->choice.setup->ssb_perRACH_OccasionAndCB_PreamblesPerSSB)
+        mac->ssb_ro_preambles = get_ssb_ro_preambles_4step(rachcommon->choice.setup->ssb_perRACH_OccasionAndCB_PreamblesPerSSB);
+      HANDLE_SETUPRELEASE_DIRECT(bwp->rach_ConfigCommon, rachcommon, NR_RACH_ConfigCommon_t, asn_DEF_NR_RACH_ConfigCommon);
     }
     if (ul_common->ext1 && ul_common->ext1->msgA_ConfigCommon_r16) {
       HANDLE_SETUPRELEASE_DIRECT(bwp->msgA_ConfigCommon_r16,
@@ -1804,7 +1873,7 @@ void nr_rrc_mac_config_req_reset(module_id_t module_id, NR_UE_MAC_reset_cause_t 
       LOG_A(NR_MAC, "Received detach indication\n");
       reset_ra(mac, true);
       reset_mac_inst(mac);
-      nr_ue_reset_sync_state(mac);
+      nr_ue_reset_sync_state(mac, false);
       release_mac_configuration(mac, cause);
       mac->state = UE_DETACHING;
       break;
@@ -1821,7 +1890,7 @@ void nr_rrc_mac_config_req_reset(module_id_t module_id, NR_UE_MAC_reset_cause_t 
     case RE_ESTABLISHMENT:
       reset_mac_inst(mac);
       nr_ue_mac_default_configs(mac);
-      nr_ue_reset_sync_state(mac);
+      nr_ue_reset_sync_state(mac, true);
       release_mac_configuration(mac, cause);
       // suspend all RBs except SRB0
       for (int j = 0; j < mac->lc_ordered_list.count; j++) {
@@ -1943,11 +2012,12 @@ void nr_rrc_mac_config_req_sib1(module_id_t module_id, int cc_idP, NR_SIB1_t *si
     mac->state = UE_PERFORMING_RA;
 
   mac->if_module->phy_config_request(&mac->phy_config);
+  mac->phy_config.config_req.ntn_config.params_changed = false;
   ret = pthread_mutex_unlock(&mac->if_mutex);
   AssertFatal(!ret, "mutex failed %d\n", ret);
 }
 
-void nr_rrc_mac_config_other_sib(module_id_t module_id, NR_SIB19_r17_t *sib19, bool can_start_ra)
+void nr_rrc_mac_config_other_sib(module_id_t module_id, NR_SIB19_r17_t *sib19, int hfn, int frame, bool can_start_ra)
 {
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
   int ret = pthread_mutex_lock(&mac->if_mutex);
@@ -1956,7 +2026,9 @@ void nr_rrc_mac_config_other_sib(module_id_t module_id, NR_SIB19_r17_t *sib19, b
   if (sib19) {
     // update ntn_Config_r17 with received values
     UPDATE_IE(mac->sc_info.ntn_Config_r17, sib19->ntn_Config_r17, NR_NTN_Config_r17_t);
-    configure_ntn_ta(mac->ue_id, &mac->ntn_ta, mac->sc_info.ntn_Config_r17);
+    configure_ntn_ta(&mac->phy_config.config_req.ntn_config, mac->sc_info.ntn_Config_r17, hfn, frame, false);
+    mac->if_module->phy_config_request(&mac->phy_config);
+    mac->phy_config.config_req.ntn_config.params_changed = false;
   }
   if (mac->state == UE_RECEIVING_SIB && can_start_ra)
     mac->state = UE_PERFORMING_RA;
@@ -1966,6 +2038,8 @@ void nr_rrc_mac_config_other_sib(module_id_t module_id, NR_SIB19_r17_t *sib19, b
 
 static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
                                              int cc_idP,
+                                             int hfn,
+                                             int frame,
                                              const NR_ReconfigurationWithSync_t *reconfWithSync)
 {
   reset_mac_inst(mac);
@@ -1973,11 +2047,22 @@ static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
   LOG_I(NR_MAC, "Configuring CRNTI %x\n", mac->crnti);
 
   RA_config_t *ra = &mac->ra;
+  bool is_cfra = false;
   if (reconfWithSync->rach_ConfigDedicated) {
     AssertFatal(reconfWithSync->rach_ConfigDedicated->present == NR_ReconfigurationWithSync__rach_ConfigDedicated_PR_uplink,
                 "RACH on supplementaryUplink not supported\n");
+    NR_RACH_ConfigDedicated_t *rach_ConfigDedicated = reconfWithSync->rach_ConfigDedicated->choice.uplink;
+    if (rach_ConfigDedicated->cfra)
+      is_cfra = true;
+    if (rach_ConfigDedicated->ext1 && rach_ConfigDedicated->ext1->cfra_TwoStep_r16)
+      is_cfra = true;
     UPDATE_IE(ra->rach_ConfigDedicated, reconfWithSync->rach_ConfigDedicated->choice.uplink, NR_RACH_ConfigDedicated_t);
   }
+
+  // in case of CBRA and reconfiguration with sync (handover)
+  // the UE sends MSG3 with C-RNTI to identify itself
+  if (!is_cfra)
+    mac->msg3_C_RNTI = true;
 
   if (reconfWithSync->spCellConfigCommon) {
     NR_ServingCellConfigCommon_t *scc = reconfWithSync->spCellConfigCommon;
@@ -1985,7 +2070,7 @@ static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
       mac->physCellId = *scc->physCellId;
     mac->dmrs_TypeA_Position = scc->dmrs_TypeA_Position;
     UPDATE_IE(mac->tdd_UL_DL_ConfigurationCommon, scc->tdd_UL_DL_ConfigurationCommon, NR_TDD_UL_DL_ConfigCommon_t);
-    config_common_ue(mac, scc, cc_idP);
+    config_common_ue(mac, scc, cc_idP, hfn, frame);
     // Build the list of all the valid/transmitted SSBs according to the config
     LOG_D(NR_MAC,"Build SSB list\n");
     build_ssb_list(mac);
@@ -1997,7 +2082,7 @@ static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
       configure_common_BWP_ul(mac, bwp_id, scc->uplinkConfigCommon->initialUplinkBWP);
   }
 
-  mac->state = UE_NOT_SYNC;
+  mac->state = UE_NOT_SYNC_RECONF;
   ra->ra_state = nrRA_UE_IDLE;
   nr_ue_mac_default_configs(mac);
 
@@ -2006,6 +2091,7 @@ static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
   mac->synch_request.synch_req.target_Nid_cell = mac->physCellId;
   mac->if_module->synch_request(&mac->synch_request);
   mac->if_module->phy_config_request(&mac->phy_config);
+  mac->phy_config.config_req.ntn_config.params_changed = false;
 }
 
 static void configure_physicalcellgroup(NR_UE_MAC_INST_t *mac,
@@ -2754,6 +2840,8 @@ static void handle_mac_uecap_info(NR_UE_MAC_INST_t *mac, NR_UE_NR_Capability_t *
 
 void nr_rrc_mac_config_req_cg(module_id_t module_id,
                               int cc_idP,
+                              int hfn,
+                              int frame,
                               NR_CellGroupConfig_t *cell_group_config,
                               NR_UE_NR_Capability_t *ue_Capability)
 {
@@ -2772,7 +2860,7 @@ void nr_rrc_mac_config_req_cg(module_id_t module_id,
     mac->servCellIndex = spCellConfig->servCellIndex ? *spCellConfig->servCellIndex : 0;
     if (spCellConfig->reconfigurationWithSync) {
       LOG_A(NR_MAC, "Received reconfigurationWithSync\n");
-      handle_reconfiguration_with_sync(mac, cc_idP, spCellConfig->reconfigurationWithSync);
+      handle_reconfiguration_with_sync(mac, cc_idP, hfn, frame, spCellConfig->reconfigurationWithSync);
     }
     if (scd) {
       mac->tag_Id = scd->tag_Id;
@@ -2799,4 +2887,18 @@ void nr_rrc_mac_config_req_cg(module_id_t module_id,
     ue_init_config_request(mac, mac->frame_structure.numb_slots_frame);
   ret = pthread_mutex_unlock(&mac->if_mutex);
   AssertFatal(!ret, "mutex failed %d\n", ret);
+}
+
+void nr_rrc_mac_config_req_meas(module_id_t module_id, const nr_neighbor_cell_info_t *neighbor_cells, int num_neighbors)
+{
+  NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+
+  for (int i = 0; i < num_neighbors && i < NUMBER_OF_NEIGHBORING_CELLS_MAX; i++) {
+    fapi_nr_neighboring_cell_t *phy_cell = &mac->phy_config.config_req.meas_config.nr_neighboring_cell[i];
+    phy_cell->Nid_cell = neighbor_cells[i].Nid_cell;
+    phy_cell->ssb_freq = neighbor_cells[i].ssb_freq;
+    phy_cell->active = neighbor_cells[i].active;
+  }
+
+  mac->if_module->phy_config_request(&mac->phy_config);
 }

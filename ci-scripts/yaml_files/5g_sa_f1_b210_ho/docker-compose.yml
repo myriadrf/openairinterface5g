@@ -1,6 +1,6 @@
 services:
     oai-cu:
-        image: ${REGISTRY:-oaisoftwarealliance}/${GNB_IMG:-oai-gnb}:${TAG:-develop}
+        image: ${REGISTRY-oaisoftwarealliance/}${GNB_IMG:-oai-gnb}:${TAG:-develop}
         container_name: oai-cu
         cap_drop:
             - ALL
@@ -26,7 +26,7 @@ services:
             retries: 5
 
     oai-du0:
-        image: ${REGISTRY:-oaisoftwarealliance}/${GNB_IMG:-oai-gnb}:${TAG:-develop}
+        image: ${REGISTRY-oaisoftwarealliance/}${GNB_IMG:-oai-gnb}:${TAG:-develop}
         container_name: oai-du0
         cap_drop:
             - ALL
@@ -58,7 +58,7 @@ services:
             retries: 5
 
     oai-du1:
-        image: ${REGISTRY:-oaisoftwarealliance}/${GNB_IMG:-oai-gnb}:${TAG:-develop}
+        image: ${REGISTRY-oaisoftwarealliance/}${GNB_IMG:-oai-gnb}:${TAG:-develop}
         container_name: oai-du1
         cap_drop:
             - ALL

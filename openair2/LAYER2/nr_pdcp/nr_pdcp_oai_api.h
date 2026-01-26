@@ -66,6 +66,7 @@ void nr_pdcp_reconfigure_srb(ue_id_t ue_id, int srb_id, long t_Reordering);
 void nr_pdcp_reconfigure_drb(ue_id_t ue_id, int drb_id, NR_PDCP_Config_t *pdcp_config);
 void nr_pdcp_release_srb(ue_id_t ue_id, int srb_id);
 void nr_pdcp_release_drb(ue_id_t ue_id, int drb_id);
+int nr_pdcp_get_drb_ids_for_pdusession(ue_id_t ue_id, long pdusession_id, int *drb_ids);
 
 void add_srb(int is_gnb,
              ue_id_t UEid,

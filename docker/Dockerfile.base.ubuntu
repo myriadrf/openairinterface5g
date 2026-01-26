@@ -51,7 +51,10 @@ RUN apt-get update && \
        m4 \
        # python3-pip for conf template generation
        python3-pip \
-       wget && \
+       wget \
+       flatbuffers-compiler \
+       libflatbuffers-dev \
+       libnanomsg-dev && \
     # --break-system-packages allows externally managed environment in pip 
     pip3 install --ignore-installed pyyaml --break-system-packages
 
@@ -59,6 +62,10 @@ RUN apt-get update && \
 # it will be copied into target containers, to print exit numbers and handle signals properly
 ENV TINI_VERSION=v0.19.0
 RUN wget https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-${TARGETARCH} -O /tini && chmod +x /tini
+
+ENV YQ_VERSION=v4.2.0
+RUN wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH} -O /usr/local/bin/yq &&\
+    chmod +x /usr/local/bin/yq
 
 # In some network environments, GIT proxy is required
 RUN /bin/bash -c "if [[ -v NEEDED_GIT_PROXY ]]; then git config --global http.proxy $NEEDED_GIT_PROXY; fi"

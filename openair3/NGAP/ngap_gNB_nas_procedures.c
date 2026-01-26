@@ -361,7 +361,11 @@ int ngap_gNB_handle_nas_downlink(sctp_assoc_t assoc_id, uint32_t stream, NGAP_NG
   NGAP_FIND_PROTOCOLIE_BY_ID(NGAP_DownlinkNASTransport_IEs_t, ie, container,
                              NGAP_ProtocolIE_ID_id_NAS_PDU, true);
   /* Forward the NAS PDU to NR-RRC */
-  ngap_gNB_itti_send_nas_downlink_ind(ngap_gNB_instance->instance, ue_desc_p->gNB_ue_ngap_id, ie->value.choice.NAS_PDU.buf, ie->value.choice.NAS_PDU.size);
+  ngap_gNB_itti_send_nas_downlink_ind(ngap_gNB_instance->instance,
+                                      ue_desc_p->gNB_ue_ngap_id,
+                                      ue_desc_p->amf_ue_ngap_id,
+                                      ie->value.choice.NAS_PDU.buf,
+                                      ie->value.choice.NAS_PDU.size);
 
   return 0;
 }
@@ -591,6 +595,24 @@ static byte_array_t encode_ngap_pdusession_setup_response_transfer(const pdusess
   ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceSetupResponseTransfer, &pdusessionTransfer);
   out.buf = res.buffer;
   out.len = res.result.encoded;
+  return out;
+}
+
+/** @brief PDU Session Resource Release Response Transfer encoding (9.3.4.21 3GPP TS 38.413)
+ *  The transfer structure contains only an optional Secondary RAT Usage Information IE.
+ *  Since we don't use secondary RAT (MR-DC), we encode an empty structure. */
+static byte_array_t encode_ngap_pdusession_release_response_transfer(void)
+{
+  NGAP_PDUSessionResourceReleaseResponseTransfer_t pdusessionTransfer = {0};
+
+  // Encode
+  asn_encode_to_new_buffer_result_t res = asn_encode_to_new_buffer(NULL,
+                                                                   ATS_ALIGNED_CANONICAL_PER,
+                                                                   &asn_DEF_NGAP_PDUSessionResourceReleaseResponseTransfer,
+                                                                   &pdusessionTransfer);
+  AssertFatal(res.buffer, "ASN1 message encoding failed (%s, %lu)!\n", res.result.failed_type->name, res.result.encoded);
+  ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceReleaseResponseTransfer, &pdusessionTransfer);
+  byte_array_t out = {.buf = res.buffer, .len = res.result.encoded};
   return out;
 }
 
@@ -1200,22 +1222,28 @@ int ngap_gNB_pdusession_release_resp(instance_t instance, ngap_pdusession_releas
     ie->value.choice.RAN_UE_NGAP_ID = pdusession_release_resp_p->gNB_ue_ngap_id;
   }
 
-  /* optional */
-  if (pdusession_release_resp_p->nb_of_pdusessions_released > 0) {
+  /* PDU Session Resource Released List (mandatory) */
+  {
     asn1cSequenceAdd(out->protocolIEs.list, NGAP_PDUSessionResourceReleaseResponseIEs_t, ie);
     ie->id = NGAP_ProtocolIE_ID_id_PDUSessionResourceReleasedListRelRes;
     ie->criticality = NGAP_Criticality_ignore;
     ie->value.present = NGAP_PDUSessionResourceReleaseResponseIEs__value_PR_PDUSessionResourceReleasedListRelRes;
-    
+
     for (i = 0; i < pdusession_release_resp_p->nb_of_pdusessions_released; i++) {
-      asn1cSequenceAdd(ie->value.choice.PDUSessionResourceReleasedListRelRes.list, NGAP_PDUSessionResourceReleasedItemRelRes_t, item);
+      NGAP_PDUSessionResourceReleasedListRelRes_t *list = &ie->value.choice.PDUSessionResourceReleasedListRelRes;
+      asn1cSequenceAdd(list->list, NGAP_PDUSessionResourceReleasedItemRelRes_t, item);
       pdusession_release_t *r = &pdusession_release_resp_p->pdusession_release[i];
+      /* PDU Session ID (mandatory) */
       item->pDUSessionID = r->pdusession_id;
-      OCTET_STRING_fromBuf(&item->pDUSessionResourceReleaseResponseTransfer, (const char *)r->data.buf, r->data.len);
-      NGAP_DEBUG("pdusession_release_resp: pdusession ID %ld\n", item->pDUSessionID);
+      /* PDU Session Resource Release Response Transfer (mandatory) */
+      // Empty transfer is valid since Secondary RAT Usage Information is optional and not used
+      byte_array_t transfer = encode_ngap_pdusession_release_response_transfer();
+      OCTET_STRING_fromBuf(&item->pDUSessionResourceReleaseResponseTransfer, (const char *)transfer.buf, transfer.len);
+      free_byte_array(transfer);
+      NGAP_DEBUG("PDU Session Resource Release Response: pdusession ID %ld\n", item->pDUSessionID);
     }
   }
-  
+
   if (ngap_gNB_encode_pdu(&pdu, &buffer, &length) < 0) {
     NGAP_ERROR("Failed to encode release response\n");
     /* Encode procedure has failed... */
