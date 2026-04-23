@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 /*! \file radio/emulator/rf_emulator.c
@@ -30,9 +13,10 @@
 #include <common/utils/LOG/log.h>
 #include "common/utils/threadPool/pthread_utils.h"
 #include "common_lib.h"
-#include "radio/vrtsim/noise_device.h"
+#include "noise_device.h"
 #include "simde/x86/avx512.h"
 #include "SIMULATION/TOOLS/sim.h"
+#include "common/config/config_userapi.h"
 
 #define RF_EMULATOR_SECTION "rf_emulator"
 // clang-format off
@@ -115,7 +99,7 @@ static void *emulator_timing_job(void *arg)
 /*! \brief Called to start the RF transceiver. Return 0 if OK, < 0 if error
  * \param device pointer to the device structure specific to the RF hardware target
  */
-static int emulator_start(openair0_device *device)
+static int emulator_start(openair0_device_t *device)
 {
   // Start the timing thread and the noise device
   emulator_state_t *emulator_state = (emulator_state_t *)device->priv;
@@ -163,7 +147,7 @@ static int emulator_start(openair0_device *device)
  * \param device pointer to the device structure specific to the RF hardware target
  * \returns  0 on success
  */
-int emulator_get_stats(openair0_device *device)
+int emulator_get_stats(openair0_device_t *device)
 {
   return (0);
 }
@@ -172,7 +156,7 @@ int emulator_get_stats(openair0_device *device)
  * \param device pointer to the device structure specific to the RF hardware target
  * \returns  0 on success
  */
-int emulator_reset_stats(openair0_device *device)
+int emulator_reset_stats(openair0_device_t *device)
 {
   return (0);
 }
@@ -180,7 +164,7 @@ int emulator_reset_stats(openair0_device *device)
 /*! \brief Terminate operation of the RF transceiver -- free all associated resources (if any)
  * \param pointer to the device structure specific to the RF hardware target
  */
-static void emulator_end(openair0_device *device)
+static void emulator_end(openair0_device_t *device)
 {
   // Stop the timing thread and the noise device
   emulator_state_t *emulator_state = (emulator_state_t *)device->priv;
@@ -197,7 +181,7 @@ static void emulator_end(openair0_device *device)
 /*! \brief Stop RF
  * \param device pointer to the device structure specific to the RF hardware target
  */
-int emulator_stop(openair0_device *device)
+int emulator_stop(openair0_device_t *device)
 {
   return (0);
 }
@@ -207,7 +191,7 @@ int emulator_stop(openair0_device *device)
  * \param openair0_cfg RF frontend parameters set by application
  * \returns 0 in success
  */
-int emulator_set_gains(openair0_device *device, openair0_config_t *openair0_cfg)
+int emulator_set_gains(openair0_device_t *device, openair0_config_t *openair0_cfg)
 {
   return (0);
 }
@@ -217,12 +201,12 @@ int emulator_set_gains(openair0_device *device, openair0_config_t *openair0_cfg)
  * \param openair0_cfg RF frontend parameters set by application
  * \returns 0 in success
  */
-int emulator_set_freq(openair0_device *device, openair0_config_t *openair0_cfg)
+int emulator_set_freq(openair0_device_t *device, openair0_config_t *openair0_cfg)
 {
   return (0);
 }
 
-int emulator_write_init(openair0_device *device)
+int emulator_write_init(openair0_device_t *device)
 {
   return (0);
 }
@@ -235,7 +219,7 @@ int emulator_write_init(openair0_device *device)
  * \param nbAnt number of antennas
  * \param flags flags must be set to true if timestamp parameter needs to be applied
  */
-static int emulator_write(openair0_device *device, openair0_timestamp timestamp, void **buff, int nsamps, int nbAnt, int flags)
+static int emulator_write(openair0_device_t *device, openair0_timestamp_t timestamp, void **buff, int nsamps, int nbAnt, int flags)
 {
   emulator_state_t *emulator_state = (emulator_state_t *)device->priv;
 
@@ -297,7 +281,7 @@ static void read_noise(void *buff, int nsamps)
  * \param nbAnt number of antennas
  * \returns the number of samples read
  */
-static int emulator_read(openair0_device *device, openair0_timestamp *ptimestamp, void **buff, int nsamps, int nbAnt)
+static int emulator_read(openair0_device_t *device, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int nbAnt)
 {
   emulator_state_t *emulator_state = (emulator_state_t *)device->priv;
 
@@ -339,7 +323,7 @@ static void emulator_readconfig(emulator_state_t *emulator_state)
   AssertFatal(ret >= 0, "configuration couldn't be performed\n");
 }
 
-int device_init(openair0_device *device, openair0_config_t *openair0_cfg)
+int device_init(openair0_device_t *device, openair0_config_t *openair0_cfg)
 {
   LOG_I(HW, "This is emulator RF that does nothing\n");
 

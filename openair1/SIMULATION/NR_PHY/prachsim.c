@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 
@@ -77,10 +60,9 @@ PHY_VARS_NR_UE *UE;
 RAN_CONTEXT_t RC;
 RU_t *ru;
 double cpuf;
-openair0_config_t openair0_cfg[MAX_CARDS];
 //uint8_t nfapi_mode=0;
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
-int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
+int64_t uplink_frequency_offset[MAX_NUM_CCs][4];
 uint32_t N_RB_DL = 106;
 
 NR_IF_Module_t *NR_IF_Module_init(int Mod_id) { return (NULL); }
@@ -434,11 +416,7 @@ int main(int argc, char **argv){
 
   nr_phy_config_request_sim(gNB, N_RB_UL, N_RB_UL, mu, Nid_cell, SSB_positions);
 
-  uint64_t absoluteFrequencyPointA = to_nrarfcn(frame_parms->nr_band,
-				       frame_parms->dl_CarrierFreq,
-				       frame_parms->numerology_index,
-				       frame_parms->N_RB_UL*(180e3)*(1 << frame_parms->numerology_index));
-
+  uint64_t absoluteFrequencyPointA = to_nrarfcn(frame_parms->dl_CarrierFreq);
   uint8_t frame = 1;
   uint8_t subframe = 9;
   uint8_t slot = 10 * frame_parms->slots_per_subframe - 1;
@@ -568,10 +546,11 @@ int main(int argc, char **argv){
 
   phy_init_nr_gNB(gNB);
   nr_phy_init_RU(ru);
-  nfapi_nr_prach_pdu_t *prach_pdu = &gNB->prach_list.list[0].pdu;
-  prach_pdu->num_cs                                                                      = get_NCS(NCS_config, format0, restrictedSetConfig);
-  prach_config->num_prach_fd_occasions_list[fd_occasion].num_root_sequences.value        = 1+(64/(N_ZC/prach_pdu->num_cs));
-  prach_pdu->prach_format                                                                = prach_format;
+
+  nfapi_nr_prach_pdu_t prach_pdu = {0};
+  prach_pdu.num_cs                                                                      = get_NCS(NCS_config, format0, restrictedSetConfig);
+  prach_config->num_prach_fd_occasions_list[fd_occasion].num_root_sequences.value        = 1+(64/(N_ZC/prach_pdu.num_cs));
+  prach_pdu.prach_format                                                                = prach_format;
 
   // Configure UE
   UE = malloc(sizeof(PHY_VARS_NR_UE));
@@ -672,7 +651,7 @@ int main(int argc, char **argv){
   generate_nr_prach(UE, 0, frame, slot, tx);
 
   /* tx_lev_dB not used later, no need to set */
-  //tx_lev_dB = (unsigned int) dB_fixed(tx_lev);
+  //tx_lev_dB = dB_fixed(tx_lev);
 
 #ifdef NR_PRACH_DEBUG
   LOG_M("txsig0.m", "txs0", &txdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
@@ -768,28 +747,32 @@ int main(int argc, char **argv){
         }
 
         nfapi_nr_prach_config_t *cfg = &gNB->gNB_config.prach_config;
-        nfapi_nr_num_prach_fd_occasions_t *occ = &cfg->num_prach_fd_occasions_list[prach_pdu->num_ra];
-        prach_pdu->num_prach_ocas=1;
-        prach_item_t in = {.frame = frame,
-                           .slot = slot,
-                           .pdu = *prach_pdu,
-                           .rootSequenceIndex = occ->prach_root_sequence_index.value,
-                           .numrootSequenceIndex = occ->num_root_sequences.value,
-                           .msg1_frequencystart = occ->k1.value,
-                           .mu = cfg->prach_sub_c_spacing.value,
-                           .prach_sequence_length = cfg->prach_sequence_length.value,
-                           .restricted_set = cfg->restricted_set_config.value,
-                           .numerology_index = gNB->frame_parms.numerology_index,
-                           .nb_rx = gNB->gNB_config.carrier_config.num_rx_ant.value,
-                           .Xu = gNB->X_u,
-                           .rx_prach = &gNB->rx_prach};
-        rx_nr_prach_ru(&in, ru->common.rxdata, ru->nr_frame_parms, ru->N_TA_offset);
+        nfapi_nr_num_prach_fd_occasions_t *occ = &cfg->num_prach_fd_occasions_list[prach_pdu.num_ra];
+        prach_pdu.num_prach_ocas=1;
+        prach_item_t *in = malloc(sizeof(prach_item_t)
+                                  + sizeof(c16_t) * gNB->gNB_config.carrier_config.num_rx_ant.value
+                                        * NUMBER_OF_NR_RU_PRACH_OCCASIONS_MAX * NR_PRACH_SEQ_LEN_L);
+        *in = (prach_item_t){.frame = frame,
+                             .slot = slot,
+                             .pdu = prach_pdu,
+                             .rootSequenceIndex = occ->prach_root_sequence_index.value,
+                             .numrootSequenceIndex = occ->num_root_sequences.value,
+                             .msg1_frequencystart = occ->k1.value,
+                             .mu = cfg->prach_sub_c_spacing.value,
+                             .prach_sequence_length = cfg->prach_sequence_length.value,
+                             .restricted_set = cfg->restricted_set_config.value,
+                             .numerology_index = gNB->frame_parms.numerology_index,
+                             .nb_rx = gNB->gNB_config.carrier_config.num_rx_ant.value,
+                             .Xu = gNB->X_u,
+                             .rx_prach = &gNB->rx_prach,
+                             .prach_buf = (void *)(in + 1)};
+        rx_nr_prach_ru(in, ru->common.rxdata, ru->nr_frame_parms, ru->N_TA_offset);
         if (n_frames == 1)
           LOG_I(PHY,
                 "ncs %d,num_seq %d\n",
-                prach_pdu->num_cs,
+                prach_pdu.num_cs,
                 prach_config->num_prach_fd_occasions_list[fd_occasion].num_root_sequences.value);
-        rx_prach_out_t out = rx_nr_prach(&in, prachOccasion);
+        rx_prach_out_t out = rx_nr_prach(in, prachOccasion);
 
         //        printf(" preamble_energy %d preamble_rx %d preamble_tx %d \n", out.max_preamble_energy, out.max_preamble,
         //        preamble_tx);
@@ -812,13 +795,13 @@ int main(int argc, char **argv){
           LOG_M("rxsig0.m","rxs0", &ru->common.rxdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
           LOG_M("ru_rxsig0.m","rxs0", &ru->common.rxdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
           LOG_M("ru_rxsigF0.m","rxsF0", ru->common.rxdataF[0], frame_parms->ofdm_symbol_size*frame_parms->symbols_per_slot, 1, 1);
-          LOG_M("ru_prach_rxsigF0.m", "rxsF0", in.rxsigF[0][0], N_ZC, 1, 1);
+          LOG_M("ru_prach_rxsigF0.m", "rxsF0", in->prach_buf[0][0], N_ZC, 1, 1);
           LOG_M("prach_preamble.m","prachp", &gNB->X_u[0], N_ZC, 1, 1);
           LOG_M("ue_prach_preamble.m","prachp", &UE->X_u[0], N_ZC, 1, 1);
 #endif
         }
+        free(in);
       }
-
       printf("SNR %f dB, UE Speed %f km/h: errors %u/%d (delay %f)\n", SNR, ue_speed, prach_errors, n_frames, delay_avg/(double)(n_frames-prach_errors));
       if (input_fd)
         break;
@@ -838,7 +821,6 @@ int main(int argc, char **argv){
   nr_phy_free_RU(ru);
   free(RC.ru[0]);
   free(RC.ru);
-
   phy_free_nr_gNB(gNB);
   // allocated in set_tdd_config_nr()
   int nb_slots_to_set = (1<<mu)*NR_NUMBER_OF_SUBFRAMES_PER_FRAME;
@@ -849,7 +831,7 @@ int main(int argc, char **argv){
   free(RC.gNB[0]);
   free(RC.gNB);
 
-  term_nr_ue_signal(UE, 1);
+  term_nr_ue_signal(UE);
   free(UE->nrUE_config.prach_config.num_prach_fd_occasions_list);
   free(UE);
   free(PHY_vars_UE_g[0]);

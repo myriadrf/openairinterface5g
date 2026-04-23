@@ -1,33 +1,9 @@
 /*
-* Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
-* contributor license agreements.  See the NOTICE file distributed with
-* this work for additional information regarding copyright ownership.
-* The OpenAirInterface Software Alliance licenses this file to You under
-* the OAI Public License, Version 1.1  (the "License"); you may not use this file
-* except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*      http://www.openairinterface.org/?page_id=698
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*-------------------------------------------------------------------------------
-* For more information about the OpenAirInterface (OAI) Software Alliance:
-*      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file fapi/oai-integration/fapi_vnf_p7.c
+/*!
 * \brief OAI FAPI VNF P7 message handler procedures
-* \author Ruben S. Silva
-* \date 2023
-* \version 0.1
-* \company OpenAirInterface Software Alliance
-* \email: contact@openairinterface.org, rsilva@allbesmart.pt
-* \note
-* \warning
  */
 
 #include "fapi_vnf_p7.h"
@@ -92,14 +68,9 @@ uint8_t aerial_unpack_nr_rx_data_indication(uint8_t **ppReadPackedMsg,
   return 1;
 }
 
-uint8_t aerial_unpack_nr_srs_indication(uint8_t **ppReadPackedMsg,
-                                        uint8_t *end,
-                                        uint8_t **pDataMsg,
-                                        uint8_t *data_end,
-                                        void *msg,
-                                        nfapi_p7_codec_config_t *config)
+uint8_t aerial_unpack_nr_srs_indication(uint8_t **ppReadPackedMsg, uint8_t *end, uint8_t **pDataMsg, uint8_t *data_end, void *msg)
 {
-  uint8_t retval = unpack_nr_srs_indication(ppReadPackedMsg, end, msg, config);
+  uint8_t retval = unpack_nr_srs_indication(ppReadPackedMsg, end, msg);
   nfapi_nr_srs_indication_t *srs_ind = (nfapi_nr_srs_indication_t *)msg;
   for (uint8_t pdu_idx = 0; pdu_idx < srs_ind->number_of_pdus; pdu_idx++) {
     nfapi_nr_srs_indication_pdu_t *pdu = &srs_ind->pdu_list[pdu_idx];
@@ -114,10 +85,10 @@ static int32_t aerial_pack_tx_data_request(void *pMessageBuf,
                                            void *pPackedBuf,
                                            void *pDataBuf,
                                            uint32_t packedBufLen,
-                                           uint32_t dataBufLen,
+                                           int32_t dataBufLen,
                                            nfapi_p7_codec_config_t *config,
                                            nfapi_vnf_p7_config_t *p7_config,
-                                           uint32_t *data_len)
+                                           int32_t *data_len)
 {
   if (pMessageBuf == NULL || pPackedBuf == NULL) {
     NFAPI_TRACE(NFAPI_TRACE_ERROR, "P7 Pack supplied pointers are null\n");
@@ -130,7 +101,7 @@ static int32_t aerial_pack_tx_data_request(void *pMessageBuf,
   uint8_t *pPackedDataField = &pDataPackedMessage[0];
   uint8_t *pPackedDataFieldStart = &pDataPackedMessage[0];
   uint8_t **ppWriteData = &pPackedDataField;
-  const uint32_t dataBufLen32 = (dataBufLen + 3) / 4;
+  const int32_t dataBufLen32 = (dataBufLen + 3) / 4;
   nfapi_nr_tx_data_request_t *pNfapiMsg = (nfapi_nr_tx_data_request_t *)pMessageHeader;
   // Actual payloads are packed in a separate buffer
   for (int i = 0; i < pNfapiMsg->Number_of_PDUs; i++) {
@@ -180,40 +151,67 @@ static int32_t aerial_pack_tx_data_request(void *pMessageBuf,
   return (int32_t)(pMessageHeader->message_length);
 }
 
-
 bool aerial_nr_send_p7_message(vnf_p7_t *vnf_p7, nfapi_nr_p7_message_header_t *header)
 {
-  uint8_t FAPI_buffer[1024 * 64];
+  // Common to both cases, we can set it now
+  // In most cases we don't need the data pool, only the CPU_MSG
+  nv_ipc_msg_t send_msg = {.msg_id = header->message_id, .data_pool = NV_IPC_MEMPOOL_CPU_MSG, .cell_id = 0};
   // Check if TX_DATA request, if true, need to pack to data_buf
   if (header->message_id == NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST) {
+    // for this we need the secondary CPU_DATA pool
+    send_msg.data_pool = NV_IPC_MEMPOOL_CPU_DATA;
+    // Allocate the message after setting the data pool
+    if (!allocate_msg(&send_msg)) {
+      LOG_E(NFAPI_VNF, "Error in allocating nvipc message\n");
+      return false;
+    }
+
     nfapi_nr_tx_data_request_t *pNfapiMsg = (nfapi_nr_tx_data_request_t *)header;
     uint64_t size = 0;
     for (int i = 0; i < pNfapiMsg->Number_of_PDUs; ++i) {
       size += pNfapiMsg->pdu_list[i].PDU_length;
     }
-    AssertFatal(size <= 1024 * 1024 * 2, "Message data larger than available buffer, tried to pack %" PRId64, size);
-    uint8_t FAPI_data_buffer[1024 * 1024 * 2]; // 2MB
-    uint32_t data_len = 0;
+    AssertFatal(size <= get_cpu_data_buf_size(), "Message data larger than available buffer, tried to pack %" PRId64, size);
+    int32_t data_len = 0;
     int32_t len_FAPI = aerial_pack_tx_data_request(header,
-                                                   FAPI_buffer,
-                                                   FAPI_data_buffer,
-                                                   sizeof(FAPI_buffer),
-                                                   sizeof(FAPI_data_buffer),
+                                                   send_msg.msg_buf,
+                                                   send_msg.data_buf,
+                                                   get_cpu_msg_buf_size(),
+                                                   get_cpu_data_buf_size(),
                                                    &vnf_p7->_public.codec_config,
                                                    ((nfapi_vnf_p7_config_t *)vnf_p7),
                                                    &data_len);
+
+    // Set both lengths
+    send_msg.msg_len = len_FAPI + 8; // adding 8 to account for the size of the FAPI header
+    send_msg.data_len = data_len;
+
     if (len_FAPI <= 0) {
       LOG_E(NFAPI_VNF, "Problem packing TX_DATA_request\n");
+      release_msg(&send_msg);
       return false;
-    } else {
-      return aerial_send_P7_msg_with_data(FAPI_buffer, len_FAPI, FAPI_data_buffer, data_len, header) == 0;
     }
+    // Send
+    return send_nvipc_msg(&send_msg);
   } else {
-    // Create and send FAPI P7 message
-    int len_FAPI = ((nfapi_vnf_p7_config_t *)vnf_p7)->pack_func(header,
-                                                                FAPI_buffer,
-                                                                sizeof(FAPI_buffer),
-                                                                &vnf_p7->_public.codec_config);
-    return aerial_send_P7_msg(FAPI_buffer, len_FAPI, header) == 0;
+    send_msg.data_len = 0;
+    send_msg.data_buf = NULL;
+    // Allocate the message
+    if (!allocate_msg(&send_msg)) {
+      LOG_E(NFAPI_VNF, "Error in allocating nvipc message\n");
+      return false;
+    }
+    // Pack directly into it
+    nfapi_vnf_p7_config_t* p7_config = (nfapi_vnf_p7_config_t *)vnf_p7;
+    int len_FAPI = p7_config->pack_func(header, send_msg.msg_buf, get_cpu_msg_buf_size(), &vnf_p7->_public.codec_config);
+    if (len_FAPI <= 0) {
+      LOG_E(NFAPI_VNF, "Problem packing message 0x%02x\n", header->message_id);
+      release_msg(&send_msg);
+      return false;
+    }
+    // Set the length
+    send_msg.msg_len = len_FAPI + 8; // adding 8 to account for the size of the FAPI header
+    // Send
+    return send_nvipc_msg(&send_msg);
   }
 }

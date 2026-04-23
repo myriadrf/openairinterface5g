@@ -1,7 +1,10 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include "PHY/defs_gNB.h"
 #include "PHY/phy_extern.h"
 #include "nr_transport_proto.h"
-#include "PHY/impl_defs_top.h"
 #include "PHY/NR_TRANSPORT/nr_sch_dmrs.h"
 #include "PHY/NR_REFSIG/dmrs_nr.h"
 #include "PHY/NR_REFSIG/ptrs_nr.h"
@@ -15,7 +18,6 @@
 #include <sys/time.h>
 #include "PHY/log_tools.h"
 
-#define INVALID_VALUE 255
 
 #if T_TRACER
 static void copy_c16_data_to_slot_memory(c16_t *src, c16_t *dst_slot, int nb_re_pusch, int symbol)
@@ -33,7 +35,7 @@ void nr_idft(int32_t *z, uint32_t Msc_PUSCH)
 
   int i, ip;
 
-  LOG_T(PHY,"Doing lte_idft for Msc_PUSCH %d\n",Msc_PUSCH);
+  LOG_T(PHY,"Doing nr_idft for Msc_PUSCH %d\n", Msc_PUSCH);
 
   if ((Msc_PUSCH % 1536) > 0) {
     // conjugate input
@@ -77,9 +79,8 @@ static void nr_ulsch_extract_rbs(c16_t* const rxdataF,
                                  c16_t *chFext,
                                  int rxoffset,
                                  int choffset,
-                                 int aarx,
                                  int is_dmrs_symbol,
-                                 nfapi_nr_pusch_pdu_t *pusch_pdu,
+                                 const nfapi_nr_pusch_pdu_t *pusch_pdu,
                                  NR_DL_FRAME_PARMS *frame_parms)
 {
   uint8_t delta = 0;
@@ -159,7 +160,7 @@ static void nr_ulsch_extract_rbs(c16_t* const rxdataF,
   }
 }
 
-static int get_nb_re_pusch (NR_DL_FRAME_PARMS *frame_parms, nfapi_nr_pusch_pdu_t *rel15_ul,int symbol) 
+static int get_nb_re_pusch (NR_DL_FRAME_PARMS *frame_parms, const nfapi_nr_pusch_pdu_t *rel15_ul, int symbol)
 {
   uint8_t dmrs_symbol_flag = (rel15_ul->ul_dmrs_symb_pos >> symbol) & 0x01;
   if (dmrs_symbol_flag == 1) {
@@ -182,10 +183,10 @@ static void nr_ulsch_channel_compensation(uint32_t buffer_length,
                                           c16_t ul_ch_maga[][buffer_length],
                                           c16_t ul_ch_magb[][buffer_length],
                                           c16_t ul_ch_magc[][buffer_length],
-                                          int32_t **rxComp,
+                                          c16_t **rxComp,
                                           int nb_layers,
                                           c16_t rho[][nb_layers][buffer_length],
-                                          nfapi_nr_pusch_pdu_t *rel15_ul,
+                                          const nfapi_nr_pusch_pdu_t *rel15_ul,
                                           uint32_t symbol,
                                           uint32_t output_shift)
 {
@@ -263,9 +264,7 @@ static void nr_ulsch_det_HhH(c16_t *after_mf_00, // a
                              c16_t *after_mf_10, // c
                              c16_t *after_mf_11, // d
                              uint32_t *det_fin, // 1/ad-bc
-                             unsigned short nb_rb,
-                             unsigned char symbol,
-                             int32_t shift)
+                             unsigned short nb_rb)
 {
   simde__m128i *after_mf_00_128,*after_mf_01_128, *after_mf_10_128, *after_mf_11_128, ad_re_128, bc_re_128; //ad_im_128, bc_im_128;
   simde__m128i *det_fin_128, det_re_128; //det_im_128, tmp_det0, tmp_det1;
@@ -388,8 +387,7 @@ static void nr_ulsch_construct_HhH_elements(c16_t *conjch00_ch00,
                                             c16_t *after_mf_01,
                                             c16_t *after_mf_10,
                                             c16_t *after_mf_11,
-                                            unsigned short nb_rb,
-                                            unsigned char symbol)
+                                            unsigned short nb_rb)
 {
   //This function is used to construct the (H_hermitian * H matrix) matrix elements
   simde__m128i *conjch00_ch00_128 = (simde__m128i *)conjch00_ch00;
@@ -473,7 +471,7 @@ static void nr_ulsch_construct_HhH_elements(c16_t *conjch00_ch00,
 }
 
 // MMSE Rx function: nr_ulsch_mmse_2layers()
-static uint8_t nr_ulsch_mmse_2layers(int **rxdataF_comp,
+static uint8_t nr_ulsch_mmse_2layers(c16_t **rxdataF_comp,
                                      uint32_t buffer_length,
                                      int nb_rx_ant,
                                      c16_t ul_ch_mag[][buffer_length],
@@ -676,8 +674,7 @@ static uint8_t nr_ulsch_mmse_2layers(int **rxdataF_comp,
                               af_mf_01,
                               af_mf_10,
                               af_mf_11,
-                              nb_rb_0,
-                              symbol);
+                              nb_rb_0);
   }
   if (nb_rx_ant == 2) {
     nr_ulsch_construct_HhH_elements(conjch00_ch00,
@@ -700,8 +697,7 @@ static uint8_t nr_ulsch_mmse_2layers(int **rxdataF_comp,
                               af_mf_01,
                               af_mf_10,
                               af_mf_11,
-                              nb_rb_0,
-                              symbol);
+                              nb_rb_0);
   }
 
   // Add noise_var such that: H^h * H + noise_var * I
@@ -723,9 +719,7 @@ static uint8_t nr_ulsch_mmse_2layers(int **rxdataF_comp,
              af_mf_10,//c
              af_mf_11,//d
              determ_fin,
-             nb_rb_0,
-             symbol,
-             shift);
+             nb_rb_0);
   /* 2- Compute the channel matrix inversion **********************************
    *
      *    |(conj_H_00xH_00+conj_H_10xH_10)   (conj_H_00xH_01+conj_H_10xH_11)|
@@ -863,16 +857,13 @@ static uint8_t nr_ulsch_mmse_2layers(int **rxdataF_comp,
 }
 
 static void inner_rx(PHY_VARS_gNB *gNB,
-                     int ulsch_id,
                      int slot,
                      NR_DL_FRAME_PARMS *frame_parms,
                      NR_gNB_PUSCH *pusch_vars,
-                     nfapi_nr_pusch_pdu_t *rel15_ul,
+                     const nfapi_nr_pusch_pdu_t *rel15_ul,
                      c16_t **rxF,
-                     c16_t **ul_ch,
                      int16_t **llr,
                      int soffset,
-                     int length,
                      int symbol,
                      int output_shift,
                      uint32_t nvar,
@@ -904,7 +895,6 @@ static void inner_rx(PHY_VARS_gNB *gNB,
                            chFext[aatx][aarx],
                            soffset+(symbol * frame_parms->ofdm_symbol_size),
                            dmrs_symbol * frame_parms->ofdm_symbol_size,
-                           aarx,
                            dmrs_symbol_flag, 
                            rel15_ul,
                            frame_parms);
@@ -949,19 +939,19 @@ static void inner_rx(PHY_VARS_gNB *gNB,
   if (nb_layer == 1 && rel15_ul->transform_precoding == transformPrecoder_enabled && rel15_ul->qam_mod_order <= 6) {
     if (rel15_ul->qam_mod_order > 2)
       nr_freq_equalization(frame_parms,
-                           (c16_t *)&pusch_vars->rxdataF_comp[0][symbol * buffer_length],
+                           &pusch_vars->rxdataF_comp[0][symbol * buffer_length],
                            rxF_ch_maga[0],
                            rxF_ch_magb[0],
                            symbol,
                            pusch_vars->ul_valid_re_per_slot[symbol],
                            rel15_ul->qam_mod_order);
-    nr_idft(&pusch_vars->rxdataF_comp[0][symbol * buffer_length], pusch_vars->ul_valid_re_per_slot[symbol]);
+    nr_idft((int32_t *)&pusch_vars->rxdataF_comp[0][symbol * buffer_length], pusch_vars->ul_valid_re_per_slot[symbol]);
   }
   if (rel15_ul->pdu_bit_map & PUSCH_PDU_BITMAP_PUSCH_PTRS) {
     nr_pusch_ptrs_processing(gNB,
                              frame_parms,
                              rel15_ul,
-                             ulsch_id,
+                             pusch_vars,
                              slot,
                              symbol,
                              buffer_length);
@@ -970,9 +960,7 @@ static void inner_rx(PHY_VARS_gNB *gNB,
 
   if (nb_layer == 2) {
     if (rel15_ul->qam_mod_order <= 6) {
-      nr_ulsch_compute_ML_llr(pusch_vars,
-                              symbol,
-                              (c16_t *)&pusch_vars->rxdataF_comp[0][symbol * buffer_length],
+      nr_ulsch_compute_ML_llr((c16_t *)&pusch_vars->rxdataF_comp[0][symbol * buffer_length],
                               (c16_t *)&pusch_vars->rxdataF_comp[nb_rx_ant][symbol * buffer_length],
                               rxF_ch_maga[0],
                               rxF_ch_maga[1],
@@ -984,7 +972,7 @@ static void inner_rx(PHY_VARS_gNB *gNB,
                               rel15_ul->qam_mod_order);
     }
     else {
-      nr_ulsch_mmse_2layers((int32_t **)pusch_vars->rxdataF_comp,
+      nr_ulsch_mmse_2layers(pusch_vars->rxdataF_comp,
                             buffer_length,
                             nb_rx_ant,
                             rxF_ch_maga,
@@ -1001,7 +989,7 @@ static void inner_rx(PHY_VARS_gNB *gNB,
   }
   if (nb_layer != 2 || rel15_ul->qam_mod_order > 6)
     for (int aatx = 0; aatx < nb_layer; aatx++)
-      nr_ulsch_compute_llr((int32_t *)&pusch_vars->rxdataF_comp[aatx * nb_rx_ant][symbol * buffer_length],
+      nr_ulsch_compute_llr(&pusch_vars->rxdataF_comp[aatx * nb_rx_ant][symbol * buffer_length],
                            rxF_ch_maga[aatx],
                            rxF_ch_magb[aatx],
                            rxF_ch_magc[aatx],
@@ -1014,8 +1002,8 @@ static void inner_rx(PHY_VARS_gNB *gNB,
 typedef struct puschSymbolProc_s {
   PHY_VARS_gNB *gNB;
   NR_DL_FRAME_PARMS *frame_parms;
-  nfapi_nr_pusch_pdu_t *rel15_ul;
-  int ulsch_id;
+  const nfapi_nr_pusch_pdu_t *rel15_ul;
+  NR_gNB_PUSCH *pusch_vars;
   int slot;
   int startSymbol;
   int numSymbols;
@@ -1034,12 +1022,11 @@ static void nr_pusch_symbol_processing(void *arg)
 
   PHY_VARS_gNB *gNB = rdata->gNB;
   NR_DL_FRAME_PARMS *frame_parms = rdata->frame_parms;
-  nfapi_nr_pusch_pdu_t *rel15_ul = rdata->rel15_ul;
-  int ulsch_id = rdata->ulsch_id;
+  const nfapi_nr_pusch_pdu_t *rel15_ul = rdata->rel15_ul;
   int slot = rdata->slot;
-  NR_gNB_PUSCH *pusch_vars = &gNB->pusch_vars[ulsch_id];
+  NR_gNB_PUSCH *pusch_vars = rdata->pusch_vars;
   for (int symbol = rdata->startSymbol; symbol < rdata->startSymbol + rdata->numSymbols; symbol++) {
-    if (gNB->pusch_vars[ulsch_id].ul_valid_re_per_slot[symbol] == 0) 
+    if (pusch_vars->ul_valid_re_per_slot[symbol] == 0)
       continue;
     int soffset = (slot % RU_RX_SLOT_DEPTH) * frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
     int buffer_length = ceil_mod(pusch_vars->ul_valid_re_per_slot[symbol] * NR_NB_SC_PER_RB, 16);
@@ -1049,23 +1036,20 @@ static void nr_pusch_symbol_processing(void *arg)
       llrss[l] = llrs[l];
 
     inner_rx(gNB,
-             ulsch_id,
              slot,
              frame_parms,
              pusch_vars,
              rel15_ul,
              gNB->common_vars.rxdataF[rdata->beam_nb],
-             (c16_t **)gNB->pusch_vars[ulsch_id].ul_ch_estimates,
              llrss,
              soffset,
-             gNB->pusch_vars[ulsch_id].ul_valid_re_per_slot[symbol],
              symbol,
-             gNB->pusch_vars[ulsch_id].log2_maxh,
+             pusch_vars->log2_maxh,
              rdata->nvar,
              rdata->rxFext_slot_mem,
              rdata->pusch_ch_est_dmrs_interpl_slot_mem);
 
-    int nb_re_pusch = gNB->pusch_vars[ulsch_id].ul_valid_re_per_slot[symbol];
+    int nb_re_pusch = pusch_vars->ul_valid_re_per_slot[symbol];
     // layer de-mapping
     int16_t *llr_ptr = llrs[0];
     if (rel15_ul->nrOfLayers != 1) {
@@ -1112,16 +1096,15 @@ static uint32_t average_u32(const uint32_t *x, uint16_t size)
 }
 
 int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
-                   uint8_t ulsch_id,
+                   NR_gNB_PUSCH *pusch_vars,
+                   const nfapi_nr_pusch_pdu_t *rel15_ul,
+                   uint32_t *ret_unav_res,
                    uint32_t frame,
                    uint8_t slot,
-                   unsigned char harq_pid,
                    int beam_nb)
 {
   NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
-  nfapi_nr_pusch_pdu_t *rel15_ul = &gNB->ulsch[ulsch_id].harq_process->ulsch_pdu;
 
-  NR_gNB_PUSCH *pusch_vars = &gNB->pusch_vars[ulsch_id];
   uint32_t bwp_start_subcarrier = ((rel15_ul->rb_start + rel15_ul->bwp_start) * NR_NB_SC_PER_RB + frame_parms->first_carrier_offset) % frame_parms->ofdm_symbol_size;
   LOG_D(PHY,"pusch %d.%d : bwp_start_subcarrier %d, rb_start %d, first_carrier_offset %d\n", frame,slot,bwp_start_subcarrier, rel15_ul->rb_start, frame_parms->first_carrier_offset);
   LOG_D(PHY,"pusch %d.%d : ul_dmrs_symb_pos %x\n",frame,slot,rel15_ul->ul_dmrs_symb_pos);
@@ -1165,12 +1148,11 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
   int max_ch = 0;
   uint32_t nvar = 0;
   int end_symbol = rel15_ul->start_symbol_index + rel15_ul->nr_of_symbols;
-  for(uint8_t symbol = rel15_ul->start_symbol_index; symbol < end_symbol; symbol++) {
+  for (uint8_t symbol = rel15_ul->start_symbol_index; symbol < end_symbol; symbol++) {
     uint8_t dmrs_symbol_flag = (rel15_ul->ul_dmrs_symb_pos >> symbol) & 0x01;
     LOG_D(PHY, "symbol %d, dmrs_symbol_flag :%d\n", symbol, dmrs_symbol_flag);
-    
-    if (dmrs_symbol_flag == 1) {
 
+    if (dmrs_symbol_flag == 1) {
       for (int nl = 0; nl < rel15_ul->nrOfLayers; nl++) {
         uint32_t nvar_tmp = 0;
         nr_pusch_channel_estimation(gNB,
@@ -1178,7 +1160,7 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
                                     nl,
                                     get_dmrs_port(nl, rel15_ul->dmrs_ports),
                                     symbol,
-                                    ulsch_id,
+                                    pusch_vars,
                                     beam_nb,
                                     bwp_start_subcarrier,
                                     rel15_ul,
@@ -1188,55 +1170,53 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
                                     pusch_ch_est_dmrs_pos_slot_mem);
         nvar += nvar_tmp;
       }
-
-      allocCast2D(n0_subband_power,
-                  unsigned int,
-                  gNB->measurements.n0_subband_power,
-                  frame_parms->nb_antennas_rx,
-                  frame_parms->N_RB_UL,
-                  false);
-      for (int aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) {
-        if (symbol == rel15_ul->start_symbol_index) {
-          pusch_vars->ulsch_power[aarx] = 0;
-          pusch_vars->ulsch_noise_power[aarx] = 0;
-        }
-
-        int64_t symb_energy = 0;
-        int start_sc = (rel15_ul->bwp_start + rel15_ul->rb_start) * NR_NB_SC_PER_RB;
-        int middle_sc = frame_parms->ofdm_symbol_size - frame_parms->first_carrier_offset;
-        int end_sc = (start_sc + rel15_ul->rb_size * NR_NB_SC_PER_RB - 1) % frame_parms->ofdm_symbol_size;
-
-        for (int s = rel15_ul->start_symbol_index; s < (rel15_ul->start_symbol_index + rel15_ul->nr_of_symbols); s++) {
-          int offset0 = ((slot % RU_RX_SLOT_DEPTH) * frame_parms->symbols_per_slot + s) * frame_parms->ofdm_symbol_size;
-          int offset = offset0 + (frame_parms->first_carrier_offset + start_sc) % frame_parms->ofdm_symbol_size;
-          c16_t *ul_ch = &gNB->common_vars.rxdataF[beam_nb][aarx][offset];
-          if (end_sc < start_sc) {
-            int64_t symb_energy_aux = signal_energy_nodc(ul_ch, middle_sc - start_sc) * (middle_sc - start_sc);
-            ul_ch = &gNB->common_vars.rxdataF[beam_nb][aarx][offset0];
-            symb_energy_aux += (signal_energy_nodc(ul_ch, end_sc + 1) * (end_sc + 1));
-            symb_energy += symb_energy_aux / (rel15_ul->rb_size * NR_NB_SC_PER_RB);
-          } else {
-            symb_energy += signal_energy_nodc(ul_ch, rel15_ul->rb_size * NR_NB_SC_PER_RB);
-          }
-        }
-        pusch_vars->ulsch_power[aarx] += (symb_energy / rel15_ul->nr_of_symbols);
-
-        pusch_vars->ulsch_noise_power[aarx] +=
-            average_u32(&n0_subband_power[aarx][rel15_ul->bwp_start + rel15_ul->rb_start], rel15_ul->rb_size);
-
-        LOG_D(PHY,
-              "aa %d, bwp_start%d, rb_start %d, rb_size %d: ulsch_power %d, ulsch_noise_power %d\n",
-              aarx,
-              rel15_ul->bwp_start,
-              rel15_ul->rb_start,
-              rel15_ul->rb_size,
-              pusch_vars->ulsch_power[aarx],
-              pusch_vars->ulsch_noise_power[aarx]);
-      }
     }
   }
 
   nvar /= (rel15_ul->nr_of_symbols * rel15_ul->nrOfLayers * frame_parms->nb_antennas_rx);
+
+  allocCast2D(n0_subband_power,
+              unsigned int,
+              gNB->measurements.n0_subband_power,
+              frame_parms->nb_antennas_rx,
+              frame_parms->N_RB_UL,
+              false);
+
+  int start_sc = (rel15_ul->bwp_start + rel15_ul->rb_start) * NR_NB_SC_PER_RB;
+  int middle_sc = frame_parms->ofdm_symbol_size - frame_parms->first_carrier_offset;
+  int end_sc = (start_sc + rel15_ul->rb_size * NR_NB_SC_PER_RB - 1) % frame_parms->ofdm_symbol_size;
+  for (int aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) {
+    pusch_vars->ulsch_power[aarx] = 0;
+    pusch_vars->ulsch_noise_power[aarx] = 0;
+    int64_t symb_energy = 0;
+
+    for (uint8_t symbol = rel15_ul->start_symbol_index; symbol < end_symbol; symbol++) {
+      int offset0 = ((slot % RU_RX_SLOT_DEPTH) * frame_parms->symbols_per_slot + symbol) * frame_parms->ofdm_symbol_size;
+      int offset = offset0 + (frame_parms->first_carrier_offset + start_sc) % frame_parms->ofdm_symbol_size;
+      c16_t *ul_ch = &gNB->common_vars.rxdataF[beam_nb][aarx][offset];
+      if (end_sc < start_sc) {
+        int64_t symb_energy_aux = signal_energy_nodc(ul_ch, middle_sc - start_sc) * (middle_sc - start_sc);
+        ul_ch = &gNB->common_vars.rxdataF[beam_nb][aarx][offset0];
+        symb_energy_aux += (signal_energy_nodc(ul_ch, end_sc + 1) * (end_sc + 1));
+        symb_energy += symb_energy_aux / (rel15_ul->rb_size * NR_NB_SC_PER_RB);
+      } else {
+        symb_energy += signal_energy_nodc(ul_ch, rel15_ul->rb_size * NR_NB_SC_PER_RB);
+      }
+    }
+    pusch_vars->ulsch_power[aarx] += (symb_energy / rel15_ul->nr_of_symbols);
+
+    pusch_vars->ulsch_noise_power[aarx] +=
+        average_u32(&n0_subband_power[aarx][rel15_ul->bwp_start + rel15_ul->rb_start], rel15_ul->rb_size);
+
+    LOG_D(PHY,
+          "aa %d, bwp_start%d, rb_start %d, rb_size %d: ulsch_power %d, ulsch_noise_power %d\n",
+          aarx,
+          rel15_ul->bwp_start,
+          rel15_ul->rb_start,
+          rel15_ul->rb_size,
+          pusch_vars->ulsch_power[aarx],
+          pusch_vars->ulsch_noise_power[aarx]);
+  }
 
   // averaging time domain channel estimates
   if (gNB->chest_time == 1)
@@ -1282,7 +1262,7 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
                    unav_res,
                    rel15_ul->qam_mod_order,
                    rel15_ul->nrOfLayers);
-  gNB->ulsch[ulsch_id].unav_res = unav_res;
+  *ret_unav_res = unav_res;
 
   // initialize scrambling sequence //
   int16_t scramblingSequence[G + 96] __attribute__((aligned(32)));
@@ -1324,7 +1304,6 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
                            (c16_t*)&ul_ch_estimates_ext[nl * frame_parms->nb_antennas_rx + aarx][meas_symbol * nb_re_pusch],
                            soffset + meas_symbol * frame_parms->ofdm_symbol_size,
                            dmrs_symbol * frame_parms->ofdm_symbol_size,
-                           aarx,
                            (rel15_ul->ul_dmrs_symb_pos >> meas_symbol) & 0x01, 
                            rel15_ul,
                            frame_parms);
@@ -1400,7 +1379,7 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
       rdata->startSymbol = symbol;
       // Last task processes remainder symbols
       rdata->numSymbols = task_index == loop_iter - 1 ? rel15_ul->nr_of_symbols - (loop_iter - 1) * numSymbols : numSymbols;
-      rdata->ulsch_id = ulsch_id;
+      rdata->pusch_vars = pusch_vars;
       rdata->llr = pusch_vars->llr;
       rdata->scramblingSequence = scramblingSequence;
       rdata->nvar = nvar;

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 find_package(Threads REQUIRED)
 find_package(limesuiteng REQUIRED)
 

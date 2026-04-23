@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/* \file proto.h
+/*
  * \brief MAC functions prototypes for gNB and UE
- * \author R. Knopp, K.H. HSU
- * \date 2018
- * \version 0.1
- * \company Eurecom / NTUST
- * \email: knopp@eurecom.fr, kai-hsiang.hsu@eurecom.fr
- * \note
- * \warning
  */
 
 #ifndef __LAYER2_MAC_UE_PROTO_H__
@@ -61,14 +37,12 @@ void nr_ue_decode_mib(NR_UE_MAC_INST_t *mac, int cc_id);
 
 /**\brief decode SIB1 and other SIs pdus in NR_UE, from if_module dl_ind
    \param mac            pointer to MAC instance
-   \param cc_id          component carrier id
    \param gNB_index      gNB index
    \param sibs_mask      sibs mask
    \param pduP           pointer to pdu
    \param pdu_length     length of pdu
    \param frame,slot     Received TTI*/
 void nr_ue_decode_BCCH_DL_SCH(NR_UE_MAC_INST_t *mac,
-                              int cc_id,
                               unsigned int gNB_index,
                               uint8_t ack_nack,
                               uint8_t *pduP,
@@ -106,7 +80,7 @@ typedef struct nr_neighbor_cell_info {
 void nr_rrc_mac_config_req_meas(module_id_t module_id, const nr_neighbor_cell_info_t *neighbor_cells, int num_neighbors);
 
 /**\brief initialization NR UE MAC instance(s)*/
-NR_UE_MAC_INST_t * nr_l2_init_ue(int nb_inst);
+NR_UE_MAC_INST_t * nr_l2_init_ue(int nb_inst, int numerology);
 
 /**\brief fetch MAC instance by module_id
    \param module_id index of MAC instance(s)*/
@@ -124,7 +98,7 @@ void release_mac_configuration(NR_UE_MAC_INST_t *mac,
 void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info);
 void nr_ue_dl_scheduler(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_info);
 
-csi_payload_t nr_ue_aperiodic_csi_reporting(NR_UE_MAC_INST_t *mac, dci_field_t csi_request, int tda, long *K2);
+nfapi_nr_ue_csi_payload_t nr_ue_aperiodic_csi_reporting(NR_UE_MAC_INST_t *mac, dci_field_t csi_request, int tda, long *K2);
 
 nr_dci_format_t nr_ue_process_dci_indication_pdu(NR_UE_MAC_INST_t *mac, frame_t frame, int slot, fapi_nr_dci_indication_pdu_t *dci);
 
@@ -137,12 +111,17 @@ bool trigger_periodic_scheduling_request(NR_UE_MAC_INST_t *mac,
                                          frame_t frame,
                                          int slot);
 
-int nr_get_csi_measurements(NR_UE_MAC_INST_t *mac, frame_t frame, int slot, PUCCH_sched_t *pucch);
+int nr_get_csi_measurements(NR_UE_MAC_INST_t *mac,
+                            frame_t frame,
+                            int slot,
+                            nfapi_nr_ue_csi_payload_t *csi_payload,
+                            NR_PUCCH_Resource_t **csi_pucch,
+                            bool csi_on_pusch);
 
-csi_payload_t nr_get_csi_payload(NR_UE_MAC_INST_t *mac,
+nfapi_nr_ue_csi_payload_t nr_get_csi_payload(NR_UE_MAC_INST_t *mac,
                                  int csi_report_id,
                                  CSI_mapping_t mapping_type,
-                                 NR_CSI_MeasConfig_t *csi_MeasConfig);
+                                 const NR_CSI_MeasConfig_t *csi_MeasConfig);
 
 /* \brief Get payload (MAC PDU) from UE PHY
 @param dl_info            pointer to dl indication
@@ -161,11 +140,7 @@ typedef struct {
   enum { b_none, b_long, b_short, b_short_trunc, b_long_trunc } type_bsr;
 } type_bsr_t;
 
-int nr_write_ce_ulsch_pdu(uint8_t *mac_ce,
-                          NR_UE_MAC_INST_t *mac,
-                          NR_SINGLE_ENTRY_PHR_MAC_CE *power_headroom,
-                          const type_bsr_t *bsr,
-                          uint8_t *mac_ce_end);
+int nr_write_ce_ulsch_pdu(uint8_t *mac_ce, NR_SINGLE_ENTRY_PHR_MAC_CE *power_headroom, const type_bsr_t *bsr, uint8_t *mac_ce_end);
 
 void ue_dci_configuration(NR_UE_MAC_INST_t *mac, fapi_nr_dl_config_request_t *dl_config, const frame_t frame, const int slot);
 void set_precoding_information_parameters(nfapi_nr_ue_pusch_pdu_t *pusch_config_pdu,
@@ -236,10 +211,9 @@ int get_sum_delta_pucch(NR_UE_MAC_INST_t *mac, int slot, frame_t frame);
 void ul_ports_config(NR_UE_MAC_INST_t *mac,
                      int *n_front_load_symb,
                      nfapi_nr_ue_pusch_pdu_t *pusch_config_pdu,
-                     dci_pdu_rel15_t *dci,
-                     nr_dci_format_t dci_format);
+                     dci_pdu_rel15_t *dci);
 
-bool init_RA(NR_UE_MAC_INST_t *mac, int frame);
+bool init_RA(NR_UE_MAC_INST_t *mac);
 
 /* Random Access */
 /* \brief This function schedules the PRACH according to prach_ConfigurationIndex and TS 38.211 tables 6.3.3.2.x
@@ -257,11 +231,11 @@ void configure_csi_resource_mapping(fapi_nr_dl_config_csirs_pdu_rel15_t *csirs_c
 
 bool is_lcid_suspended(NR_UE_MAC_INST_t *mac, int lcid);
 void nr_ra_contention_resolution_failed(NR_UE_MAC_INST_t *mac);
-void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const uint8_t gNB_index, const frame_t frame, const int slot);
+void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const frame_t frame, const int slot);
 void nr_ra_backoff_setting(RA_config_t *ra);
 void nr_get_RA_window(NR_UE_MAC_INST_t *mac);
 void prepare_msg4_msgb_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack);
-void configure_initial_pucch(PUCCH_sched_t *pucch, int res_ind);
+void configure_initial_pucch(PUCCH_sched_t *pucch, int res_ind, long *pucch_ResourceCommon);
 void release_PUCCH_SRS(NR_UE_MAC_INST_t *mac);
 void nr_ue_reset_sync_state(NR_UE_MAC_INST_t *mac, bool reconf);
 void nr_ue_send_synch_request(NR_UE_MAC_INST_t *mac, module_id_t module_id, int cc_id, const fapi_nr_synch_request_t *sync_req);
@@ -278,7 +252,7 @@ int16_t get_prach_tx_power(NR_UE_MAC_INST_t *mac);
 void schedule_RA_after_SR_failure(NR_UE_MAC_INST_t *mac);
 void nr_rar_not_successful(NR_UE_MAC_INST_t *mac);
 void ra_resource_selection(NR_UE_MAC_INST_t *mac);
-void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac, uint8_t CC_id, frame_t frameP, slot_t slotP, uint8_t gNB_id);
+void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac);
 void trigger_MAC_UE_RA(NR_UE_MAC_INST_t *mac, dci_pdu_rel15_t *pdcch_order);
 void nr_get_Msg3_MsgA_PUSCH_payload(NR_UE_MAC_INST_t *mac, uint8_t *buf, int TBS_max);
 void handle_time_alignment_timer_expired(NR_UE_MAC_INST_t *mac);
@@ -330,7 +304,7 @@ int nr_config_pusch_pdu(NR_UE_MAC_INST_t *mac,
                         NR_tda_info_t *tda_info,
                         nfapi_nr_ue_pusch_pdu_t *pusch_config_pdu,
                         dci_pdu_rel15_t *dci,
-                        csi_payload_t *csi_report,
+                        nfapi_nr_ue_csi_payload_t *csi_report,
                         RAR_grant_t *rar_grant,
                         rnti_t rnti,
                         int ss_type,
@@ -372,4 +346,5 @@ void nr_ue_sidelink_scheduler(nr_sidelink_indication_t *sl_ind, NR_UE_MAC_INST_t
 
 NR_SearchSpace_t *get_common_search_space(const NR_UE_MAC_INST_t *mac, const NR_SearchSpaceId_t ss_id);
 ssb_ro_preambles_t get_ssb_ro_preambles_4step(struct NR_RACH_ConfigCommon__ssb_perRACH_OccasionAndCB_PreamblesPerSSB *config);
+void update_pdcch_config(NR_UE_MAC_INST_t *mac);
 #endif

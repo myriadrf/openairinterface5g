@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file PHY/NR_TRANSPORT/nr_prach.c
+/*!
  * \brief Top-level routines for generating and decoding the PRACH physical channel V15.4 2018-12
- * \author R. Knopp
- * \date 2019
- * \version 0.1
- * \company Eurecom
- * \email: knopp@eurecom.fr
- * \note
- * \warning
  */
 
 #include "PHY/defs_gNB.h"
@@ -36,62 +12,73 @@
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include "openair1/PHY/NR_TRANSPORT/nr_prach.h"
 
-void init_prach_list(prach_list_t *l)
+void init_nr_prach(PHY_VARS_gNB *gNB)
 {
-  pthread_mutex_init(&l->prach_list_mutex, NULL);
-  for (prach_item_t *p = l->list; p < l->list + NUMBER_OF_NR_PRACH_MAX; p++)
-    *p = (prach_item_t){.frame = -1, .slot = -1};
+  int num_prach = 8;
+  gNB->prach_ru_queue = spsc_q_alloc(num_prach, sizeof(prach_item_t));
+  gNB->prach_l1rx_queue = spsc_q_alloc(num_prach, sizeof(prach_item_t));
 }
 
-void free_nr_prach_entry(prach_list_t *l, prach_item_t *p)
+void reset_nr_prach(PHY_VARS_gNB *gNB)
 {
-  pthread_mutex_lock(&l->prach_list_mutex);
-  if (p->frame == -1)
-    LOG_E(NR_PHY_RACH, "Freeing a not allocated prach entry\n");
-  *p = (prach_item_t){.frame = -1, .slot = -1, .num_slots = -1};
-  pthread_mutex_unlock(&l->prach_list_mutex);
+  spsc_q_free(&gNB->prach_ru_queue);
+  spsc_q_free(&gNB->prach_l1rx_queue);
 }
 
-prach_item_t *find_nr_prach(prach_list_t *l, int frame, int slot, find_type_t type)
+void free_nr_prach_entry(prach_item_t *p)
 {
-  pthread_mutex_lock(&l->prach_list_mutex);
-  prach_item_t *p = l->list;
-  prach_item_t *end = p + NUMBER_OF_NR_PRACH_MAX;
-  for (; p < end; p++)
-    if (p->frame == frame && (p->slot + p->num_slots - 1) == slot)
-      break;
-  if (p == end) {
-    if (type == SEARCH_EXIST) {
-      pthread_mutex_unlock(&l->prach_list_mutex);
-      return NULL;
-    }
-    for (p = l->list; p < end; p++)
-      if (p->frame == -1 && p->slot == -1)
-        break;
-  }
-  if (p == end) {
-    pthread_mutex_unlock(&l->prach_list_mutex);
-    return NULL;
-  }
-  // mark it used, it will be filled later
-  p->frame = frame;
-  pthread_mutex_unlock(&l->prach_list_mutex);
-  return p;
+  free(p->prach_buf);
 }
 
-prach_item_t *nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_pdu_t *prach_pdu)
+static bool drop_old_prach(const void *data, void *user)
 {
-  prach_item_t *prach = find_nr_prach(&gNB->prach_list, SFN, Slot, SEARCH_EXIST_OR_FREE);
-  if (!prach) {
-    LOG_W(PHY, "no free space for a new detected rach, discarding\n");
-    return NULL;
-  }
+  const prach_item_t *p = data;
+  const fsn_t *now = user;
+  const fsn_t t = {p->frame, p->slot, now->mu};
+  bool drop = fsn_in_the_past(t, *now);
+  if (drop)
+    LOG_E(NR_PHY, "%4d.%2d PRACH job is in the past (%4d.%2d)\n", now->f, now->s, t.f, t.s);
+  return drop;
+}
+
+static bool get_current_prach(const void *data, void *user)
+{
+  const prach_item_t *p = data;
+  const fsn_t *now = user;
+  const fsn_t t = {p->frame, p->slot, now->mu};
+  return fsn_equal(t, *now);
+}
+
+bool get_next_nr_prach(spsc_q_t *q, const fsn_t *now, prach_item_t *p)
+{
+  spsc_q_drop_while(q, drop_old_prach, (void *)now);
+  return spsc_q_get_if(q, get_current_prach, (void *)now, p, sizeof(*p));
+}
+
+void nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_pdu_t *prach_pdu)
+{
   const int fmt = prach_pdu->prach_format;
-  NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
-  // we set only elements as the whole structure has been cleaned when we release it
-  prach->frame = SFN;
-  prach->slot = Slot;
-  prach->num_slots = fmt < 4 ? get_long_prach_dur(fmt, fp->numerology_index) : 1;
+  const NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
+  const nfapi_nr_prach_config_t *cfg = &gNB->gNB_config.prach_config;
+  const nfapi_nr_num_prach_fd_occasions_t *occ = &cfg->num_prach_fd_occasions_list[prach_pdu->num_ra];
+  prach_item_t prach = {
+      .frame = SFN,
+      .slot = Slot,
+      .num_slots = fmt < 4 ? get_long_prach_dur(fmt, fp->numerology_index) : 1,
+      .pdu = *prach_pdu,
+      .rootSequenceIndex = occ->prach_root_sequence_index.value,
+      .numrootSequenceIndex = occ->num_root_sequences.value,
+      .msg1_frequencystart = occ->k1.value,
+      .mu = cfg->prach_sub_c_spacing.value,
+      .prach_sequence_length = cfg->prach_sequence_length.value,
+      .restricted_set = cfg->restricted_set_config.value,
+      .numerology_index = fp->numerology_index,
+      .nb_rx = gNB->gNB_config.carrier_config.num_rx_ant.value,
+      .Xu = gNB->X_u,
+      .rx_prach = &gNB->rx_prach,
+      // TODO can be made permanently allocated?
+      .prach_buf = calloc_or_fail(1, sizeof(c16_t) * prach.nb_rx * NUMBER_OF_NR_RU_PRACH_OCCASIONS_MAX * NR_PRACH_SEQ_LEN_L),
+  };
   if (gNB->common_vars.beam_id) {
     int n_symb = get_nr_prach_duration(prach_pdu->prach_format);
     AssertFatal(prach_pdu->beamforming.dig_bf_interface < NFAPI_MAX_NUM_BG_IF,
@@ -101,28 +88,17 @@ prach_item_t *nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_n
       int fapi_beam_idx = prach_pdu->beamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx;
       int start_symb = prach_pdu->prach_start_symbol + i * n_symb;
       int bitmap = SL_to_bitmap(start_symb, n_symb);
-      prach->beams[i] = beam_index_allocation(gNB->enable_analog_das,
+      prach.beams[i] = beam_index_allocation(gNB->enable_analog_das,
                                               fapi_beam_idx,
                                               &gNB->common_vars,
                                               Slot,
-                                              NR_NUMBER_OF_SYMBOLS_PER_SLOT,
+                                              gNB->frame_parms.symbols_per_slot,
                                               bitmap);
     }
   }
-  prach->pdu = *prach_pdu;
-  nfapi_nr_prach_config_t *cfg = &gNB->gNB_config.prach_config;
-  nfapi_nr_num_prach_fd_occasions_t *occ = &cfg->num_prach_fd_occasions_list[prach_pdu->num_ra];
-  prach->rootSequenceIndex = occ->prach_root_sequence_index.value;
-  prach->numrootSequenceIndex = occ->num_root_sequences.value;
-  prach->msg1_frequencystart = occ->k1.value;
-  prach->mu = cfg->prach_sub_c_spacing.value;
-  prach->prach_sequence_length = cfg->prach_sequence_length.value;
-  prach->restricted_set = cfg->restricted_set_config.value;
-  prach->numerology_index = fp->numerology_index;
-  prach->nb_rx = gNB->gNB_config.carrier_config.num_rx_ant.value;
-  prach->Xu = gNB->X_u;
-  prach->rx_prach = &gNB->rx_prach;
-  return prach;
+  bool found = spsc_q_put(&gNB->prach_ru_queue, &prach, sizeof(prach));
+  if (!found)
+    LOG_W(NR_PHY, "%4d.%2d PRACH occ queue is full: dropping PRACH request\n", SFN, Slot);
 }
 
 static void rx_nr_prach_ru_internal(prach_item_t *p,
@@ -380,7 +356,7 @@ static void rx_nr_prach_ru_internal(prach_item_t *p,
         rxsigF_tmp[j] = c16add(rxsigF_tmp[j], tmp[k2]);
       }
     }
-    memcpy(p->rxsigF[prachOccasion][aa], rxsigF_tmp, sizeof(rxsigF_tmp));
+    memcpy(p->prach_buf[aa][prachOccasion], rxsigF_tmp, sizeof(rxsigF_tmp));
   }
 }
 
@@ -444,7 +420,7 @@ rx_prach_out_t rx_nr_prach(const prach_item_t *in, int occasion)
   int32_t prach_ifft[dft_sz] __attribute__((aligned(32)));
   for (int preamble_index = 0; preamble_index < 64; preamble_index++) {
     if (LOG_DEBUGFLAG(DEBUG_PRACH)) {
-      int en = dB_fixed(signal_energy((int32_t *)in->rxsigF[occasion][0], N_ZC == 839 ? 840 : 140));
+      int en = dB_fixed(signal_energy((int32_t *)in->prach_buf[0][occasion], N_ZC == 839 ? 840 : 140));
       if (en > 60)
         LOG_D(PHY, "frame %d, slot %d : Trying preamble %d \n", in->frame, in->slot, preamble_index);
     }
@@ -520,7 +496,7 @@ rx_prach_out_t rx_nr_prach(const prach_item_t *in, int occasion)
 
     // Compute DFT of RX signal (conjugate in->rxsigF[occasion], results in conjugate output) for each new rootSequenceIndex
     if (LOG_DEBUGFLAG(DEBUG_PRACH)) {
-      int en = dB_fixed(signal_energy((int32_t *)in->rxsigF[occasion][0], 840));
+      int en = dB_fixed(signal_energy((int32_t *)in->prach_buf[0][occasion], 840));
       if (en>60)
         LOG_D(PHY,
               "frame %d, slot %d : preamble index %d, NCS %d, N_ZC/NCS %d: offset %d, preamble shift %d , en %d)\n",
@@ -549,14 +525,14 @@ rx_prach_out_t rx_nr_prach(const prach_item_t *in, int occasion)
 
       memset(prach_ifft, 0, sizeof(prach_ifft));
       if (LOG_DUMPFLAG(DEBUG_PRACH)) {
-        LOG_M("prach_rxF0.m", "prach_rxF0", in->rxsigF[occasion][0], N_ZC, 1, 1);
-        LOG_M("prach_rxF1.m", "prach_rxF1", in->rxsigF[occasion][1], 6144, 1, 1);
+        LOG_M("prach_rxF0.m", "prach_rxF0", in->prach_buf[0][occasion], N_ZC, 1, 1);
+        LOG_M("prach_rxF1.m", "prach_rxF1", in->prach_buf[1][occasion], 6144, 1, 1);
       }
       c16_t prachF[dft_sz] __attribute__((aligned(32)));
       for (int aa = 0; aa < nb_rx; aa++) {
         // Do componentwise product with Xu* on each antenna
         for (int offset = 0; offset < N_ZC; offset++) {
-          prachF[offset] = c16MulConjShift(Xu[offset], in->rxsigF[occasion][aa][offset], 15);
+          prachF[offset] = c16MulConjShift(Xu[offset], in->prach_buf[aa][occasion][offset], 15);
         }
         memset(prachF + N_ZC, 0, sizeof(*prachF) * (dft_sz - N_ZC));
         // Now do IFFT of size 1024 (N_ZC=839) or 256 (N_ZC=139)

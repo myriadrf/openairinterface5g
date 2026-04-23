@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file ru_procedures.c
+/*!
  * \brief Implementation of RU procedures
- * \author R. Knopp, F. Kaltenberger, N. Nikaein, X. Foukas
- * \date 2011
- * \version 0.1
- * \company Eurecom
- * \email: knopp@eurecom.fr,florian.kaltenberger@eurecom.fr,navid.nikaein@eurecom.fr, x.foukas@sms.ed.ac.uk
- * \note
- * \warning
  */
 
 #include "PHY/defs_gNB.h"
@@ -35,10 +11,9 @@
 #include "sched_nr.h"
 #include "PHY/MODULATION/modulation_common.h"
 #include "PHY/MODULATION/nr_modulation.h"
-
+#include "openair1/PHY/defs_nr_common.h"
 #include "common/utils/LOG/log.h"
 #include "common/utils/system.h"
-#include "common/utils/LOG/vcd_signal_dumper.h"
 
 #include "T.h"
 
@@ -54,8 +29,6 @@ void nr_feptx0(RU_t *ru, int tti_tx, int first_symbol, int num_symbols, int aa)
 
   unsigned int slot_offset,slot_offsetF;
   int slot = tti_tx;
-
-  //VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM+(first_symbol!=0?1:0) , 1 );
 
   if (aa == 0 && first_symbol == 0)
     start_meas(&ru->ofdm_mod_stats);
@@ -142,33 +115,23 @@ void nr_feptx0(RU_t *ru, int tti_tx, int first_symbol, int num_symbols, int aa)
 
   if (aa == 0 && first_symbol == 0)
     stop_meas(&ru->ofdm_mod_stats);
-        
-  //VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM+(first_symbol!=0?1:0), 0);
 }
 
 // RU FEP TX OFDM modulation, single-thread
-void nr_feptx_ofdm(RU_t *ru,int frame_tx,int tti_tx) {
-     
+void nr_feptx_ofdm(RU_t *ru,int frame_tx,int tti_tx)
+{
   nfapi_nr_config_request_scf_t *cfg = &ru->gNB_list[0]->gNB_config;
-  NR_DL_FRAME_PARMS *fp=ru->nr_frame_parms;
-  int cyclic_prefix_type = NFAPI_CP_NORMAL;
+  NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
 
   unsigned int aa=0;
-  int slot_sizeF = (fp->ofdm_symbol_size)*
-                   ((cyclic_prefix_type == 1) ? 12 : 14);
+  int slot_sizeF = fp->ofdm_symbol_size * fp->symbols_per_slot;
   int slot = tti_tx;
   int *txdata = &ru->common.txdata[aa][get_samples_slot_timestamp(fp, slot)];
 
-  if (nr_slot_select(cfg,frame_tx,slot) == NR_UPLINK_SLOT) return;
+  if (nr_slot_select(cfg,frame_tx,slot) == NR_UPLINK_SLOT)
+    return;
 
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM , 1 );
-
-
-    //    LOG_D(HW,"Frame %d: Generating slot %d\n",frame,next_slot);
-
-  nr_feptx0(ru,slot,0,NR_NUMBER_OF_SYMBOLS_PER_SLOT,aa);
-
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM , 0 );
+  nr_feptx0(ru, slot, 0, fp->symbols_per_slot, aa);
 
   LOG_D(PHY,
         "feptx_ofdm (TXPATH): frame %d, slot %d: txp (time %p) %d dB, txp (freq) %d dB\n",
@@ -186,7 +149,6 @@ void nr_feptx_prec(RU_t *ru, int frame_tx, int slot_tx)
   PHY_VARS_gNB *gNB = gNB_list[0];
   nfapi_nr_config_request_scf_t *cfg = &ru->gNB_list[0]->gNB_config;
   NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
-  int txdataF_offset = slot_tx * fp->samples_per_slot_wCP;
   start_meas(&ru->precoding_stats);
 
   if (gNB->common_vars.analog_bf) {
@@ -206,8 +168,8 @@ void nr_feptx_prec(RU_t *ru, int frame_tx, int slot_tx)
     for (int b = 0; b < ru->num_beams_period; b++) {
       for (int i = 0; i < Ptx; ++i) {
         int tx_idx = i + b * ru->nb_tx;
-        memcpy((void*)ru->common.txdataF_BF[tx_idx],
-               (void*)&gNB->common_vars.txdataF[b][i][txdataF_offset],
+        memcpy((void *)ru->common.txdataF_BF[tx_idx],
+               (void *)gNB->common_vars.txdataF[b][i],
                fp->samples_per_slot_wCP * sizeof(int32_t));
       }
     }
@@ -229,11 +191,7 @@ void nr_feptx(void *arg)
   int startSymbol = feptx->startSymbol;
   NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
   int numSymbols = feptx->numSymbols;
-  int numSamples = feptx->numSymbols * fp->ofdm_symbol_size;
-  int txdataF_offset = (slot * fp->samples_per_slot_wCP) + startSymbol * fp->ofdm_symbol_size;
-  int txdataF_BF_offset = startSymbol * fp->ofdm_symbol_size;
 
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_PREC+feptx->aid , 1);
   int tx_idx = aa + bb * ru->nb_tx;
 
   if (tx_idx == 0)
@@ -246,19 +204,24 @@ void nr_feptx(void *arg)
   }
 
   // If there is no digital beamforming we just need to copy the data to RU
-  if (ru->config.dbt_config.num_dig_beams == 0 || ru->gNB_list[0]->common_vars.analog_bf)
-     memcpy((void*)&ru->common.txdataF_BF[tx_idx][txdataF_BF_offset],
-            (void*)&ru->gNB_list[0]->common_vars.txdataF[bb][aa][txdataF_offset],
-            numSamples * sizeof(int32_t));
-  else {
+  if (ru->config.dbt_config.num_dig_beams == 0 || ru->gNB_list[0]->common_vars.analog_bf) {
+    // FFT shift
+    const NR_DL_FRAME_PARMS *fp = &ru->gNB_list[0]->frame_parms;
+    fft_shift(ru->gNB_list[0]->common_vars.txdataF[bb][aa],
+              fp->ofdm_symbol_size,
+              fp->N_RB_DL,
+              (c16_t *)ru->common.txdataF_BF[tx_idx],
+              fp->ofdm_symbol_size,
+              startSymbol,
+              numSymbols);
+  } else {
     AssertFatal(false, "This needs to be fixed by using appropriate beams from config\n");
   }
 
   if (tx_idx == 0)
     stop_meas(&ru->precoding_stats);
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_PREC+feptx->aid , 0);
 
-      ////////////FEPTX////////////
+  ////////////FEPTX////////////
   nr_feptx0(ru, slot, startSymbol, numSymbols, tx_idx);
 
   // Task completed in //
@@ -271,8 +234,6 @@ void nr_feptx_tp(RU_t *ru, int frame_tx, int slot)
   nfapi_nr_config_request_scf_t *cfg = &ru->gNB_list[0]->gNB_config;
   if (nr_slot_select(cfg, frame_tx, slot) == NR_UPLINK_SLOT)
     return;
-  if (ru->idx == 0)
-    VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME( VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM, 1);
   start_meas(&ru->ofdm_total_stats);
 
   int nt = ru->nb_tx * ru->num_beams_period;
@@ -316,8 +277,6 @@ void nr_feptx_tp(RU_t *ru, int frame_tx, int slot)
   join_task_ans(&ans);
 
   stop_meas(&ru->ofdm_total_stats);
-  if (ru->idx == 0)
-    VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME( VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPTX_OFDM, 0);
 }
 
 // core RX FEP routine, called by threads in RU thread-pool
@@ -340,10 +299,9 @@ void nr_fep(void *arg)
 }
 
 // RU RX FEP using thread-pool
-void nr_fep_tp(RU_t *ru, int slot) {
-
-  int nbfeprx=0;
-  if (ru->idx == 0) VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME( VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPRX, 1 );
+void nr_fep_tp(RU_t *ru, int slot)
+{
+  int nbfeprx = 0;
   start_meas(&ru->ofdm_demod_stats);
 
   int nt = ru->nb_rx * ru->num_beams_period;
@@ -384,6 +342,4 @@ void nr_fep_tp(RU_t *ru, int slot) {
   join_task_ans(&ans);
 
   stop_meas(&ru->ofdm_demod_stats);
-  if (ru->idx == 0) VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME( VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_RU_FEPRX, 0 );
 }
-

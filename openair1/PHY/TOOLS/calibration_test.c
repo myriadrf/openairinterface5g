@@ -1,9 +1,14 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include <stdint.h>
-#include <openair1/PHY/impl_defs_top.h>
+#include "openair1/PHY/defs_common.h"
 #include <radio/COMMON/common_lib.h>
 #include <executables/softmodem-common.h>
 #include <openair1/PHY/TOOLS/calibration_scope.h>
 #include "nfapi/oai_integration/vendor_ext.h"
+#include "common/config/config_userapi.h"
 
 
 int oai_exit=false;
@@ -11,7 +16,7 @@ unsigned int mmapped_dma=0;
 uint32_t timing_advance;
 int8_t threequarter_fs;
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
-int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
+int64_t uplink_frequency_offset[MAX_NUM_CCs][4];
 int cpu_meas_enabled;
 THREAD_STRUCT thread_struct;
 uint32_t target_ul_mcs = 9;
@@ -23,6 +28,8 @@ uint32_t target_dl_bw = 50;
 uint32_t target_dl_Nl;
 uint32_t target_ul_Nl;
 char *uecap_file;
+uint32_t dlsch_slot_modval;
+uint32_t ulsch_slot_modval;
 #include <executables/nr-softmodem.h>
 
 int read_recplayconfig(recplay_conf_t **recplay_conf, recplay_state_t **recplay_state) {return 0;}
@@ -45,7 +52,6 @@ int main(int argc, char **argv) {
   CONFIG_CLEARRTFLAG(CONFIG_NOEXITONHELP);
   lock_memory_to_ram();
     
-  int N_RB=50;
   int sampling_rate=30.72e6;
   int DFT=2048;
   int TxAdvanceInDFTSize=12;
@@ -57,20 +63,8 @@ int main(int argc, char **argv) {
   char * usrp_addrs="type=b200";
 
   openair0_config_t openair0_cfg= {
-    //! Module ID for this configuration
-    .Mod_id=0,
-    //! duplexing mode
-    .duplex_mode=0,
-    //! number of downlink resource blocks
-    .num_rb_dl=N_RB,
-    //! number of samples per frame
-    .samples_per_frame=0,
     //! the sample rate for both transmit and receive.
     .sample_rate=sampling_rate,
-    //device is doing mmapped DMA transfers
-    .mmapped_dma=0,
-    //! offset in samples between TX and RX paths
-    .tx_sample_advance=0,
     //! samples per packet on the fronthaul interface
     .samples_per_packet=1024,
     //! number of RX channels (=RX antennas)
@@ -83,17 +77,9 @@ int main(int argc, char **argv) {
     //! \brief Center frequency in Hz for TX.
     //! index: [0..rx_num_channels[ !!! see lte-ue.c:427 FIXME iterates over rx_num_channels
     .tx_freq={freq,freq,freq,freq},
-    //! \brief memory
-    //! \brief Pointer to Calibration table for RX gains
-    .rx_gain_calib_table=NULL,
-    //! mode for rxgain (ExpressMIMO2)
-    .rxg_mode={0},
     //! \brief Gain for RX in dB.
     //! index: [0..rx_num_channels]
     .rx_gain={rxGain,rxGain,rxGain,rxGain},
-    //! \brief Gain offset (for calibration) in dB
-    //! index: [0..rx_num_channels]
-    .rx_gain_offset={0},
     //! gain for TX in dB
     .tx_gain={txGain,txGain,txGain,txGain},
     //! RX bandwidth in Hz
@@ -106,32 +92,9 @@ int main(int argc, char **argv) {
     .time_source=internal, //internal gpsdo external
     //! Manual SDR IP address
     .sdr_addrs=usrp_addrs,
-    //! Auto calibration flag
-    .autocal={0},
-    //! Configuration file for LMS7002M
-    .configFilename="",
-    //! remote IP/MAC addr for Ethernet interface
-    .remote_addr="",
-    //! remote port number for Ethernet interface
-    .remote_port=0,
-    //! local IP/MAC addr for Ethernet interface (eNB/BBU, UE)
-    .my_addr=0,
-    //! local port number for Ethernet interface (eNB/BBU, UE)
-    .my_port=0,
-    //! record player configuration, definition in record_player.h
-    .recplay_mode=0,
-    .recplay_conf=NULL,
-    //! number of samples per tti
-    .samples_per_tti=0,
   };
   //-----------------------
-  openair0_device rfdevice= {
-    /*!tx write thread*/
-    //.write_thread={0},
-    /*!brief Module ID of this device */
-    .Mod_id=0,
-    /*!brief Component Carrier ID of this device */
-    .CC_id=0,
+  openair0_device_t rfdevice= {
     /*!brief Type of this device */
     .type=NONE_DEV,
     /*!brief Transport protocol type that the device supports (in case I/Q samples need to be transported) */
@@ -306,7 +269,7 @@ int main(int argc, char **argv) {
   }
 
   CalibrationInitScope(samplesRx, &rfdevice);
-  openair0_timestamp timestamp=0;
+  openair0_timestamp_t timestamp=0;
   rfdevice.trx_start_func(&rfdevice);
   
   while(!oai_exit) {

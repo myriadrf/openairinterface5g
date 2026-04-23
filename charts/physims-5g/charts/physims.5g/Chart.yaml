@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 apiVersion: v1
 name: oai-physims-5g
 description: A Helm subchart for 5G physims network function

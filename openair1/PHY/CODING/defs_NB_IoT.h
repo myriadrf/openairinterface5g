@@ -1,44 +1,19 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/* file: PHY/CODING/defs_NB_IoT.h
-   purpose: Top-level definitions, data types and function prototypes for openairinterface coding blocks for NB-IoT
-   author: matthieu.kanj@b-com.com, raymond.knopp@eurecom.fr, michele.paffetti@studio.unibo.it
-   date: 29.06.2017
-*/
+/*
+ * \brief Top-level definitions, data types and function prototypes for openairinterface coding blocks for NB-IoT
+ */
 
 #ifndef OPENAIR1_PHY_CODING_DEFS_NB_IOT_H_
 #define OPENAIR1_PHY_CODING_DEFS_NB_IOT_H_
 
 #include <stdint.h>  // for uint8/16/32_t
 
-#define CRC24_A_NB_IoT 0
-#define CRC24_B_NB_IoT 1
-#define CRC16_NB_IoT 2
-#define CRC8_NB_IoT 3
 
 //#define MAX_TURBO_ITERATIONS_MBSFN 8  // no MBSFN
-#define MAX_TURBO_ITERATIONS_NB_IoT 4
 
-#define LTE_NULL_NB_IoT 2  // defined also in PHY/LTE_TRANSPORT/defs_NB_IoT.h
 
 /** \fn uint32_t sub_block_interleaving_cc(uint32_t D, uint8_t *d,uint8_t *w)
 \brief This is the subblock interleaving algorithm for convolutionally coded blocks from 36-212 (Release 13.4, 2017).

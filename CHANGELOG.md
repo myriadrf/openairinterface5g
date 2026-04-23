@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # RELEASE NOTES: #
 
 ## [v2.4.0](https://gitlab.eurecom.fr/oai/openairinterface5g/-/tags/v2.4.0) -> December 2025. ##

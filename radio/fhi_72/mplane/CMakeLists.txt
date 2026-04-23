@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 add_library(oran_fhlib_5g_mplane MODULE
             ../oran_isolate.c
             ../oaioran.c
@@ -6,8 +8,8 @@ add_library(oran_fhlib_5g_mplane MODULE
 )
 add_dependencies(oran_fhlib_5g_mplane oran_fhlib_5g)
 
-if(xran_VERSION VERSION_EQUAL E_VERSION)
-  target_compile_definitions(oran_fhlib_5g_mplane PRIVATE E_RELEASE)
+if(xran_VERSION MATCHES "5.*")
+  message(FATAL_ERROR "xran E release not supported starting from tag 2026.w08.\nPlease switch to F version ${F_VERSION}")
 elseif(xran_VERSION VERSION_EQUAL F_VERSION)
   target_compile_definitions(oran_fhlib_5g_mplane PRIVATE F_RELEASE)
 endif()

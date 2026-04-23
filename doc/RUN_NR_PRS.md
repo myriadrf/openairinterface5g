@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Running NR PRS with OAI gNB and nrUE
 
 This page is valid on tags starting from **`2022.w37`**.
@@ -101,7 +103,7 @@ If **N310 USRPs** are used, then run above command `without -E option` i.e witho
 To run using **rfsimulator** with local ETH IF `127.0.0.1`, execute following command:
 
 ```
-sudo ./nr-uesoftmodem --rfsim --phy-test --noS1 -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/ue.nr.prs.fr1.106prb.conf --rfsimulator.serveraddr 127.0.0.1
+sudo ./nr-uesoftmodem --rfsim --phy-test --noS1 -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/ue.nr.prs.fr1.106prb.conf --rfsimulator.[0].serveraddr 127.0.0.1
 ```
 
 ### FR2 test
@@ -115,7 +117,7 @@ If RF beamforming module is NOT present, nrUE can still be launched with USRP al
 To run using **rfsimulator** with local ETH IF `127.0.0.1`, execute following command:
 
 ```
-sudo ./nr-uesoftmodem --rfsim --phy-test --noS1 -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/ue.nr.prs.fr2.64prb.conf --rfsimulator.serveraddr 127.0.0.1
+sudo ./nr-uesoftmodem --rfsim --phy-test --noS1 -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/ue.nr.prs.fr2.64prb.conf --rfsimulator.[0].serveraddr 127.0.0.1
 ```
 
 ### Multiple gNB scenario

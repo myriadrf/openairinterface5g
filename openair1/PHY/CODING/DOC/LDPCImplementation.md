@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # LDPC coding implementation
 This document gives an overview of the different LDPC coding implementations (functional or not) available with Open Air Interface.
 
@@ -41,7 +43,7 @@ At runtime, to successfully use LDPC accelerators (e.g., Xilinx T2/Intel ACCs), 
 Please refer to the dedicated documentation at [LDPC_OFFLOAD_SETUP.md](file://../../../../doc/LDPC_OFFLOAD_SETUP.md).
 
 ```
-./nr-softmodem -O  libconfig:gnb.band78.sa.fr1.106PRB.usrpb210.conf:dbgl5 --rfsim --rfsimulator.serveraddr server  --log_config.gtpu_log_level info  --loader.ldpc.shlibversion _aal --nrLDPC_coding_aal.dpdk_dev 01:00.0 --nrLDPC_coding_aal.dpdk_core_list 0-1
+./nr-softmodem -O  libconfig:gnb.band78.sa.fr1.106PRB.usrpb210.conf:dbgl5 --rfsim --rfsimulator.[0].serveraddr server  --log_config.gtpu_log_level info  --loader.ldpc.shlibversion _aal --nrLDPC_coding_aal.dpdk_dev 01:00.0 --nrLDPC_coding_aal.dpdk_core_list 0-1
 ```
 
 `libldpc_aal.so` has its decoder and its encoder implemented in [nrLDPC_coding_aal.c](file://../nrLDPC_coding/nrLDPC_coding_aal/nrLDPC_coding_aal.c).
@@ -61,7 +63,7 @@ At runtime, to successfully use the xdma, you need to install vendor specific dr
 Please refer to the dedicated documentation at [LDPC_XDMA_OFFLOAD_SETUP.md](file://../../../../doc/LDPC_XDMA_OFFLOAD_SETUP.md).
 
 ```
-./nr-softmodem -O libconfig:gnb.band78.sa.fr1.106PRB.usrpb210.conf:dbgl5 --rfsim --rfsimulator.serveraddr server --log_config.gtpu_log_level info --loader.ldpc.shlibversion _xdma --nrLDPC_coding_xdma.num_threads_prepare 2
+./nr-softmodem -O libconfig:gnb.band78.sa.fr1.106PRB.usrpb210.conf:dbgl5 --rfsim --rfsimulator.[0].serveraddr server --log_config.gtpu_log_level info --loader.ldpc.shlibversion _xdma --nrLDPC_coding_xdma.num_threads_prepare 2
 ```
 
 `libldpc_xdma.so` has its decoder implemented in [nrLDPC_coding_xdma.c](file://../nrLDPC_coding/nrLDPC_coding_xdma/nrLDPC_coding_xdma.c).\
@@ -110,10 +112,10 @@ A mechanism to select ldpc implementation is also available in the `ldpctest` ph
 
 #### Examples of ldpc shared lib selection when running ldpctest:
 
-Loading libldpc_cuda.so, the cuda implementation of the ldpc decoder:
+Loading libldpc_orig.so, the legacy implementation of the ldpc decoder:
 
 ```
-$ ./ldpctest -v _cuda
+$ ./ldpctest -v _orig
 ```
 
 ### LDPC libraries
@@ -123,7 +125,5 @@ Libraries implementing the LDPC algorithms must be named `libldpc<_version>.so`,
 * `LDPCshutdown` implementing type `LDPC_shutdownfunc_t *`
 * `LDPCdecoder` implementing type `LDPC_decoderfunc_t *`
 * `LDPCencoder` implementing type `LDPC_encoderfunc_t *`
-
-`libldpc_cuda.so` has been tested with the `ldpctest` executable, usage from the softmodem's has to be tested.
 
 [oai Wikis home](https://gitlab.eurecom.fr/oai/openairinterface5g/wikis/home)

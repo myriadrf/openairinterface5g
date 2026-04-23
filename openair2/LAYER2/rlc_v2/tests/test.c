@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include "../rlc_entity.h"
 #include "../rlc_entity_am.h"
 #include "../rlc_entity_um.h"

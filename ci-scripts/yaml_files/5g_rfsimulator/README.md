@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 <table style="border-collapse: collapse; border: none;">
   <tr style="border-collapse: collapse; border: none;">
     <td style="border-collapse: collapse; border: none;">
@@ -36,11 +38,11 @@ Password:
 Now pull images.
 
 ```bash
-$ docker pull mysql:8.0
-$ docker pull oaisoftwarealliance/oai-amf:v2.1.10
-$ docker pull oaisoftwarealliance/oai-smf:v2.1.10
-$ docker pull oaisoftwarealliance/oai-upf:v2.1.10
-$ docker pull oaisoftwarealliance/trf-gen-cn5g:focal
+$ docker pull mysql:9.6
+$ docker pull oaisoftwarealliance/oai-amf:v2.2.1
+$ docker pull oaisoftwarealliance/oai-smf:v2.2.1
+$ docker pull oaisoftwarealliance/oai-upf:v2.2.1
+$ docker pull oaisoftwarealliance/trf-gen-cn5g:latest
 
 $ docker pull oaisoftwarealliance/oai-gnb:develop
 $ docker pull oaisoftwarealliance/oai-nr-ue:develop
@@ -256,7 +258,7 @@ Create the entry for the second UE in `docker-compose.yaml` file as follows:
             - NET_ADMIN  # for interface bringup
             - NET_RAW    # for ping
         environment:
-            USE_ADDITIONAL_OPTIONS: -E --rfsim -r 106 --numerology 1 -C 3619200000 --rfsimulator.serveraddr 192.168.71.140 --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: -E --rfsim -r 106 --numerology 1 -C 3619200000 --rfsimulator.[0].serveraddr 192.168.71.140 --log_config.global_log_options level,nocolor,time
         depends_on:
             - oai-gnb
         devices:
@@ -518,8 +520,7 @@ uicc0 = {
   imsi = "208990100001100";
   key = "fec86ba6eb707ed08905757b1bb44b8f";
   opc= "C42449363BBAD02B66D16BC975D77CC1";
-  dnn= "oai";
-  nssai_sst=1;
+  pdu_sessions = ({ dnn = "oai"; nssai_sst = 1; });
 }
 ```
 
@@ -569,7 +570,7 @@ runs the gnb service with modified gNB executable.
 ```bash
 docker compose -f docker-compose.yaml -f local-override.yaml up -d oai-gnb
 ```
-This command rebuilds both the gNB & nrUE and runs the oai-nr-ue container with 
+This command rebuilds both the gNB & nrUE and runs the oai-nr-ue container with
 modified nrUE executable.
 ```bash
 docker compose -f docker-compose.yaml -f local-override.yaml up -d oai-nr-ue

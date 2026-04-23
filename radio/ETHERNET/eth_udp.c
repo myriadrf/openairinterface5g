@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file ethernet_lib.c 
+/*!
  * \brief API to stream I/Q samples over standard ethernet
- * \author  add alcatel Katerina Trilyraki, Navid Nikaein, Pedro Dinis, Lucio Ferreira, Raymond Knopp
- * \date 2015
- * \version 0.2
- * \company Eurecom
- * \maintainer:  navid.nikaein@eurecom.fr
- * \note
- * \warning 
  */
 
 // _GNU_SOURCE needed to have sched_getcpu() from sched.h
@@ -58,8 +34,8 @@ uint16_t pck_seq_num = 1;
 uint16_t pck_seq_num_cur=0;
 uint16_t pck_seq_num_prev=0;
 
-int eth_socket_init_udp(openair0_device *device) {
-
+int eth_socket_init_udp(openair0_device_t *device)
+{
   eth_state_t *eth = (eth_state_t*)device->priv;
   eth_params_t *eth_params = device->eth_params;
  
@@ -192,8 +168,8 @@ int eth_socket_init_udp(openair0_device *device) {
   return 0;
 }
 
-int trx_eth_read_udp_IF4p5(openair0_device *device, openair0_timestamp *timestamp, void **buff, int nsamps, int cc) {
-
+int trx_eth_read_udp_IF4p5(openair0_device_t *device, openair0_timestamp_t *timestamp, void **buff, int nsamps, int cc)
+{
   // Read nblocks info from packet itself
   int nblocks = nsamps;  
   int bytes_received=-1;
@@ -244,8 +220,8 @@ int trx_eth_read_udp_IF4p5(openair0_device *device, openair0_timestamp *timestam
   return(bytes_received);
 }
 
-int trx_eth_write_udp_IF4p5(openair0_device *device, openair0_timestamp timestamp, void **buff, int nsamps, int cc, int flags) {
-
+int trx_eth_write_udp_IF4p5(openair0_device_t *device, openair0_timestamp_t timestamp, void **buff, int nsamps, int cc, int flags)
+{
   int nblocks = nsamps;  
   int bytes_sent = 0;
 
@@ -294,10 +270,10 @@ int trx_eth_write_udp_IF4p5(openair0_device *device, openair0_timestamp timestam
 
 
 
-void *trx_eth_write_udp_cmd(udpTXelem_t *udpTXelem) {
-
-  openair0_device *device=udpTXelem->device;
-  openair0_timestamp timestamp = udpTXelem->timestamp;
+void *trx_eth_write_udp_cmd(udpTXelem_t *udpTXelem)
+{
+  openair0_device_t *device=udpTXelem->device;
+  openair0_timestamp_t timestamp = udpTXelem->timestamp;
   void **buff = udpTXelem->buff;
   int nsamps = udpTXelem->nsamps;
   int nant = udpTXelem->nant; 
@@ -331,7 +307,7 @@ void *trx_eth_write_udp_cmd(udpTXelem_t *udpTXelem) {
    // ECPRI Message type (1 byte)
   *(uint8_t *)(buff2 + 1) = 64;
 
-  openair0_timestamp TS = timestamp + fhstate->TS0;
+  openair0_timestamp_t TS = timestamp + fhstate->TS0;
   TS = (6*device->sampling_rate_ratio_d*TS)/device->sampling_rate_ratio_n;
   TS -= device->txrx_offset; 
   int TSinc = (6*256*device->sampling_rate_ratio_d)/device->sampling_rate_ratio_n;
@@ -386,10 +362,11 @@ void *trx_eth_write_udp_cmd(udpTXelem_t *udpTXelem) {
   return(NULL);
 }
 
-int trx_eth_write_udp(openair0_device *device, openair0_timestamp timestamp, void **buff, int fd_ind, int nsamps, int flags, int nant) {	
-
+int trx_eth_write_udp(openair0_device_t *device, openair0_timestamp_t timestamp, void **buff, int fd_ind, int nsamps, int flags, int nant)
+{
     union udpTXReqUnion id = {.s={(uint64_t)timestamp,nsamps,0}};
-    notifiedFIFO_elt_t *req=newNotifiedFIFO_elt(sizeof(udpTXelem_t), id.p, device->utx[fd_ind]->resp,NULL);
+    eth_state_t *eth = (eth_state_t*)device->priv;
+    notifiedFIFO_elt_t *req=newNotifiedFIFO_elt(sizeof(udpTXelem_t), id.p, eth->utx[fd_ind]->resp,NULL);
     udpTXelem_t * udptxelem=(udpTXelem_t *) NotifiedFifoData(req);
     udptxelem->device = device;
     udptxelem->timestamp = timestamp;
@@ -399,7 +376,7 @@ int trx_eth_write_udp(openair0_device *device, openair0_timestamp timestamp, voi
     udptxelem->nsamps = nsamps;
     udptxelem->flags = flags;
     udptxelem->nant = nant;
-    pushNotifiedFIFO(device->utx[fd_ind]->resp, req);
+    pushNotifiedFIFO(eth->utx[fd_ind]->resp, req);
     LOG_D(PHY,"Pushed to TX FH FIFO, TS %llu, nsamps %d, nant %d buffs[0] %p buffs[1] %p\n",
           (unsigned long long)timestamp,nsamps,nant,udptxelem->buff[0],udptxelem->buff[1]);
     return(0);
@@ -410,14 +387,11 @@ void *udp_write_thread(void *arg) {
    utx->resp = malloc(sizeof(*utx->resp));
    initNotifiedFIFO(utx->resp);
    LOG_D(PHY,"UDP write thread started on core %d\n",sched_getcpu()); 
-   reset_meas(&utx->device->tx_fhaul);
    while (oai_exit == 0) {
       notifiedFIFO_elt_t *res = pullNotifiedFIFO(utx->resp);
       udpTXelem_t *udptxelem = (udpTXelem_t *)NotifiedFifoData(res);
       LOG_D(PHY,"Pulled from TX FH FIFO, TS %llu, nsamps %d, nant %d\n",(unsigned long long)udptxelem->timestamp,udptxelem->nsamps,udptxelem->nant);
-      start_meas(&utx->device->tx_fhaul);
       trx_eth_write_udp_cmd(udptxelem);
-      stop_meas(&utx->device->tx_fhaul);
       // send data to RU
       delNotifiedFIFO_elt(res);
    }
@@ -425,12 +399,13 @@ void *udp_write_thread(void *arg) {
    return(NULL);
 }
 
-void *udp_read_thread(void *arg) {
-  openair0_timestamp TS;
+void *udp_read_thread(void *arg)
+{
+  openair0_timestamp_t TS;
 
   int aid;
   udp_ctx_t *u = (udp_ctx_t *)arg;
-  openair0_device *device=u->device;
+  openair0_device_t *device=u->device;
   fhstate_t *fhstate = &device->fhstate;
   char buffer[UDP_PACKET_SIZE_BYTES(256)];
   int first_read=0;
@@ -457,7 +432,7 @@ void *udp_read_thread(void *arg) {
       if (oai_exit)
         break;
       aid = *(uint16_t*)(&buffer[ECPRICOMMON_BYTES]);
-      TS  = *(openair0_timestamp *)(&buffer[ECPRICOMMON_BYTES+ECPRIPCID_BYTES]);   
+      TS  = *(openair0_timestamp_t *)(&buffer[ECPRICOMMON_BYTES+ECPRIPCID_BYTES]);
       // convert TS to samples, /6 for AW2S @ 30.72 Ms/s, this is converted for other sample rates in OAI application
       TS = (device->sampling_rate_ratio_n*TS)/(device->sampling_rate_ratio_d*6);
       AssertFatal(aid < 8,"Cannot handle more than 8 antennas, got aid %d\n",aid);
@@ -487,24 +462,24 @@ void *udp_read_thread(void *arg) {
   return(0);  
 }
 
-int trx_eth_read_udp(openair0_device *device, openair0_timestamp *timestamp, uint32_t **buff, int nsamps) {
-  
+int trx_eth_read_udp(openair0_device_t *device, openair0_timestamp_t *timestamp, uint32_t **buff, int nsamps)
+{
   fhstate_t *fhstate = &device->fhstate;
-  openair0_timestamp prev_read_TS= fhstate->TS_read;
-  volatile openair0_timestamp min_TS;
+  openair0_timestamp_t prev_read_TS= fhstate->TS_read;
+  volatile openair0_timestamp_t min_TS;
   // block until FH is ready
   while (fhstate->r[0] == 0 || fhstate->r[1] == 0 || fhstate->r[2] == 0 || fhstate->r[3] == 0 ||
          fhstate->r[4] == 0 || fhstate->r[5] == 0 || fhstate->r[6] == 0 || fhstate->r[7] == 0) usleep(100);
 
   // get minimum TS over all antennas
-  min_TS = (volatile openair0_timestamp)fhstate->TS[0];
+  min_TS = (volatile openair0_timestamp_t)fhstate->TS[0];
   for (int i=1;i<device->openair0_cfg->rx_num_channels;i++) min_TS = min(min_TS,fhstate->TS[i]);
   // poll/sleep until we accumulated enough samples on each antenna port
   int count=0;
   while (fhstate->first_read == 1 && min_TS < (fhstate->TS0+prev_read_TS + nsamps)) {
     usleep(10);
-    min_TS = (volatile openair0_timestamp)fhstate->TS[0];
-    for (int i=1;i<device->openair0_cfg->rx_num_channels;i++) min_TS = min(min_TS,(volatile openair0_timestamp)fhstate->TS[i]);
+    min_TS = (volatile openair0_timestamp_t)fhstate->TS[0];
+    for (int i=1;i<device->openair0_cfg->rx_num_channels;i++) min_TS = min(min_TS,(volatile openair0_timestamp_t)fhstate->TS[i]);
     count++;
   }
   if (fhstate->first_read == 0) {
@@ -524,8 +499,8 @@ int trx_eth_read_udp(openair0_device *device, openair0_timestamp *timestamp, uin
 
 
 
-int trx_eth_ctlsend_udp(openair0_device *device, void *msg, ssize_t msg_len) {
-
+int trx_eth_ctlsend_udp(openair0_device_t *device, void *msg, ssize_t msg_len)
+{
   return(sendto(((eth_state_t*)device->priv)->sockfdc,
 		msg,
 		msg_len,
@@ -535,8 +510,8 @@ int trx_eth_ctlsend_udp(openair0_device *device, void *msg, ssize_t msg_len) {
 }
 
 
-int trx_eth_ctlrecv_udp(openair0_device *device, void *msg, ssize_t msg_len) {
-  
+int trx_eth_ctlrecv_udp(openair0_device_t *device, void *msg, ssize_t msg_len)
+{
   return (recvfrom(((eth_state_t*)device->priv)->sockfdc,
 		   msg,
 		   msg_len,

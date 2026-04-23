@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #include "xran_fh_o_du.h"
@@ -92,7 +75,7 @@ static struct xran_prb_map get_xran_prb_map(const struct xran_fh_config *f, cons
       .cc_id = 0,
       .ru_port_id = 0,
       .tti_id = 0,
-      .nPrbElm = 1,
+      .nPrbElm = 1, // represents the number of fragments on DL only; calculated in xran_init_PrbMap_from_cfg()/xran_init_PrbMap_by_symbol_from_cfg()
   };
   struct xran_prb_elm *e = &prbmap.prbMap[0];
   e->nStartSymb = start_sym;
@@ -199,7 +182,7 @@ static void oran_allocate_cplane_buffers(void *instHandle,
                                          struct xran_flat_buffer buf[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN],
                                          uint32_t ant,
                                          uint32_t sect,
-                                       #ifdef F_RELEASE
+                                       #if defined F_RELEASE
                                          uint32_t mtu,
                                          const struct xran_fh_config *fh_config,
                                        #endif
@@ -208,17 +191,6 @@ static void oran_allocate_cplane_buffers(void *instHandle,
 {
   xran_status_t status;
   uint32_t count1 = 0;
-
-#ifdef E_RELEASE
-  uint32_t count2 = 0;
-  uint32_t poolSec;
-  uint32_t numBufsSec = next_power_2(XRAN_N_FE_BUF_LEN * ant * XRAN_NUM_OF_SYMBOL_PER_SLOT * sect * XRAN_MAX_FRAGMENT);
-  uint32_t bufSizeSec = sizeof(struct xran_section_desc);
-  status = xran_bm_init(instHandle, &poolSec, numBufsSec, bufSizeSec);
-  AssertFatal(XRAN_STATUS_SUCCESS == status, "Failed at xran_bm_init(), status %d\n", status);
-  printf("xran_bm_init() hInstance %p poolIdx %u elements %u size %u\n", instHandle, poolSec, numBufsSec, bufSizeSec);
-#endif
-
   uint32_t poolPrb;
   uint32_t numBufsPrb = next_power_2(XRAN_N_FE_BUF_LEN * ant * XRAN_NUM_OF_SYMBOL_PER_SLOT) - 1;
   uint32_t bufSizePrb = size_of_prb_map;
@@ -247,34 +219,7 @@ static void oran_allocate_cplane_buffers(void *instHandle,
       // get mixed slot map if in TDD and in mixed slot
       if (prb_conf->nTddPeriod != 0 && (j % prb_conf->nTddPeriod) == prb_conf->mixed_slot_index)
         src = &prb_conf->mixedSlotMap;
-#ifdef E_RELEASE
-      /* as per E release sample app, the memory is copied up to size_of_prb_map
-        which translates to >= sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm)*5,
-        but we assume that RB allocation is done as 1 RE/UE so the total memory size is sizeof(struct xran_prb_map);
-        this is improved in F release */
-      struct xran_prb_map *p_rb_map = (struct xran_prb_map *)ptr;
-      memcpy(p_rb_map, src, sizeof(*src));
-
-      for (uint32_t elm_id = 0; elm_id < p_rb_map->nPrbElm; ++elm_id) {
-        struct xran_prb_elm *pPrbElem = &p_rb_map->prbMap[elm_id];
-        for (uint32_t k = 0; k < XRAN_NUM_OF_SYMBOL_PER_SLOT; ++k) {
-          for (uint32_t m = 0; m < XRAN_MAX_FRAGMENT; ++m) {
-            void *sd_ptr;
-            void *sd_mb;
-            status = xran_bm_allocate_buffer(instHandle, poolSec, &sd_ptr, &sd_mb);
-            AssertFatal(XRAN_STATUS_SUCCESS == status,
-                        "Failed at xran_bm_allocate_buffer(), status %d m %d k %d elm_id %d\n",
-                        status,
-                        m,
-                        k,
-                        elm_id);
-            count2++;
-            pPrbElem->p_sec_desc[k][m] = sd_ptr;
-            memset(sd_ptr, 0, sizeof(struct xran_section_desc));
-          }
-        }
-      }
-#elif defined F_RELEASE
+#if defined F_RELEASE
       if (fh_config->RunSlotPrbMapBySymbolEnable) {
         xran_init_PrbMap_by_symbol_from_cfg(src, ptr, mtu, fh_config->nDLRBs);
       } else {
@@ -284,9 +229,6 @@ static void oran_allocate_cplane_buffers(void *instHandle,
     }
   }
   printf("xran_bm_allocate_buffer() hInstance %p poolIdx %u count %u\n", instHandle, poolPrb, count1);
-#ifdef E_RELEASE
-  printf("xran_bm_allocate_buffer() hInstance %p poolIdx %u count %u\n", instHandle, poolSec, count2);
-#endif
 }
 
 /* callback not actively used */
@@ -299,7 +241,7 @@ static void oran_allocate_buffers(void *handle,
                                   int xran_inst,
                                   int num_sectors,
                                   oran_port_instance_t *portInstances,
-                                #ifdef F_RELEASE
+                                #if defined F_RELEASE
                                   uint32_t mtu,
                                 #endif
                                   const struct xran_fh_config *fh_config)
@@ -355,19 +297,9 @@ static void oran_allocate_buffers(void *handle,
       .mixedSlotMap = ulPmMixed,
   };
 
-#ifdef E_RELEASE
-  uint32_t size_of_prb_map = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (xran_max_sections_per_slot - 1);
-#elif defined F_RELEASE
-  uint32_t size_of_prb_map;
-  if (fh_config->RunSlotPrbMapBySymbolEnable) {
-    // For Liteon FR2 with RunSlotPrbMapBySymbolEnable, xran_prb_map will have xran_prb_elm prbMap[14]
-    size_of_prb_map  = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (XRAN_NUM_OF_SYMBOL_PER_SLOT);
-  }
-  else {
-    // For non-Liteon w/o RunSlotPrbMapBySymbolEnable, xran_prb_map will have xran_prb_elm prbMap[1]
-    uint32_t numPrbElm = xran_get_num_prb_elm(&dlPm, mtu);
-    size_of_prb_map  = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (numPrbElm);
-  }
+#if defined F_RELEASE
+  uint32_t numPrbElm = (fh_config->RunSlotPrbMapBySymbolEnable) ? XRAN_NUM_OF_SYMBOL_PER_SLOT : xran_get_num_prb_elm(&dlPm, mtu);
+  uint32_t size_of_prb_map = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (numPrbElm);
 #endif
 
   // PDSCH
@@ -378,7 +310,7 @@ static void oran_allocate_buffers(void *handle,
                                bl->bufs.tx_prbmap,
                                xran_max_antenna_nr,
                                xran_max_sections_per_slot,
-                             #ifdef F_RELEASE
+                             #if defined F_RELEASE
                                mtu,
                                fh_config,
                              #endif
@@ -393,7 +325,7 @@ static void oran_allocate_buffers(void *handle,
                                bl->bufs.rx_prbmap,
                                xran_max_antenna_nr,
                                xran_max_sections_per_slot,
-                             #ifdef F_RELEASE
+                             #if defined F_RELEASE
                                mtu,
                                fh_config,
                              #endif
@@ -462,10 +394,7 @@ int *oai_oran_initialize(struct xran_fh_init *xran_fh_init, struct xran_fh_confi
     struct xran_cb_tag tag = {.cellId = sector, .oXuId = o_xu_id};
     pi->prach_tag = tag;
     pi->pusch_tag = tag;
-#ifdef E_RELEASE
-    LOG_W(HW, "Please be aware that E release support will be removed in the future. Consider switching to F release.\n");
-    oran_allocate_buffers(gxran_handle, o_xu_id, 1, pi, &xran_fh_config[o_xu_id]);
-#elif defined F_RELEASE
+#if defined F_RELEASE
     oran_allocate_buffers(gxran_handle, o_xu_id, 1, pi, xran_fh_init->mtu, &xran_fh_config[o_xu_id]);
 #endif
 

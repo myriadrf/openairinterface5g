@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 apiVersion: v1
 name: oai-physim
 description: A Helm chart for physical simulators network function

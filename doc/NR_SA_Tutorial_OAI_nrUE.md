@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # OAI 5G NR SA tutorial with OAI nrUE
 
 **Table of Contents**
@@ -173,29 +175,27 @@ uicc0 = {
   imsi = "001010000000001";
   key = "fec86ba6eb707ed08905757b1bb44b8f";
   opc = "C42449363BBAD02B66D16BC975D77CC1";
-  dnn = "oai";
-  nssai_sst = 1;
+  pdu_sessions = ({ dnn = "oai"; nssai_sst = 1; });
 }
 ```
 
-| **Parameter** | **Description** | **Default Value** |
-|---------------|-----------------|-------------------|
-| **IMSI** | Unique identifier for the UE within the mobile network. Used by the network to identify the UE during authentication. It ensures that the UE is correctly identified by the network. | 001010000000001 |
-| **key** | Cryptographic key shared between the UE and the network, used for encryption during the authentication process. | `fec86ba6eb707ed08905757b1bb44b8f` |
-| **OPC** | Operator key for the Milenage Authentication and Key Agreement algorithm used for encryption during the authentication process. | Ensures secure communication between the UE and the network by matching the encryption keys. | `C42449363BBAD02B66D16BC975D77CC1` |
-| **DNN** | Specifies the name of the data network the UE wishes to connect to, similar to an APN in 4G networks. | `oai` |
-| **NSSAI** | Allows the UE to select the appropriate network slice, which provides different QoS. | `1` |
+Further information about the meaning of these parameters is described in the
+[dedicated nrUE configuration page](./runmodem-nrue.md).
 
-The UE configuration must match the one of the network's AMF. The nrUE can connect by default to OAI CN5G with no need to provide the configuration file.
-
-When running the `nr-uesoftmodem`, one can specify the nrUE configuration file using the `-O` option. E.g.:
+The UE configuration must match the one of the network's AMF. When running the
+`nr-uesoftmodem`, one can specify the nrUE configuration file using the `-O`
+option. E.g.:
 
 ```bash
-sudo ./nr-uesoftmodem --rfsim --rfsimulator.serveraddr 127.0.0.1 -r 106 --numerology 1 --band 78 -C 3619200000 -O ~/nrue.uicc.conf
+sudo ./nr-uesoftmodem --rfsim --rfsimulator.[0].serveraddr 127.0.0.1 -r 106 --numerology 1 --band 78 -C 3619200000 -O ~/nrue.uicc.conf
 ```
-The CL option `--uicc0.imsi`  can override the IMSI value in the configuration file if necessary (e.g. when running multiple UEs): `--uicc0.imsi  001010000000001`.
 
-More details available at [ci-scripts/yaml_files/5g_rfsimulator/README.md](../ci-scripts/yaml_files/5g_rfsimulator/README.md).
+The command line option `--uicc0.imsi`  can override the IMSI value in the
+configuration file if necessary (e.g. when running multiple UEs): `--uicc0.imsi
+001010000000001`.
+
+More details can also be found at
+[ci-scripts/yaml_files/5g_rfsimulator/README.md](../ci-scripts/yaml_files/5g_rfsimulator/README.md).
 
 **Note:** From tag `2024.w45`, OAI nrUE runs by default in standalone (SA) mode.  
 In earlier versions the default mode was non-standalone (NSA).  

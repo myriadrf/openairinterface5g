@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #include "oran-config.h"
@@ -31,6 +14,7 @@
 
 #include "stdio.h"
 #include "string.h"
+#include "log.h"
 
 #ifdef OAI_MPLANE
 #include "mplane/ru-mplane-api.h"
@@ -124,7 +108,7 @@ static void print_fh_init_io_cfg(const struct xran_io_cfg *io_cfg)
       io_cfg->one_vf_cu_plane);
   print_fh_eowd_cmn(io_cfg->id, &io_cfg->eowd_cmn[io_cfg->id]);
   printf("eowd_port (filled within xran library)\n");
-#ifdef F_RELEASE
+#if defined F_RELEASE
   printf("\
     bbu_offload %d\n",
       io_cfg->bbu_offload);
@@ -184,11 +168,12 @@ void print_fh_init(const struct xran_fh_init *fh_init)
       fh_init->filePrefix,
       fh_init->mtu,
       fh_init->p_o_du_addr);
-  print_ether_addr("  p_o_ru_addr", fh_init->xran_ports * fh_init->io_cfg.num_vfs, (struct rte_ether_addr *)fh_init->p_o_ru_addr);
+  if (fh_init->p_o_ru_addr) print_ether_addr("  p_o_ru_addr", fh_init->xran_ports * fh_init->io_cfg.num_vfs, (struct rte_ether_addr *)fh_init->p_o_ru_addr);
+  else if (fh_init->p_o_du_addr) print_ether_addr("  p_o_du_addr", fh_init->xran_ports * fh_init->io_cfg.num_vfs, (struct rte_ether_addr *)fh_init->p_o_du_addr);
   printf("\
   totalBfWeights %d\n",
       fh_init->totalBfWeights);
-#ifdef F_RELEASE
+#if defined F_RELEASE
   printf("\
   mlogxranenable %d\n\
   dlCpProcBurst %d\n",
@@ -231,7 +216,7 @@ static void print_prach_config(const struct xran_prach_config *prach_conf)
       prach_conf->timeOffset,
       prach_conf->freqOffset,
       prach_conf->eAxC_offset);
-#ifdef F_RELEASE
+#if defined F_RELEASE
   printf("\
     nPrachConfIdxLTE %d\n",
       prach_conf->nPrachConfIdxLTE);
@@ -395,7 +380,7 @@ void print_fh_config(const struct xran_fh_config *fh_config)
       fh_config->GPS_Alpha,
       fh_config->GPS_Beta);
 
-#ifdef F_RELEASE
+#if defined F_RELEASE
   printf("\
   srsEnableCp %d\n\
   SrsDelaySym %d\n",
@@ -428,34 +413,31 @@ void print_fh_config(const struct xran_fh_config *fh_config)
       fh_config->max_sections_per_slot,
       fh_config->max_sections_per_symbol);
 
-#ifdef F_RELEASE
+#if defined F_RELEASE
   printf("\
   RunSlotPrbMapBySymbolEnable %d\n\
-  LiteOnIgnoreUPSectionIdEnable %d\n\
   dssEnable %d\n\
   dssPeriod %d\n\
   technology[XRAN_MAX_DSS_PERIODICITY] (not filled as DSS disabled)\n",
       fh_config->RunSlotPrbMapBySymbolEnable,
-      fh_config->LiteOnIgnoreUPSectionIdEnable,
       fh_config->dssEnable,
       fh_config->dssPeriod);
 #endif
 }
 
-static uint64_t get_u64_mask(const paramdef_t *pd)
+static void get_u128_mask(const paramdef_t *pd, uint64_t *u0t63, uint64_t *u64t127)
 {
   DevAssert(pd != NULL);
   AssertFatal(pd->numelt > 0, "no entries for creation of mask\n");
-  uint64_t mask = 0;
   for (int i = 0; i < pd->numelt; ++i) {
     int num = pd->iptr[i];
-    AssertFatal(num >= 0 && num < 64, "cannot put element of %d in 64-bit mask\n", num);
-    mask |= 1LL << num;
+    AssertFatal(num >= 0 && num < 128, "cannot put element of %d in 128-bit mask\n", num);
+    uint64_t *mask = num < 64 ? u0t63 : u64t127;
+    *mask |= 1LL << (num % 64);
   }
-  return mask;
 }
 
-#ifdef F_RELEASE
+#if defined F_RELEASE
 char bbdev_dev[32] = "";
 char bbdev_vfio_vf_token[64] = "";
 #endif
@@ -467,13 +449,17 @@ static bool set_fh_io_cfg(struct xran_io_cfg *io_cfg, const paramdef_t *fhip, in
   AssertFatal(num_dev > 0, "need to provide DPDK devices for O-RAN 7.2 Fronthaul\n");
   AssertFatal(num_dev < 17, "too many DPDK devices for O-RAN 7.2 Fronthaul\n");
 
-  io_cfg->id = 0; // 0 -> xran as O-DU; 1 -> xran as O-RU
+  int app_id_index = config_paramidx_fromname((paramdef_t *)fhip, nump, ORAN_CONFIG_APP_ID);
+  AssertFatal(app_id_index >= 0,"Index for %s config option not found!\n", ORAN_CONFIG_APP_ID);
+  io_cfg->id = config_get_processedint(config_get_if(), (paramdef_t *)&fhip[app_id_index]);
+  LOG_A(PHY, "Initializing XRAN layer as %s\n", io_cfg->id == XRAN_APP_ID_O_DU ? "O-DU" : "O-RU");
+
   io_cfg->num_vfs = num_dev; // number of VFs for C-plane and U-plane (should be even); max = XRAN_VF_MAX
   io_cfg->num_rxq = 1; // number of RX queues per VF
   for (int i = 0; i < num_dev; ++i) {
     io_cfg->dpdk_dev[i] = strdup(gpd(fhip, nump, ORAN_CONFIG_DPDK_DEVICES)->strlistptr[i]); // VFs devices
   }
-#ifdef F_RELEASE
+#if defined F_RELEASE
   io_cfg->bbdev_dev[0] = NULL; // BBDev dev name; max devices = 1
   io_cfg->bbdev_vfio_vf_token[0] = NULL; // BBDev dev token; max devices = 1
   char *shlibversion = NULL; // version of the LDPC coding library
@@ -507,9 +493,6 @@ static bool set_fh_io_cfg(struct xran_io_cfg *io_cfg, const paramdef_t *fhip, in
   } else {
     io_cfg->bbdev_mode = XRAN_BBDEV_NOT_USED; // DPDK for BBDev
   }
-#elif defined(E_RELEASE)
-  io_cfg->bbdev_dev[0] = NULL; // BBDev dev name; max devices = 1
-  io_cfg->bbdev_mode = XRAN_BBDEV_NOT_USED; // DPDK for BBDev
 #endif
   int dpdk_iova_mode_idx = config_paramidx_fromname((paramdef_t *)fhip, nump, ORAN_CONFIG_DPDK_IOVA_MODE);
   AssertFatal(dpdk_iova_mode_idx >= 0,"Index for dpdk_iova_mode config option not found!");
@@ -520,8 +503,7 @@ static bool set_fh_io_cfg(struct xran_io_cfg *io_cfg, const paramdef_t *fhip, in
     these parameters are machine specific */
   io_cfg->core = *gpd(fhip, nump, ORAN_CONFIG_IO_CORE)->iptr; // core used for IO; absolute CPU core ID for xran library, it should be an isolated core
   io_cfg->system_core = *gpd(fhip, nump, ORAN_CONFIG_SYSTEM_CORE)->iptr; // absolute CPU core ID for DPDK control threads, it should be an isolated core
-  io_cfg->pkt_proc_core = get_u64_mask(gpd(fhip, nump, ORAN_CONFIG_WORKER_CORES)); // worker mask 0-63
-  io_cfg->pkt_proc_core_64_127 = 0x0; // worker mask 64-127; to be used if machine supports more than 64 cores
+  get_u128_mask(gpd(fhip, nump, ORAN_CONFIG_WORKER_CORES), &io_cfg->pkt_proc_core, &io_cfg->pkt_proc_core_64_127); // worker masks 0-63 and 64-127
   io_cfg->pkt_aux_core = 0; // sample app says 0 = "do not start"
   io_cfg->timing_core = *gpd(fhip, nump, ORAN_CONFIG_IO_CORE)->iptr; // core used by xran
 
@@ -540,21 +522,21 @@ static bool set_fh_io_cfg(struct xran_io_cfg *io_cfg, const paramdef_t *fhip, in
   /* if RU does support, io_cfg->eowd_cmn[0] should only be filled as id = O_DU; io_cfg->eowd_cmn[1] only used if id = O_RU */
   const uint16_t owdm_enable = *gpd(fhip, nump, ORAN_CONFIG_ECPRI_OWDM)->uptr;
   if (owdm_enable) {
-    io_cfg->eowd_cmn[0].initiator_en = 1; // 1 -> initiator (always O-DU), 0 -> recipient (always O-RU)
-    io_cfg->eowd_cmn[0].numberOfSamples = 8; // total number of samples to be collected and averaged per port
-    io_cfg->eowd_cmn[0].filterType = 0; // 0 -> simple average based on number of measurements; not used in xran in both E and F releases
-    io_cfg->eowd_cmn[0].responseTo = 10000000; // response timeout in [ns]
-    io_cfg->eowd_cmn[0].measVf = 0; // VF using the OWD transmitter; within xran, the measurements are calculated per each supported VF, but starts from measVf
-    io_cfg->eowd_cmn[0].measState = 0; // the state of the OWD transmitter; 0 -> OWDMTX_INIT (enum xran_owdm_tx_state)
-    io_cfg->eowd_cmn[0].measId = 0; // measurement ID to be used by the transmitter
-    io_cfg->eowd_cmn[0].measMethod = 0; // measurement method; 0 -> XRAN_REQUEST (enum xran_owd_meas_method)
-    io_cfg->eowd_cmn[0].owdm_enable = 1; // 1 -> enabled; 0 -> disabled
-    io_cfg->eowd_cmn[0].owdm_PlLength = 40; // payload in the measurement packet; 40 <= PlLength <= 1400
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].initiator_en = io_cfg->id == XRAN_APP_ID_O_DU ? 1 : 0; // 1 -> initiator (always O-DU), 0 -> recipient (always O-RU)
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].numberOfSamples = 8; // total number of samples to be collected and averaged per port
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].filterType = 0; // 0 -> simple average based on number of measurements; not used in xran in both E and F releases
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].responseTo = 10000000; // response timeout in [ns]
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].measVf = 0; // VF using the OWD transmitter; within xran, the measurements are calculated per each supported VF, but starts from measVf
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].measState = 0; // the state of the OWD transmitter; 0 -> OWDMTX_INIT (enum xran_owdm_tx_state)
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].measId = 0; // measurement ID to be used by the transmitter
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].measMethod = 0; // measurement method; 0 -> XRAN_REQUEST (enum xran_owd_meas_method)
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].owdm_enable = 1; // 1 -> enabled; 0 -> disabled
+    io_cfg->eowd_cmn[XRAN_APP_ID_O_DU].owdm_PlLength = 40; // payload in the measurement packet; 40 <= PlLength <= 1400
   }
   /* eCPRI OWDM per port variables for O-DU; this parameter is filled within xran library */
   // eowd_port[0][XRAN_VF_MAX]
 
-#ifdef F_RELEASE
+#if defined F_RELEASE
   io_cfg->bbu_offload = 0; // enable packet handling on BBU cores
 #endif
 
@@ -687,8 +669,8 @@ static bool set_fh_init(void *mplane_api, struct xran_fh_init *fh_init, enum xra
   if (!set_fh_eaxcid_conf_mplane(&fh_init->eAxCId_conf, xran_cat, ru_session_list))
     return false;
   /* maximum transmission unit (MTU) is the size of the largest protocol data unit (PDU) that can be
-    communicated in a single xRAN network layer transaction. Supported 1500 bytes and 9600 bytes (Jumbo Frame);
-    xran only checks if (MTU <= 1500), therefore setting any value > 1500, xran assumes 9600 value is used */
+    communicated in a single xRAN network layer transaction. Based on the MTU size, xran calculates the number
+    of DL fragments (nPrbElm) needed for transmission of one symbol. */
   fh_init->mtu = ru_session_list->ru_session[0].xran_mplane.mtu; // we suppose that each RU supports the same MTU size
 
   int num_ru_addr = (fh_init->io_cfg.one_vf_cu_plane) ? num_rus : 2*num_rus;
@@ -705,25 +687,45 @@ static bool set_fh_init(void *mplane_api, struct xran_fh_init *fh_init, enum xra
   }
 #else
   int num_rus = FH_ConfigList.numelt; // based on the number of fh_config sections -> number of RUs
-  fh_init->xran_ports = num_rus; // since we use xran as O-DU, xran_ports is set to the number of RUs
+  fh_init->xran_ports = num_rus;
+
   if (!set_fh_io_cfg(&fh_init->io_cfg, fhip, nump, num_rus))
     return false;
   if (!set_fh_eaxcid_conf(&fh_init->eAxCId_conf, xran_cat))
     return false;
   /* maximum transmission unit (MTU) is the size of the largest protocol data unit (PDU) that can be
-    communicated in a single xRAN network layer transaction. Supported 1500 bytes and 9600 bytes (Jumbo Frame);
-    xran only checks if (MTU <= 1500), therefore setting any value > 1500, xran assumes 9600 value is used */
+    communicated in a single xRAN network layer transaction. Based on the MTU size, xran calculates the number
+    of DL fragments (nPrbElm) needed for transmission of one symbol. */
   fh_init->mtu = *gpd(fhip, nump, ORAN_CONFIG_MTU)->uptr;
-  int num_ru_addr = gpd(fhip, nump, ORAN_CONFIG_RU_ADDR)->numelt;
-  fh_init->p_o_ru_addr = calloc(num_ru_addr, sizeof(struct rte_ether_addr));
-  AssertFatal(fh_init->p_o_ru_addr != NULL, "out of memory\n");
-  char **ru_addrs = gpd(fhip, nump, ORAN_CONFIG_RU_ADDR)->strlistptr;
-  for (int i = 0; i < num_ru_addr; ++i) {
-    struct rte_ether_addr *ea = (struct rte_ether_addr *)fh_init->p_o_ru_addr;
-    if (get_ether_addr(ru_addrs[i], &ea[i]) == NULL) {
-      printf("could not read ethernet address '%s' for RU!\n", ru_addrs[i]);
-      return false;
+
+  if (fh_init->io_cfg.id == XRAN_APP_ID_O_DU) {
+    int num_ru_addr = gpd(fhip, nump, ORAN_CONFIG_RU_ADDR)->numelt;
+    fh_init->p_o_ru_addr = calloc(num_ru_addr, sizeof(struct rte_ether_addr));
+    char **ru_addrs = gpd(fhip, nump, ORAN_CONFIG_RU_ADDR)->strlistptr;
+    AssertFatal(fh_init->p_o_ru_addr != NULL, "out of memory\n");
+    for (int i = 0; i < num_ru_addr; ++i) {
+      struct rte_ether_addr *ea = (struct rte_ether_addr *)fh_init->p_o_ru_addr;
+      if (get_ether_addr(ru_addrs[i], &ea[i]) == NULL) {
+        printf("could not read ethernet address '%s' for RU!\n", ru_addrs[i]);
+        return false;
+      }
     }
+    // DPDK retreives DU MAC address within the xran library with rte_eth_macaddr_get() function
+    fh_init->p_o_du_addr = NULL;
+  } else {
+    int num_du_addr = gpd(fhip, nump, ORAN_CONFIG_DU_ADDR)->numelt;
+    fh_init->p_o_du_addr = calloc(num_du_addr, sizeof(struct rte_ether_addr));
+    char **du_addrs = gpd(fhip, nump, ORAN_CONFIG_DU_ADDR)->strlistptr;
+    AssertFatal(fh_init->p_o_du_addr != NULL, "out of memory\n");
+    for (int i = 0; i < num_du_addr; ++i) {
+      struct rte_ether_addr *ea = (struct rte_ether_addr *)fh_init->p_o_du_addr;
+      if (get_ether_addr(du_addrs[i], &ea[i]) == NULL) {
+        printf("could not read ethernet address '%s' for DU!\n", du_addrs[i]);
+        return false;
+      }
+    }
+    // DPDK retreives RU MAC address within the xran library with rte_eth_macaddr_get() function
+    fh_init->p_o_ru_addr = NULL;
   }
 #endif
 
@@ -732,10 +734,9 @@ static bool set_fh_init(void *mplane_api, struct xran_fh_init *fh_init, enum xra
   /* used to specify a unique prefix for shared memory, and files created by multiple DPDK processes;
     it is necessary */
   fh_init->filePrefix = strdup(*gpd(fhip, nump, ORAN_CONFIG_FILE_PREFIX)->strptr);
-  fh_init->p_o_du_addr = NULL; // DPDK retreives DU MAC address within the xran library with rte_eth_macaddr_get() function
   fh_init->totalBfWeights = 0; // only used if id = O_RU (for emulation); C-plane extension types; section 5.4.6 of CUS spec
 
-#ifdef F_RELEASE
+#if defined F_RELEASE
   fh_init->mlogxranenable = 0; // enable mlog; 0 -> disabled
   fh_init->dlCpProcBurst = 0; /* 1 -> DL CP processing will be done on single symbol,
                                  0 -> DL CP processing will be spread across all allowed symbols and multiple cores to reduce burstiness */
@@ -756,8 +757,7 @@ static bool set_fh_prach_config(void *mplane_api,
                                 const uint32_t max_num_ant,
                                 const paramdef_t *prachp,
                                 int nprach,
-                                struct xran_prach_config *prach_config,
-                                bool liteon_prach_eAxC_offset)
+                                struct xran_prach_config *prach_config)
 {
   const split7_config_t *s7cfg = &oai0->split7;
 
@@ -780,7 +780,7 @@ static bool set_fh_prach_config(void *mplane_api,
   prach_config->numPrbc = 0;
   prach_config->timeOffset = 0;
   prach_config->freqOffset = 0;
-#ifdef F_RELEASE
+#if defined F_RELEASE
   prach_config->nPrachConfIdxLTE = 0; // used only if DSS enabled and technology is XRAN_RAN_LTE
 #endif
 
@@ -793,11 +793,8 @@ static bool set_fh_prach_config(void *mplane_api,
   xran_mplane_t *xran_mplane = (xran_mplane_t *)mplane_api;
   prach_config->eAxC_offset = xran_mplane->prach_offset;
 #else
-  uint8_t offset = *gpd(prachp, nprach, ORAN_PRACH_CONFIG_EAXC_OFFSET)->u8ptr;
-  if (liteon_prach_eAxC_offset)
-    prach_config->eAxC_offset = offset;
-  else
-    prach_config->eAxC_offset = (offset != 0) ? offset : max_num_ant;
+  const paramdef_t *pd = gpd(prachp, nprach, ORAN_PRACH_CONFIG_EAXC_OFFSET);
+  prach_config->eAxC_offset = pd->paramflags & PARAMFLAG_PARAMSET ? *pd->u8ptr : max_num_ant;
 #endif
 
   g_kbar = *gpd(prachp, nprach, ORAN_PRACH_CONFIG_KBAR)->uptr;
@@ -881,7 +878,6 @@ static bool set_fh_config(void *mplane_api, int ru_idx, int num_rus, enum xran_c
   DevAssert(oai0->rx_freq[0] > 0);
   for (int i = 1; i < oai0->rx_num_channels; ++i)
     DevAssert(oai0->rx_freq[0] == oai0->rx_freq[i]);
-  DevAssert(oai0->nr_band > 0);
   paramdef_t FHconfigs[] = ORAN_FH_DESC;
   paramlist_def_t FH_ConfigList = {CONFIG_STRING_ORAN_FH};
   char aprefix[MAX_OPTNAME_SIZE] = {0};
@@ -944,13 +940,9 @@ static bool set_fh_config(void *mplane_api, int ru_idx, int num_rus, enum xran_c
   fh_config->prachEnable = 1; // enable PRACH
   fh_config->srsEnable = 0; // enable SRS; used only if XRAN_CATEGORY_B
   // For LiteOn E release, no need to take care of prach eAxC_offset. xran lib is hacked to handle it.
-  bool liteon_prach_eAxC_offset = false;
-#ifdef F_RELEASE
+#if defined F_RELEASE
   fh_config->srsEnableCp = 0; // enable SRS CP; used only if XRAN_CATEGORY_B
   fh_config->SrsDelaySym = 0; // number of SRS delay symbols; used only if XRAN_CATEGORY_B
-  fh_config->RunSlotPrbMapBySymbolEnable    = *gpd(fhp, nfh, ORAN_CONFIG_RunSlotPrbMapBySymbol)->uptr;    // enable RunSlotPrbMapBySymbol
-  fh_config->LiteOnIgnoreUPSectionIdEnable  = *gpd(fhp, nfh, ORAN_CONFIG_LiteOnIgnoreUPSectionId)->uptr;  // enable LiteOnIgnoreUPSectionId
-  liteon_prach_eAxC_offset = fh_config->LiteOnIgnoreUPSectionIdEnable;
 #endif
   fh_config->puschMaskEnable = 0; // enable PUSCH mask; only used if id = O_RU
   fh_config->puschMaskSlot = 0; // specific which slot PUSCH channel masked; only used if id = O_RU
@@ -962,7 +954,7 @@ static bool set_fh_config(void *mplane_api, int ru_idx, int num_rus, enum xran_c
   fh_config->GPS_Alpha = 0; // refers to alpha as defined in section 9.7.2 of ORAN spec. this value should be alpha*(1/1.2288ns), range 0 - 1e7 (ns); offset_nsec = (pConf->GPS_Beta - offset_sec * 100) * 1e7 + pConf->GPS_Alpha
   fh_config->GPS_Beta = 0; // beta value as defined in section 9.7.2 of ORAN spec. range -32767 ~ +32767; offset_sec = pConf->GPS_Beta / 100
 
-  if (!set_fh_prach_config(mplane_api, oai0, fh_config->neAxc, prachp, nprach, &fh_config->prach_conf, liteon_prach_eAxC_offset))
+  if (!set_fh_prach_config(mplane_api, oai0, fh_config->neAxc, prachp, nprach, &fh_config->prach_conf))
     return false;
   /* SRS only used if XRAN_CATEGORY_B
     Note: srs_config->eAxC_offset >= prach_config->eAxC_offset + PRACH */
@@ -993,7 +985,9 @@ static bool set_fh_config(void *mplane_api, int ru_idx, int num_rus, enum xran_c
   fh_config->max_sections_per_slot = 0; // not used in xran
   fh_config->max_sections_per_symbol = 0; // not used in xran
 
-#ifdef F_RELEASE
+#if defined F_RELEASE
+  fh_config->RunSlotPrbMapBySymbolEnable = *gpd(fhp, nfh, ORAN_CONFIG_CP_MULTISECTION)->uptr; // enable PRB mapping by symbol with multisection
+
   fh_config->dssEnable = 0; // enable DSS (extension-9)
   fh_config->dssPeriod = 0; // DSS pattern period for LTE/NR
   // fh_config->technology[XRAN_MAX_DSS_PERIODICITY] // technology array represents slot is LTE(0)/NR(1); used only if DSS enabled

@@ -1,3 +1,6 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
 
 /*This is the interface module between PHY
 *Provided the FAPI style interface structures for P7.
@@ -9,16 +12,8 @@
 #define __IF_MODULE_NB_IoT__H__
 
 #include "nfapi_interface.h"
-//#include "openair1/PHY/LTE_TRANSPORT/defs_NB_IoT.h"
 #include "LTE_PhysicalConfigDedicated-NB-r13.h"
-//#include "openair2/PHY_INTERFACE/IF_Module_NB_IoT.h"
 #include "common/platform_types.h"
-//#include "openair1/SCHED/IF_Module_L1_primitives_NB_IoT.h"
-
-//#define SCH_PAYLOAD_SIZE_MAX 4096
-#define BCCH_PAYLOAD_SIZE_MAX_NB_IoT 128
-
-
 
 // P5 FAPI-like configuration structures-------------------------------------------------------------------------------
 

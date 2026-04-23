@@ -1,35 +1,12 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file ethernet_lib.c
+/*!
  * \brief API to stream I/Q samples over standard ethernet
- * \author  add alcatel Katerina Trilyraki, Navid Nikaein, Pedro Dinis, Lucio Ferreira, Raymond Knopp
- * \date 2015
- * \version 0.2
- * \company Eurecom
- * \maintainer:  navid.nikaein@eurecom.fr
- * \note
- * \warning
  */
 
+#include "utils.h"
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <stdio.h>
@@ -51,12 +28,9 @@ int num_devices_eth = 0;
 struct sockaddr_in dest_addr[MAX_INST];
 int dest_addr_len[MAX_INST];
 
-int load_lib(openair0_device *device,
-             openair0_config_t *openair0_cfg,
-             eth_params_t *cfg,
-             uint8_t flag);
+int load_lib(openair0_device_t *device, openair0_config_t *openair0_cfg, eth_params_t *cfg, uint8_t flag);
 
-int trx_eth_start(openair0_device *device)
+int trx_eth_start(openair0_device_t *device)
 {
     eth_state_t *eth = (eth_state_t*)device->priv;
 
@@ -64,20 +38,30 @@ int trx_eth_start(openair0_device *device)
        AssertFatal(device->thirdparty_init != NULL, "device->thirdparty_init is null\n");
        AssertFatal(device->thirdparty_init(device) == 0, "third-party init failed\n");
        device->openair0_cfg->samples_per_packet = 256;
-       eth->num_fd = 1; //max(device->openair0_cfg->rx_num_channels,device->openair0_cfg->tx_num_channels); 
-       udp_ctx_t *u[1+eth->num_fd];
-       device->utx = (udp_ctx_t**)malloc(sizeof(device->utx));
-       for (int i=0;i<eth->num_fd;i++) {
-          u[i] = malloc(sizeof(udp_ctx_t));
-          u[i]->thread_id=i;
-          u[i]->device = device;
-	  printf("UDP Read Thread %d on core %d\n",i,device->openair0_cfg->rxfh_cores[i]);
-          threadCreate(&u[i]->pthread,udp_read_thread,u[i],"udp read thread",device->openair0_cfg->rxfh_cores[i],OAI_PRIORITY_RT_MAX);
-          device->utx[i] = malloc(sizeof(udp_ctx_t));
-          device->utx[i]->thread_id=i;
-          device->utx[i]->device = device;
-	  printf("UDP Write Thread %d on core %d\n",i,device->openair0_cfg->txfh_cores[i]);
-          threadCreate(&device->utx[i]->pthread,udp_write_thread,device->utx[i],"udp write thread",device->openair0_cfg->txfh_cores[i],OAI_PRIORITY_RT_MAX);
+       eth->num_fd = 1; //max(device->openair0_cfg->rx_num_channels,device->openair0_cfg->tx_num_channels);
+       udp_ctx_t *u[1 + eth->num_fd];
+       eth->utx = malloc_or_fail(sizeof(eth->utx));
+       for (int i = 0; i < eth->num_fd; i++) {
+         u[i] = malloc_or_fail(sizeof(udp_ctx_t));
+         u[i]->thread_id = i;
+         u[i]->device = device;
+         printf("UDP Read Thread %d on core %d\n", i, device->openair0_cfg->rxfh_cores[i]);
+         threadCreate(&u[i]->pthread,
+                      udp_read_thread,
+                      u[i],
+                      "udp read thread",
+                      device->openair0_cfg->rxfh_cores[i],
+                      OAI_PRIORITY_RT_MAX);
+         eth->utx[i] = malloc_or_fail(sizeof(udp_ctx_t));
+         eth->utx[i]->thread_id = i;
+         eth->utx[i]->device = device;
+         printf("UDP Write Thread %d on core %d\n", i, device->openair0_cfg->txfh_cores[i]);
+         threadCreate(&eth->utx[i]->pthread,
+                      udp_write_thread,
+                      eth->utx[i],
+                      "udp write thread",
+                      device->openair0_cfg->txfh_cores[i],
+                      OAI_PRIORITY_RT_MAX);
        }
        device->sampling_rate_ratio_n=1;
        device->sampling_rate_ratio_d=1;
@@ -130,9 +114,6 @@ int trx_eth_start(openair0_device *device)
        }
        device->threadPool = (tpool_t*)malloc(sizeof(tpool_t));
        initTpool(pool, device->threadPool, cpumeas(CPUMEAS_GETSTATE));
-       // ULSCH decoder result FIFO
-       device->respudpTX = (notifiedFIFO_elt_t*) malloc(sizeof(notifiedFIFO_elt_t));
-       initNotifiedFIFO(device->respudpTX);
 #endif
    }
    /* initialize socket */
@@ -225,8 +206,7 @@ int trx_eth_start(openair0_device *device)
     return 0;
 }
 
-
-void trx_eth_end(openair0_device *device)
+void trx_eth_end(openair0_device_t *device)
 {
     eth_state_t *eth = (eth_state_t*)device->priv;
     /* destroys socket only for the processes that call the eth_end fuction-- shutdown() for beaking the pipe */
@@ -239,9 +219,8 @@ void trx_eth_end(openair0_device *device)
       }
 }
 
-
-
-int trx_eth_stop(openair0_device *device) {
+int trx_eth_stop(openair0_device_t *device)
+{
   eth_state_t *eth = (eth_state_t*)device->priv;
   
   if (eth->flags == ETH_UDP_IF5_ECPRI_MODE) {
@@ -251,38 +230,32 @@ int trx_eth_stop(openair0_device *device) {
   return(0);
 }
 
-
-int trx_eth_set_freq(openair0_device* device, openair0_config_t *openair0_cfg)
+int trx_eth_set_freq(openair0_device_t *device, openair0_config_t *openair0_cfg)
 {
     return(0);
 }
 
-
-int trx_eth_set_gains(openair0_device* device, openair0_config_t *openair0_cfg)
+int trx_eth_set_gains(openair0_device_t *device, openair0_config_t *openair0_cfg)
 {
     return(0);
 }
 
-
-int trx_eth_get_stats(openair0_device* device)
+int trx_eth_get_stats(openair0_device_t *device)
 {
     return(0);
 }
 
-
-int trx_eth_reset_stats(openair0_device* device)
+int trx_eth_reset_stats(openair0_device_t *device)
 {
     return(0);
 }
 
-int trx_eth_write_init(openair0_device *device)
+int trx_eth_write_init(openair0_device_t *device)
 {
     return 0;
 }
 
-int ethernet_tune(openair0_device *device,
-                  unsigned int option,
-                  int value)
+int ethernet_tune(openair0_device_t *device, unsigned int option, int value)
 {
     eth_state_t *eth = (eth_state_t*)device->priv;
     struct timeval timeout;
@@ -471,10 +444,7 @@ int ethernet_tune(openair0_device *device,
     return 0;
 }
 
-
-int transport_init(openair0_device *device,
-                   openair0_config_t *openair0_cfg,
-                   eth_params_t * eth_params )
+int transport_init(openair0_device_t *device, openair0_config_t *openair0_cfg, eth_params_t *eth_params)
 {
     eth_state_t *eth = (eth_state_t*)malloc(sizeof(eth_state_t));
     memset(eth, 0, sizeof(eth_state_t));
@@ -496,9 +466,8 @@ int transport_init(openair0_device *device,
 
     eth->num_fd = 1;
 
-    printf("[ETHERNET]: Initializing openair0_device for %s ...\n", ((device->host_type == RAU_HOST) ? "RAU": "RRU"));
+    printf("[ETHERNET]: Initializing openair0_device_t for %s ...\n", ((device->host_type == RAU_HOST) ? "RAU" : "RRU"));
     printf("[ETHERNET]: num_fd %d\n",eth->num_fd);
-    device->Mod_id           = 0;//num_devices_eth++;
     device->transp_type      = ETHERNET_TP;
     device->trx_start_func   = trx_eth_start;
     device->trx_get_stats_func   = trx_eth_get_stats;
@@ -577,12 +546,11 @@ unsigned short calc_csum (unsigned short *buf,
     return ~sum;
 }
 
-
-void dump_dev(openair0_device *device)
+void dump_dev(openair0_device_t *device)
 {
     eth_state_t *eth = (eth_state_t*)device->priv;
 
-    printf("Ethernet device interface %i configuration:\n" ,device->openair0_cfg->Mod_id);
+    printf("Ethernet device configuration:\n");
     printf("       RB number: %i, sample rate: %lf \n" ,
            device->openair0_cfg->num_rb_dl, device->openair0_cfg->sample_rate);
     printf("       RAU configured for %i tx/%i rx channels)\n",
@@ -594,27 +562,21 @@ void dump_dev(openair0_device *device)
 
 }
 
-
-void inline dump_txcounters(openair0_device *device)
+void inline dump_txcounters(openair0_device_t *device)
 {
     eth_state_t *eth = (eth_state_t*)device->priv;
-    printf("   Ethernet device interface %i, tx counters:\n" ,device->openair0_cfg->Mod_id);
+    printf("   Ethernet device interface tx counters:\n");
     printf("   Sent packets: %llu send errors: %i\n",   (long long unsigned int)eth->tx_count, eth->num_tx_errors);
 }
 
-
-void inline dump_rxcounters(openair0_device *device)
+void inline dump_rxcounters(openair0_device_t *device)
 {
     eth_state_t *eth = (eth_state_t*)device->priv;
-    printf("   Ethernet device interface %i rx counters:\n" ,device->openair0_cfg->Mod_id);
+    printf("   Ethernet device interface rx counters:\n");
     printf("   Received packets: %llu missed packets errors: %i\n", (long long unsigned int)eth->rx_count, eth->num_underflows);
 }
 
-
-void inline dump_buff(openair0_device *device,
-                      char *buff,
-                      unsigned int tx_rx_flag,
-                      int nsamps)
+void inline dump_buff(openair0_device_t *device, char *buff, unsigned int tx_rx_flag, int nsamps)
 {
     char *strptr;
     eth_state_t *eth = (eth_state_t*)device->priv;

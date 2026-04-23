@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file openair2/ENB_APP/RRC_paramsvalues.h
+/*!
  * \brief macro definitions for RRC authorized and asn1 parameters values, to be used in paramdef_t/chechedparam_t structure initializations 
- * \author Francois TABURET
- * \date 2017
- * \version 0.1
- * \company NOKIA BellLabs France
- * \email: francois.taburet@nokia-bell-labs.com
- * \note
- * \warning
  */
 #ifndef __RRC_PARAMSVALUES__H__
 #define __RRC_PARAMSVALUES__H__
@@ -35,7 +11,6 @@
 #define ENB_CONFIG_STRING_ENB_LIST                      "eNBs"
 /* component carriers configuration section name */		
 #define ENB_CONFIG_STRING_COMPONENT_CARRIERS                            "component_carriers"		 
-#define ENB_CONFIG_STRING_COMPONENT_BR_PARAMETERS                       "br_parameters"
 
 
 #define ENB_CONFIG_STRING_FRAME_TYPE                                    "frame_type"
@@ -43,7 +18,6 @@
 #define ENB_CONFIG_STRING_TDD_CONFIG                                    "tdd_config"
 #define ENB_CONFIG_STRING_TDD_CONFIG_S                                  "tdd_config_s"
 #define ENB_CONFIG_STRING_PREFIX_TYPE                                   "prefix_type"
-#define ENB_CONFIG_STRING_PREFIX_TYPE_UL                                "prefix_type_UL"
 #define ENB_CONFIG_STRING_EUTRA_BAND                                    "eutra_band"
 #define ENB_CONFIG_STRING_DOWNLINK_FREQUENCY                            "downlink_frequency"
 #define ENB_CONFIG_STRING_UPLINK_FREQUENCY_OFFSET                       "uplink_frequency_offset"
@@ -51,23 +25,11 @@
 #define ENB_CONFIG_STRING_N_RB_DL                                       "N_RB_DL"
 #define ENB_CONFIG_STRING_CELL_MBSFN                                    "Nid_cell_mbsfn"
 
-
-#define FRAMETYPE_OKVALUES                                      {"FDD","TDD"}
-#define FRAMETYPE_MODVALUES                                     { FDD, TDD} 
-
 #define TDDCFG(A)                                               TDD_Config__subframeAssignment_ ## A
 #define TDDCONFIG_OKRANGE                                       { TDDCFG(sa0), TDDCFG(sa6)}   
 
 #define TDDCFGS(A)                                              TDD_Config__specialSubframePatterns_ ## A
 #define TDDCONFIGS_OKRANGE                                      { TDDCFGS(ssp0), TDDCFGS(ssp8)}   
-
-#define PREFIX_OKVALUES                                         {"NORMAL","EXTENDED"}
-#define PREFIX_MODVALUES                                        { NORMAL, EXTENDED} 
-
-#define PREFIXUL_OKVALUES                                       {"NORMAL","EXTENDED"}
-#define PREFIXUL_MODVALUES                                      { NORMAL, EXTENDED} 
-
-#define NRBDL_OKVALUES                                          {6,15,25,50,75,100}
 
 #define UETIMER_T300_OKVALUES                                   {100,200,300,400,600,1000,1500,2000}
 #define UETT300(A)                                              LTE_UE_TimersAndConstants__t300_ ## A

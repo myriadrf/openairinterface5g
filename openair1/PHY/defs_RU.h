@@ -1,34 +1,10 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file PHY/defs_RU.h
- \brief Top-level defines and structure definitions
- \author R. Knopp, F. Kaltenberger
- \date 2018
- \version 0.1
- \company Eurecom
- \email: knopp@eurecom.fr,florian.kaltenberger@eurecom.fr
- \note
- \warning
-*/
+/*!
+ * \brief Top-level defines and structure definitions
+ */
 
 #ifndef __PHY_DEFS_RU__H__
 #define __PHY_DEFS_RU__H__
@@ -41,11 +17,12 @@
 #include "nfapi_nr_interface_scf.h"
 #include "common/utils/threadPool/task_ans.h"
 #include "common/utils/threadPool/thread-pool.h"
+#include "common/utils/threadPool/notified_fifo.h"
 
 #define MAX_BANDS_PER_RRU 4
 #define MAX_RRU_CONFIG_SIZE 1024
 
-
+typedef struct NR_DL_FRAME_PARMS_s NR_DL_FRAME_PARMS;
 
 typedef enum {
   normal_txrx=0,
@@ -57,14 +34,6 @@ typedef enum {
   calib_prach_tx=6,
   rx_dump_frame=7,
 } runmode_t;
-
-/*! \brief Extension Type */
-typedef enum {
-  CYCLIC_PREFIX,
-  CYCLIC_SUFFIX,
-  ZEROS,
-  NONE
-} Extension_t;
 
 enum transmission_access_mode {
   NO_ACCESS=0,
@@ -176,7 +145,7 @@ typedef struct {
  int slot;
  const c16_t *rxdata;
  c16_t *rxdataF;
- const struct NR_DL_FRAME_PARMS *fp;
+ const NR_DL_FRAME_PARMS *fp;
  int32_t sample_offet;
  task_ans_t *ans;
 } feprx_cmd_t;
@@ -196,9 +165,9 @@ typedef struct RU_proc_t_s {
   /// Pointer to associated RU descriptor
   struct RU_t_s *ru;
   /// timestamp received from HW
-  openair0_timestamp timestamp_rx;
+  openair0_timestamp_t timestamp_rx;
   /// timestamp to send to "slave rru"
-  openair0_timestamp timestamp_tx;
+  openair0_timestamp_t timestamp_tx;
   /// subframe (LTE) / slot (NR) to act upon for reception
   int tti_rx;
   /// subframe (LTE) / slot (NR) to act upon for transmission
@@ -354,7 +323,7 @@ typedef struct RU_proc_t_s {
   /// subframe to act upon for transmission
   int subframe_phy_tx;
   /// timestamp to send to "slave rru"
-  openair0_timestamp timestamp_phy_tx;
+  openair0_timestamp_t timestamp_phy_tx;
   /// pthread structure for RF TX thread
   pthread_t pthread_rf_tx;
   pthread_mutex_t mutex_rf_tx;
@@ -491,8 +460,8 @@ typedef struct RU_t_s {
   /// FAPI confiuration
   nfapi_nr_config_request_scf_t  config;
   /// Frame parameters
-  struct LTE_DL_FRAME_PARMS *frame_parms;
-  struct NR_DL_FRAME_PARMS *nr_frame_parms;
+  struct LTE_DL_FRAME_PARMS_s *frame_parms;
+  struct NR_DL_FRAME_PARMS_s *nr_frame_parms;
   ///timing offset used in TDD
   int N_TA_offset;
   /// SF extension used in TDD (unit: number of samples at 30.72MHz) (this is an expert option)
@@ -500,7 +469,7 @@ typedef struct RU_t_s {
   /// "end of burst delay" used in TDD (unit: number of samples at 30.72MHz) (this is an expert option)
   int end_of_burst_delay;
   /// RF device descriptor
-  openair0_device rfdevice;
+  openair0_device_t rfdevice;
   /// HW configuration
   openair0_config_t openair0_cfg;
   /// Number of NBs using this RU
@@ -510,9 +479,9 @@ typedef struct RU_t_s {
   struct PHY_VARS_eNB_s *eNB_list[NUMBER_OF_eNB_MAX];
   struct PHY_VARS_gNB_s *gNB_list[NUMBER_OF_gNB_MAX];
   /// Mapping of antenna ports to RF chain index
-  openair0_rf_map rf_map;
+  openair0_rf_map_t rf_map;
   /// IF device descriptor
-  openair0_device ifdevice;
+  openair0_device_t ifdevice;
   /// Pointer for ifdevice buffer struct
   if_buffer_t ifbuffer;
   /// if prach processing is to be performed in RU
@@ -593,13 +562,13 @@ typedef struct RU_t_s {
   /// beamforming weight vectors
   int32_t **beam_weights[NUMBER_OF_eNB_MAX+1][15];
   /// received frequency-domain signal for PRACH (IF4p5 RRU)
-  int16_t **prach_rxsigF[NUMBER_OF_NR_RU_PRACH_OCCASIONS_MAX];
+  int16_t **prach_rxsigF[12];
   /// received frequency-domain signal for PRACH BR (IF4p5 RRU)
   int16_t **prach_rxsigF_br[4];
   /// sequence number for IF5
   uint8_t seqno;
   /// initial timestamp used as an offset make first real timestamp 0
-  openair0_timestamp ts_offset;
+  openair0_timestamp_t ts_offset;
   /// Current state of the RU
   rru_state_t state;
   /// Command to do
@@ -758,7 +727,7 @@ typedef struct processingData_RU {
   int frame_tx;
   int slot_tx;
   int next_slot;
-  openair0_timestamp timestamp_tx;
+  openair0_timestamp_t timestamp_tx;
   RU_t *ru;
 } processingData_RU_t;
 #endif //__PHY_DEFS_RU__H__

@@ -1,17 +1,7 @@
 /*
+ * SPDX-License-Identifier: Apache-2.0
+ *
  * Copyright 2017 Cisco Systems, Inc.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- * http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 
 
@@ -649,20 +639,20 @@ void send_dummy_subframe(pnf_p7_t* pnf_p7, uint16_t sfn_sf)
 	{
 		pnf_p7->_public.dummy_subframe.dl_config_req->sfn_sf = sfn_sf;
 		//NFAPI_TRACE(NFAPI_TRACE_INFO, "Dummy dl_config_req - enter\n");
-		(pnf_p7->_public.dl_config_req)(NULL, &(pnf_p7->_public), pnf_p7->_public.dummy_subframe.dl_config_req);
+		(pnf_p7->_public.dl_config_req)(&(pnf_p7->_public), pnf_p7->_public.dummy_subframe.dl_config_req);
 		//NFAPI_TRACE(NFAPI_TRACE_INFO, "Dummy dl_config_req - exit\n");
 	}
 	if(pnf_p7->_public.ul_config_req && pnf_p7->_public.dummy_subframe.ul_config_req)
 	{
 		pnf_p7->_public.dummy_subframe.ul_config_req->sfn_sf = sfn_sf;
 		NFAPI_TRACE(NFAPI_TRACE_INFO, "Dummy ul_config_req - enter\n");
-		(pnf_p7->_public.ul_config_req)(NULL, &pnf_p7->_public, pnf_p7->_public.dummy_subframe.ul_config_req);
+		(pnf_p7->_public.ul_config_req)(&pnf_p7->_public, pnf_p7->_public.dummy_subframe.ul_config_req);
 	}
 	if(pnf_p7->_public.hi_dci0_req && pnf_p7->_public.dummy_subframe.hi_dci0_req)
 	{
 		pnf_p7->_public.dummy_subframe.hi_dci0_req->sfn_sf = sfn_sf;
 		NFAPI_TRACE(NFAPI_TRACE_INFO, "Dummy hi_dci0 - enter\n");
-		(pnf_p7->_public.hi_dci0_req)(NULL, &pnf_p7->_public, pnf_p7->_public.dummy_subframe.hi_dci0_req);
+		(pnf_p7->_public.hi_dci0_req)(&pnf_p7->_public, pnf_p7->_public.dummy_subframe.hi_dci0_req);
 	}
 	if(pnf_p7->_public.lbt_dl_config_req && pnf_p7->_public.dummy_subframe.lbt_dl_config_req)
 	{
@@ -902,7 +892,7 @@ int pnf_p7_subframe_ind(pnf_p7_t* pnf_p7, uint16_t phy_id, uint16_t sfn_sf)
 			if(tx_subframe_buffer->dl_config_req != 0)
 			{
 				if(pnf_p7->_public.dl_config_req)
-					(pnf_p7->_public.dl_config_req)(NULL, &(pnf_p7->_public), tx_subframe_buffer->dl_config_req);
+					(pnf_p7->_public.dl_config_req)(&(pnf_p7->_public), tx_subframe_buffer->dl_config_req);
 
 				//deallocate_nfapi_dl_config_request(subframe_buffer->dl_config_req, pnf_p7);
 			}
@@ -912,14 +902,14 @@ int pnf_p7_subframe_ind(pnf_p7_t* pnf_p7, uint16_t phy_id, uint16_t sfn_sf)
 				if(pnf_p7->_public.dl_config_req && pnf_p7->_public.dummy_subframe.dl_config_req)
 				{
 					pnf_p7->_public.dummy_subframe.dl_config_req->sfn_sf = sfn_sf_tx;
-					(pnf_p7->_public.dl_config_req)(NULL, &(pnf_p7->_public), pnf_p7->_public.dummy_subframe.dl_config_req);
+					(pnf_p7->_public.dl_config_req)(&(pnf_p7->_public), pnf_p7->_public.dummy_subframe.dl_config_req);
 				}
 			}
 
 			if(tx_subframe_buffer->hi_dci0_req != 0)
 			{
 				if(pnf_p7->_public.hi_dci0_req)
-					(pnf_p7->_public.hi_dci0_req)(NULL, &(pnf_p7->_public), tx_subframe_buffer->hi_dci0_req);
+					(pnf_p7->_public.hi_dci0_req)(&(pnf_p7->_public), tx_subframe_buffer->hi_dci0_req);
 
 				//deallocate_nfapi_hi_dci0_request(subframe_buffer->hi_dci0_req, pnf_p7);
 			}
@@ -929,7 +919,7 @@ int pnf_p7_subframe_ind(pnf_p7_t* pnf_p7, uint16_t phy_id, uint16_t sfn_sf)
 				if(pnf_p7->_public.hi_dci0_req && pnf_p7->_public.dummy_subframe.hi_dci0_req)
 				{
 					pnf_p7->_public.dummy_subframe.hi_dci0_req->sfn_sf = sfn_sf_tx;
-					(pnf_p7->_public.hi_dci0_req)(NULL, &(pnf_p7->_public), pnf_p7->_public.dummy_subframe.hi_dci0_req);
+					(pnf_p7->_public.hi_dci0_req)(&(pnf_p7->_public), pnf_p7->_public.dummy_subframe.hi_dci0_req);
 				}
 			}
 
@@ -980,7 +970,7 @@ int pnf_p7_subframe_ind(pnf_p7_t* pnf_p7, uint16_t phy_id, uint16_t sfn_sf)
 			if(subframe_buffer->ul_config_req != 0)
 			{
 				if(pnf_p7->_public.ul_config_req)
-					(pnf_p7->_public.ul_config_req)(NULL, &(pnf_p7->_public), subframe_buffer->ul_config_req);
+					(pnf_p7->_public.ul_config_req)(&(pnf_p7->_public), subframe_buffer->ul_config_req);
 
 				//deallocate_nfapi_ul_config_request(subframe_buffer->ul_config_req, pnf_p7);
 			}
@@ -990,7 +980,7 @@ int pnf_p7_subframe_ind(pnf_p7_t* pnf_p7, uint16_t phy_id, uint16_t sfn_sf)
 				if(pnf_p7->_public.ul_config_req && pnf_p7->_public.dummy_subframe.ul_config_req)
 				{
 					pnf_p7->_public.dummy_subframe.ul_config_req->sfn_sf = sfn_sf;
-					(pnf_p7->_public.ul_config_req)(NULL, &(pnf_p7->_public), pnf_p7->_public.dummy_subframe.ul_config_req);
+					(pnf_p7->_public.ul_config_req)(&(pnf_p7->_public), pnf_p7->_public.dummy_subframe.ul_config_req);
 				}
 			}
 

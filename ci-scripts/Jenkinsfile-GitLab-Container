@@ -1,23 +1,6 @@
 #!/bin/groovy
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 // Location of the executor node
@@ -51,9 +34,7 @@ pipeline {
     stage ("Verify Parameters") {
       steps {
         script {
-          JOB_TIMESTAMP = sh returnStdout: true, script: 'date --utc --rfc-3339=seconds | sed -e "s#+00:00##"'
-          JOB_TIMESTAMP = JOB_TIMESTAMP.trim()
-
+          env.JOB_TIMESTAMP = sh(returnStdout: true, script: 'date --utc --rfc-3339=seconds | sed -e "s#+00:00##"').trim()
           echo '\u2705 \u001B[32mVerify Parameters\u001B[0m'
           def allParametersPresent = true
 
@@ -125,6 +106,23 @@ pipeline {
             def message = "OAI " + JOB_NAME + " build (" + BUILD_ID + "): Merge Conflicts -- Cannot perform CI"
             addGitLabMRComment comment: message
             currentBuild.result = 'FAILURE'
+          }
+        }
+      }
+    }
+    stage ("Local-Repo-Push") {
+      steps {
+        script {
+          catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+            triggerSlaveJob ('RAN-Local-Repo-Push', 'Local-Repo-Push')
+          }
+        }
+      }
+      post {
+        failure {
+          script {
+            echo "Push to local repository KO"
+            failingStages += '\n * RAN-Local-Repo-Push'
           }
         }
       }
@@ -221,28 +219,6 @@ pipeline {
             }
           }
         }
-        stage ("cppcheck") {
-          steps {
-            script {
-              triggerSlaveJob ('RAN-cppcheck', 'cppcheck')
-            }
-          }
-          post {
-            always {
-              script {
-                // Using a unique variable name for each test stage to avoid overwriting on a global variable
-                // due to parallel-time concurrency
-                cppcheckStatus = finalizeSlaveJob('RAN-cppcheck')
-              }
-            }
-            failure {
-              script {
-                currentBuild.result = 'FAILURE'
-                failingStages += cppcheckStatus
-              }
-            }
-          }
-        }
         stage ("ARM-Cross-Compile") {
           steps {
             script {
@@ -330,6 +306,29 @@ pipeline {
               script {
                 currentBuild.result = 'FAILURE'
                 failingStages += physimGH5GStatus
+              }
+            }
+          }
+        }
+        stage ("Channel-Simulation") {
+          when { expression {do5Gtest || do5GUeTest} }
+          steps {
+            script {
+              triggerSlaveJob ('RAN-Channel-Simulation', 'Channel-Simulation')
+            }
+          }
+          post {
+            always {
+              script {
+                // Using a unique variable name for each test stage to avoid overwriting on a global variable
+                // due to parallel-time concurrency
+                channelSimStatus = finalizeSlaveJob('RAN-Channel-Simulation')
+              }
+            }
+            failure {
+              script {
+                currentBuild.result = 'FAILURE'
+                failingStages += channelSimStatus
               }
             }
           }
@@ -703,11 +702,11 @@ pipeline {
             }
           }
         }
-        stage ("SA-2x2-Module-CN5G") {
+        stage ("SA-Multi-Antenna-CN5G") {
           when { expression {do5Gtest} }
           steps {
             script {
-              triggerSlaveJob ('RAN-SA-2x2-Module-CN5G', 'SA-2x2-Module-CN5G')
+              triggerSlaveJob ('RAN-SA-Multi-Antenna-CN5G', 'SA-Multi-Antenna-CN5G')
             }
           }
           post {
@@ -715,13 +714,13 @@ pipeline {
               script {
                 // Using a unique variable name for each test stage to avoid overwriting on a global variable
                 // due to parallel-time concurrency
-                saTDD2x2Status = finalizeSlaveJob('RAN-SA-2x2-Module-CN5G')
+                saMultiAntennaStatus = finalizeSlaveJob('RAN-SA-Multi-Antenna-CN5G')
               }
             }
             failure {
               script {
                 currentBuild.result = 'FAILURE'
-                failingStages += saTDD2x2Status
+                failingStages += saMultiAntennaStatus
               }
             }
           }
@@ -768,6 +767,29 @@ pipeline {
               script {
                 currentBuild.result = 'FAILURE'
                 failingStages += saHandoverStatus
+              }
+            }
+          }
+        }
+        stage ("SA-AERIAL-OAIUE-CN5G") {
+          when { expression {do5Gtest || do5GUeTest} }
+          steps {
+            script {
+              triggerSlaveJob ('RAN-SA-AERIAL-OAIUE-CN5G', 'SA-AERIAL-OAIUE-CN5G')
+            }
+          }
+          post {
+            always {
+              script {
+                // Using a unique variable name for each test stage to avoid overwriting on a global variable
+                // due to parallel-time concurrency
+                saAERIALOAIUEStatus = finalizeSlaveJob('RAN-SA-AERIAL-OAIUE-CN5G')
+              }
+            }
+            failure {
+              script {
+                currentBuild.result = 'FAILURE'
+                failingStages += saAERIALOAIUEStatus
               }
             }
           }
@@ -826,25 +848,22 @@ pipeline {
 // ----  Slave Job functions
 
 def triggerSlaveJob (jobName, gitlabStatusName) {
-  if ("MERGE".equals(env.gitlabActionType)) {
-    MR_NUMBER = env.gitlabMergeRequestIid
-  } else {
-    MR_NUMBER = 'develop'
-  }
+  def MR_NUMBER = "MERGE".equals(env.gitlabActionType) ? env.gitlabMergeRequestIid : 'develop'
   // Workaround for the "cancelled" GitLab pipeline notification
   // The slave job is triggered with the propagate false so the following commands are executed
   // Its status is now PASS/SUCCESS from a stage pipeline point of view
   // localStatus variable MUST be analyzed to properly assess the status
-  localStatus = build job: jobName,
+  def localStatus = build job: jobName,
     parameters: [
       string(name: 'eNB_Repository', value: String.valueOf(GIT_URL)),
+      string(name: 'SourceRepo', value: String.valueOf(env.gitlabSourceRepoHttpUrl)),
       string(name: 'eNB_Branch', value: String.valueOf(env.gitlabSourceBranch)),
       string(name: 'eNB_CommitID', value: String.valueOf(env.gitlabMergeRequestLastCommit)),
       string(name: 'eNB_MR', value: String.valueOf(MR_NUMBER)),
       booleanParam(name: 'eNB_mergeRequest', value: "MERGE".equals(env.gitlabActionType)),
       string(name: 'eNB_TargetBranch', value: String.valueOf(env.gitlabTargetBranch))
     ], propagate: false
-  localResult = localStatus.getResult()
+  def localResult = localStatus.getResult()
   echo "${jobName} Slave Job status is ${localResult}"
   gitlabCommitStatus(name: gitlabStatusName) {
     if (localStatus.resultIsBetterOrEqualTo('SUCCESS')) {
@@ -870,11 +889,11 @@ def triggerCN5GSlaveJob (jobName, gitlabStatusName) {
   // The slave job is triggered with the propagate false so the following commands are executed
   // Its status is now PASS/SUCCESS from a stage pipeline point of view
   // localStatus variable MUST be analyzed to properly assess the status
-  localStatus = build job: jobName,
+  def localStatus = build job: jobName,
     parameters: [
       string(name: 'FULL_RAN_TAG', value: String.valueOf(fullRanTag))
     ], propagate: false
-  localResult = localStatus.getResult()
+  def localResult = localStatus.getResult()
   echo "${jobName} Slave Job status is ${localResult}"
   gitlabCommitStatus(name: gitlabStatusName) {
     if (localStatus.resultIsBetterOrEqualTo('SUCCESS')) {
@@ -882,34 +901,6 @@ def triggerCN5GSlaveJob (jobName, gitlabStatusName) {
     } else {
        error "${jobName} Slave Job is KO"
     }
-  }
-}
-
-def triggerSlaveJobNoGitLab (jobName) {
-  if ("MERGE".equals(env.gitlabActionType)) {
-    MR_NUMBER = env.gitlabMergeRequestIid
-  } else {
-    MR_NUMBER = 'develop'
-  }
-  // Workaround for the "cancelled" GitLab pipeline notification
-  // The slave job is triggered with the propagate false so the following commands are executed
-  // Its status is now PASS/SUCCESS from a stage pipeline point of view
-  // localStatus variable MUST be analyzed to properly assess the status
-  localStatus = build job: jobName,
-    parameters: [
-      string(name: 'eNB_Repository', value: String.valueOf(GIT_URL)),
-      string(name: 'eNB_Branch', value: String.valueOf(env.gitlabSourceBranch)),
-      string(name: 'eNB_CommitID', value: String.valueOf(env.gitlabMergeRequestLastCommit)),
-      string(name: 'eNB_MR', value: String.valueOf(MR_NUMBER)),
-      booleanParam(name: 'eNB_mergeRequest', value: "MERGE".equals(env.gitlabActionType)),
-      string(name: 'eNB_TargetBranch', value: String.valueOf(env.gitlabTargetBranch))
-    ], propagate: false
-  localResult = localStatus.getResult()
-  echo "${jobName} Slave Job status is ${localResult}"
-  if (localStatus.resultIsBetterOrEqualTo('SUCCESS')) {
-     echo "${jobName} Slave Job is OK"
-  } else {
-     error "${jobName} Slave Job is KO"
   }
 }
 
@@ -928,7 +919,7 @@ def finalizeSlaveJob(jobName) {
         filter: 'test_results*.html',
         selector: lastCompleted())
       if (fileExists(fileName)) {
-        sh "sed -i -e 's#TEMPLATE_BUILD_TIME#${JOB_TIMESTAMP}#' ${fileName}"
+        sh "sed -i -e 's#TEMPLATE_BUILD_TIME#${env.JOB_TIMESTAMP}#' ${fileName}"
       } else {
         sh "echo \"could not copy results from ${jobName}, please check pipeline ${BUILD_URL}\" > ${fileName}"
       }

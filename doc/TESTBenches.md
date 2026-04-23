@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 **Table of Contents**
 
 [[_TOC_]]
@@ -27,6 +29,7 @@
 | groot         | Groot                 | gNB (n77)            | B210 (30AD30F)                                        |
 | rocket        | Rocket                | gNB (n77)            | B210 (31F8010)                                        |
 | raspix        | Raspix                | COTS UE              | Quectel RM520N                                        |
+| jetson1-oai   | Jetson1-oai           | nrUE                 | USRP B210                                             |
 
 > **Note:** The available resources, and their current usage, is indicated here:
 > - [Lockable resources of jenkins-oai](https://jenkins-oai.eurecom.fr/lockable-resources/):
@@ -93,10 +96,6 @@ information on how the images are built.
   - orion: Cross-compilation from Intel to ARM
   - base image from `Dockerfile.base.ubuntu.cross-arm64`
   - build image from `Dockerfile.build.ubuntu.cross-arm64` (no target images)
-- [RAN-cppcheck](https://jenkins-oai.eurecom.fr/job/RAN-cppcheck/)
-  ~BUILD-ONLY ~4G-LTE ~5G-NR ~nrUE
-  - bellatrix
-  - performs static code analysis, currently not actively enforced
 - [RAN-RHEL8-Cluster-Image-Builder](https://jenkins-oai.eurecom.fr/job/RAN-RHEL8-Cluster-Image-Builder/)
   ~BUILD-ONLY ~4G-LTE ~5G-NR ~nrUE
   - cluster (`Asterix-OC-oaicicd-session` resource): RHEL image build using the OpenShift Cluster (using gcc/clang)
@@ -220,7 +219,7 @@ information on how the images are built.
   ~5G-NR
   - 5G-NR SA test setup: OAI VNF + PNF/NVIDIA CUBB on gracehopper1-oai + Foxconn RU, up2 + COTS UE (Quectel RM520N), OAI CN5G
   - container images for gNB deployment
-- [RAN-SA-2x2-Module-CN5G](https://jenkins-oai.eurecom.fr/view/RAN/job/RAN-SA-2x2-Module-CN5G/)
+- [RAN-SA-Multi-Antenna-CN5G](https://jenkins-oai.eurecom.fr/view/RAN/job/RAN-SA-Multi-Antenna-CN5G/)
   ~5G-NR
   - matix + N310 (gNB), up2 + COTS UE (Quectel RM520N), OAI 5GC deployed in docker on matix
   - NR performance tests: 2x2 configuration, 60 MHz and 100 MHz bandwidth
@@ -234,6 +233,14 @@ information on how the images are built.
   - groot (CU+DU0) + B210, rocket (DU1) + B210, raspix (Quectel RM520N UE), OAI CN5G
   - OpenShift cluster for CN deployment
   - Attenuator (mini circuits RC4DAT-6G-60) - controlled from rocket
+- [RAN-Channel-Simulation](https://jenkins-oai.eurecom.fr/job/RAN-Channel-Simulation/)
+  ~5G-NR
+  - gracehopper1-oai
+  - run channel simulation on CPU and GPU using test_channel_scalability
+- [RAN-SA-AERIAL-OAIUE-CN5G](https://jenkins-oai.eurecom.fr/job/RAN-SA-AERIAL-OAIUE-CN5G/)
+  ~5G-NR ~nrUE
+  - 5G-NR SA test setup: OAI VNF + PNF/NVIDIA CUBB on gracehopper1-oai + WNC RU, OAIUE on jetson1-oai + B210, OAI CN5G
+  - OpenShift cluster for CN deployment and container images for gNB and UE deployment
 
 ### RAN-CI-NSA-Trigger
 

@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 /*****************************************************************************
@@ -29,8 +12,6 @@ Date        2013/05/02
 Product     NAS stack
 
 Subsystem   include
-
-Author      Frederic Maurel
 
 Description Contains global security definitions
 
@@ -53,12 +34,9 @@ Description Contains global security definitions
  * Size of the authentication challenge parameters in bytes
  */
 #define AUTH_SQN_SIZE   6  /* Sequence number:          48 bits  */
-#define AUTH_AK_SIZE    6  /* Anonymity key:            48 bits  */
 #define AUTH_AMF_SIZE   2  /* Authentication Management Field:  16 bits  */
-#define AUTH_MAC_SIZE   8  /* Message Authentication Code:  64 bits  */
 #define AUTH_AUTN_SIZE  16 /* Authentication token:     128 bits
                 AUTN = (SQN ⊕ AK) || AMF || MAC        */
-#define AUTH_MACS_SIZE  8  /* Re-synchronization MAC:       64 bits  */
 #define AUTH_AUTS_SIZE  16 /* Re-synchronization AUT:       128 bits */
 #define AUTH_RAND_SIZE  16 /* Random challenge:         128 bits     */
 #define AUTH_CK_SIZE    16 /* Ciphering key:            128 bits     */

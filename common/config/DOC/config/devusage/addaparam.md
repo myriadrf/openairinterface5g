@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 To add a new parameter in an existing section you  insert an item in a `paramdef_t` array, which describes the parameters to be read in the existing `config_get` call. You also need to increment the numparams argument.
 
 existing code:

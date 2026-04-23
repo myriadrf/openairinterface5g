@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file common/config/config_userapi.c
+/*!
  * \brief configuration module, api implementation to access configuration parameters
- * \author Francois TABURET
- * \date 2017
- * \version 0.1
- * \company NOKIA BellLabs France
- * \email: francois.taburet@nokia-bell-labs.com
- * \note
- * \warning
  */
 
 #define _GNU_SOURCE
@@ -142,7 +118,7 @@ int config_get(configmodule_interface_t *cfgif, paramdef_t *params, int numparam
   return ret;
 }
 
-int config_getlist(configmodule_interface_t *cfg, paramlist_def_t *ParamList, paramdef_t *params, int numparams, char *prefix)
+int config_getlist(configmodule_interface_t *cfg, paramlist_def_t *ParamList, paramdef_t *params, int numparams, const char *prefix)
 {
   if (CONFIG_ISFLAGSET(CONFIG_ABORT)) {
     fprintf(stderr,"[CONFIG] config_get skipped, config module not properly initialized\n");
@@ -201,19 +177,41 @@ void print_intvalueerror(paramdef_t *param, char *fname, int *okval, int numokva
 
 int config_check_intval(configmodule_interface_t *cfg, paramdef_t *param)
 {
+  UNUSED(cfg);
   if ( param == NULL ) {
     fprintf(stderr,"[CONFIG] config_check_intval: NULL param argument\n");
     return -1;
   }
 
-  for ( int i=0; i<param->chkPptr->s1.num_okintval ; i++) {
-    if( *(param->uptr) == param->chkPptr->s1.okintval[i] ) {
-      return 0;
+  if (param->type == TYPE_INT32 || param->type == TYPE_INT) {
+    if (param->iptr == NULL) {
+      fprintf(stderr, "[CONFIG] config_check_intval: %s: NULL iptr\n", param->optname);
+      return -1;
     }
+    const int v = *param->iptr;
+    for (int i = 0; i < param->chkPptr->s1.num_okintval; i++) {
+      if (v == param->chkPptr->s1.okintval[i])
+        return 0;
+    }
+    fprintf(stderr, "[CONFIG] config_check_intval: %s: %i invalid value, authorized values:\n       ", param->optname, v);
+    for (int i = 0; i < param->chkPptr->s1.num_okintval; i++) {
+      fprintf(stderr, " %i", param->chkPptr->s1.okintval[i]);
+    }
+    fprintf(stderr, " \n");
+    return -1;
+  } else {
+    if (param->uptr == NULL) {
+      fprintf(stderr, "[CONFIG] config_check_intval: %s: NULL uptr\n", param->optname);
+      return -1;
+    }
+    for (int i = 0; i < param->chkPptr->s1.num_okintval; i++) {
+      if (*(param->uptr) == (uint32_t)param->chkPptr->s1.okintval[i]) {
+        return 0;
+      }
+    }
+    print_intvalueerror(param, "config_check_intval", param->chkPptr->s1.okintval, param->chkPptr->s1.num_okintval);
+    return -1;
   }
-
-  print_intvalueerror(param,"config_check_intval", param->chkPptr->s1.okintval,param->chkPptr->s1.num_okintval);
-  return -1;
 }
 
 int config_check_modify_integer(configmodule_interface_t *cfg, paramdef_t *param)
@@ -234,14 +232,38 @@ int config_check_modify_integer(configmodule_interface_t *cfg, paramdef_t *param
   return -1;
 }
 
-int config_check_intrange(configmodule_interface_t *cfg, paramdef_t *param)
+int config_check_intrange(const configmodule_interface_t *cfg, const paramdef_t *param)
 {
+  UNUSED(cfg);
   if( *(param->iptr) >= param->chkPptr->s2.okintrange[0]  && *(param->iptr) <= param->chkPptr->s2.okintrange[1]  ) {
     return 0;
   }
 
-  fprintf(stderr,"[CONFIG] config_check_intrange: %s: %i invalid value, authorized range: %i %i\n",
-          param->optname, (int)*(param->uptr), param->chkPptr->s2.okintrange[0], param->chkPptr->s2.okintrange[1]);
+  fprintf(stderr,
+          "[CONFIG] config_check_intrange: %s: %i invalid value, authorized range: %i %i\n",
+          param->optname,
+          (int)*(param->iptr),
+          param->chkPptr->s2.okintrange[0],
+          param->chkPptr->s2.okintrange[1]);
+  return -1;
+}
+
+int config_check_uintrange(const configmodule_interface_t *cfg, const paramdef_t *param)
+{
+  (void)cfg;
+  const uint32_t *v = param->uptr;
+  const int *range = param->chkPptr->s2.okintrange;
+
+  if (*v >= (uint32_t)range[0] && *v <= (uint32_t)range[1]) {
+    return 0;
+  }
+
+  fprintf(stderr,
+          "[CONFIG] config_check_uintrange: %s: %u invalid, authorized range: %i %i\n",
+          param->optname,
+          *v,
+          range[0],
+          range[1]);
   return -1;
 }
 
@@ -258,6 +280,7 @@ void print_strvalueerror(paramdef_t *param, char *fname, char **okval, int numok
 
 int config_check_strval(configmodule_interface_t *cfg, paramdef_t *param)
 {
+  UNUSED(cfg);
   if ( param == NULL ) {
     fprintf(stderr,"[CONFIG] config_check_strval: NULL param argument\n");
     return -1;

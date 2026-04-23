@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # `paramdef_t`structure
 It is defined in include file [ common/config/config_paramdesc.h ](https://gitlab.eurecom.fr/oai/openairinterface5g/blob/develop/common/config/config_paramdesc.h#L103). This structure is used by developers to describe parameters and by the configuration module to return parameters value. A pointer to a `paramdef_t` array is passed to `config_get` and `config_getlist` calls to instruct the configuration module what parameters it should read.
 

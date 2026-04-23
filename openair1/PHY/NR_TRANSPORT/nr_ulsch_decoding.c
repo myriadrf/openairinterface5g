@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.0  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 /*! \file PHY/NR_TRANSPORT/nr_ulsch_decoding_slot.c
@@ -36,7 +19,6 @@
 #include "PHY/NR_TRANSPORT/nr_dlsch.h"
 #include "SCHED_NR/sched_nr.h"
 #include "defs.h"
-#include "common/utils/LOG/vcd_signal_dumper.h"
 #include "common/utils/LOG/log.h"
 #include <syscall.h>
 // #define DEBUG_ULSCH_DECODING
@@ -49,8 +31,6 @@
 #else
 #define PRINT_CRC_CHECK(a)
 #endif
-
-// extern double cpuf;
 
 void free_gNB_ulsch(NR_gNB_ULSCH_t *ulsch, uint16_t N_RB_UL)
 {
@@ -113,12 +93,9 @@ int nr_ulsch_decoding(PHY_VARS_gNB *phy_vars_gNB,
                       NR_DL_FRAME_PARMS *frame_parms,
                       uint32_t frame,
                       uint8_t nr_tti_rx,
-                      uint32_t *G,
-                      uint8_t *ULSCH_ids,
+                      int *ULSCH_ids,
                       int nb_pusch)
 {
-  VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_gNB_ULSCH_DECODING, 1);
-
   nrLDPC_TB_decoding_parameters_t TBs[nb_pusch];
   memset(TBs, 0, sizeof(TBs));
   nrLDPC_slot_decoding_parameters_t slot_parameters = {.frame = frame,
@@ -134,16 +111,28 @@ int nr_ulsch_decoding(PHY_VARS_gNB *phy_vars_gNB,
     NR_gNB_ULSCH_t *ulsch = &phy_vars_gNB->ulsch[ULSCH_id];
     NR_gNB_PUSCH *pusch = &phy_vars_gNB->pusch_vars[ULSCH_id];
     NR_UL_gNB_HARQ_t *harq_process = ulsch->harq_process;
-    nfapi_nr_pusch_pdu_t *pusch_pdu = &harq_process->ulsch_pdu;
+    const nfapi_nr_pusch_pdu_t *pusch_pdu = &harq_process->ulsch_pdu;
 
     nrLDPC_TB_decoding_parameters_t *TB_parameters = &TBs[pusch_id];
-
-    TB_parameters->G = G[pusch_id];
 
     if (!harq_process) {
       LOG_E(PHY, "ulsch_decoding.c: NULL harq_process pointer\n");
       return -1;
     }
+
+    uint8_t number_dmrs_symbols = count_bits64_with_mask(pusch_pdu->ul_dmrs_symb_pos, pusch_pdu->start_symbol_index, pusch_pdu->nr_of_symbols);
+    int factor = pusch_pdu->dmrs_config_type == pusch_dmrs_type1 ? 6 : 4;
+    int nb_re_dmrs = factor * pusch_pdu->num_dmrs_cdm_grps_no_data;
+    uint32_t G = nr_get_G(pusch_pdu->rb_size,
+                          pusch_pdu->nr_of_symbols,
+                          nb_re_dmrs,
+                          number_dmrs_symbols, // number of dmrs symbols irrespective of single or double symbol dmrs
+                          ulsch->unav_res,
+                          pusch_pdu->qam_mod_order,
+                          pusch_pdu->nrOfLayers);
+    DevAssert(G > 0);
+    TB_parameters->G = G;
+
 
     // The harq_pid is not unique among the active HARQ processes in the instance so we use ULSCH_id instead
     TB_parameters->harq_unique_pid = ULSCH_id;
@@ -156,10 +145,9 @@ int nr_ulsch_decoding(PHY_VARS_gNB *phy_vars_gNB,
     // ------------------------------------------------------------------
 
     TB_parameters->processedSegments = &harq_process->processedSegments;
-    harq_process->TBS = pusch_pdu->pusch_data.tb_size;
 
     TB_parameters->BG = pusch_pdu->maintenance_parms_v3.ldpcBaseGraph;
-    TB_parameters->A = (harq_process->TBS) << 3;
+    TB_parameters->A = pusch_pdu->pusch_data.tb_size << 3;
     NR_gNB_PHY_STATS_t *stats = get_phy_stats(phy_vars_gNB, ulsch->rnti);
     if (stats) {
       stats->frame = frame;
@@ -171,7 +159,7 @@ int nr_ulsch_decoding(PHY_VARS_gNB *phy_vars_gNB,
       if (!harq_process->harq_to_be_cleared) {
         stats->ulsch_stats.current_Qm = TB_parameters->Qm;
         stats->ulsch_stats.current_RI = TB_parameters->nb_layers;
-        stats->ulsch_stats.total_bytes_tx += harq_process->TBS;
+        stats->ulsch_stats.total_bytes_tx += pusch_pdu->pusch_data.tb_size;
       }
     }
 

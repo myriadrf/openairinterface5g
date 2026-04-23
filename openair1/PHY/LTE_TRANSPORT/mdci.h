@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file PHY/LTE_TRANSPORT/dci.h
+/*!
  * \brief typedefs for LTE DCI structures from 36-212, V8.6 2009-03.  Limited to 5 MHz formats for the moment.Current LTE compliance V8.6 2009-03.
- * \author R. Knopp
- * \date 2011
- * \version 0.1
- * \company Eurecom
- * \email: knopp@eurecom.fr
- * \note
- * \warning
  */
 
 #ifndef __M_DCI__H__
@@ -267,7 +243,6 @@ struct DCI6_0B_5MHz {
 } __attribute__ ((__packed__));
 
 typedef struct DCI6_0B_5MHz DCI6_0B_5MHz_t; 
-#define sizeof_DCI6_0B_5MHz_t 17
 
 /// basic DCI Format Type 6-1B (5 MHz)
 struct DCI6_1B_5MHz {
@@ -315,7 +290,6 @@ struct DCI6_0B_10MHz {
 } __attribute__ ((__packed__));
 
 typedef struct DCI6_0B_10MHz DCI6_0B_10MHz_t; 
-#define sizeof_DCI6_0B_10MHz_t 18
 
 /// basic DCI Format Type 6-1B (10 MHz)
 struct DCI6_1B_10MHz {
@@ -363,7 +337,6 @@ struct DCI6_0B_20MHz {
 } __attribute__ ((__packed__));
 
 typedef struct DCI6_0B_20MHz DCI6_0B_20MHz_t; 
-#define sizeof_DCI6_0B_20MHz_t 18
 
 /// basic DCI Format Type 6-1B (10 MHz)
 struct DCI6_1B_20MHz {

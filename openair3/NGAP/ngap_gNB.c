@@ -1,30 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file ngap_gNB.c
+/*!
  * \brief NGAP gNB task
- * \author  Yoshio INOUE, Masayuki HARADA
- * \date 2020
- * \email: yoshio.inoue@fujitsu.com,masayuki.harada@fujitsu.com (yoshio.inoue%40fujitsu.com%2cmasayuki.harada%40fujitsu.com)
- * \version 1.0
  * @ingroup _ngap
  */
 
@@ -57,16 +36,14 @@
 #include "ngap_messages_types.h"
 #include "ngap_gNB_mobility_management.h"
 #include "ngap_gNB_ue_context.h"
+#include "ngap_gNB_pdu_session_management.h"
+#include "ngap_gNB_NRPPa_transport_procedures.h"
 #include "oai_asn1.h"
 #include "openair3/SECU/kdf.h"
 #include "queue.h"
 #include "s1ap_messages_types.h"
 #include "sctp_messages_types.h"
 #include "tree.h"
-
-#if defined(TEST_S1C_AMF)
-  #include "oaisim_amf_test_s1c.h"
-#endif
 
 static int ngap_gNB_generate_ng_setup_request(
   ngap_gNB_instance_t *instance_p, ngap_gNB_amf_data_t *ngap_amf_data_p);
@@ -90,6 +67,38 @@ uint32_t ngap_generate_gNB_id(void)
 
   uint32_t const gNB_id = ((out[0] << 24) | (out[1] << 16) | (out[2] << 8) | out[3]);
   return gNB_id;
+}
+
+static void ngap_gNB_redial_amf(ngap_gNB_amf_data_t *amf_desc_p)
+{
+  NGAP_INFO("AMF cnx_id = %u\n", amf_desc_p->cnx_id);
+  NGAP_INFO("AMF state  = %d\n", amf_desc_p->state);
+  /*reconnect with the amf */
+  MessageDef *message_p = itti_alloc_new_message(TASK_NGAP, 0, SCTP_NEW_ASSOCIATION_REQ);
+  sctp_new_association_req_t *req = &message_p->ittiMsg.sctp_new_association_req;
+
+  /*amf descriptor */
+  req->port = NGAP_PORT_NUMBER;
+  req->ppid = NGAP_SCTP_PPID;
+  req->in_streams = amf_desc_p->in_streams;
+  req->out_streams = amf_desc_p->out_streams;
+  req->ulp_cnx_id = amf_desc_p->cnx_id;
+
+  ngap_gNB_instance_t *inst = amf_desc_p->ngap_gNB_instance;
+
+  memcpy(&req->remote_address, &amf_desc_p->amf_s1_ip, sizeof(req->remote_address));
+  memcpy(&req->local_address, &inst->gNB_ng_ip, sizeof(req->local_address));
+
+  NGAP_INFO("[gNB %ld] Re-dial AMF cnx_id=%u (streams in=%u out=%u)\n",
+            inst->instance,
+            amf_desc_p->cnx_id,
+            req->in_streams,
+            req->out_streams);
+
+  inst->ngap_amf_nb++;
+  inst->ngap_amf_pending_nb++;
+
+  itti_send_msg_to_task(TASK_SCTP, inst->instance, message_p);
 }
 
 static void ngap_gNB_register_amf(ngap_gNB_instance_t *instance_p,
@@ -266,13 +275,8 @@ static
 void ngap_gNB_handle_sctp_data_ind(sctp_data_ind_t *sctp_data_ind) {
   int result;
   DevAssert(sctp_data_ind != NULL);
-#if defined(TEST_S1C_AMF)
-  amf_test_s1_notify_sctp_data_ind(sctp_data_ind->assoc_id, sctp_data_ind->stream,
-                                   sctp_data_ind->buffer, sctp_data_ind->buffer_length);
-#else
   ngap_gNB_handle_message(sctp_data_ind->assoc_id, sctp_data_ind->stream,
                           sctp_data_ind->buffer, sctp_data_ind->buffer_length);
-#endif
   result = itti_free(TASK_UNKNOWN, sctp_data_ind->buffer);
   AssertFatal (result == EXIT_SUCCESS, "Failed to free memory (%d)!\n", result);
 }
@@ -549,6 +553,15 @@ void *ngap_gNB_process_itti_msg(void *notUsed) {
         ngap_gNB_handle_sctp_association_resp(instance, &received_msg->ittiMsg.sctp_new_association_resp);
         break;
 
+      case TIMER_HAS_EXPIRED: {
+        timer_has_expired_t *th = &received_msg->ittiMsg.timer_has_expired;
+        ngap_gNB_amf_data_t *amf_desc_p = (ngap_gNB_amf_data_t *)th->arg;
+        if (amf_desc_p) {
+          ngap_gNB_redial_amf(amf_desc_p);
+        }
+        break;
+      }
+
       case SCTP_DATA_IND:
         ngap_gNB_handle_sctp_data_ind(&received_msg->ittiMsg.sctp_data_ind);
         break;
@@ -623,6 +636,14 @@ void *ngap_gNB_process_itti_msg(void *notUsed) {
 
       case NGAP_UL_RAN_STATUS_TRANSFER:
         ngap_gNB_handle_ul_ran_status_transfer(instance, &NGAP_UL_RAN_STATUS_TRANSFER(received_msg));
+        break;
+
+      case NGAP_UPLINKUEASSOCIATEDNRPPA:
+        ngap_gNB_uplink_ue_associated_nrppa_transport(instance, &NGAP_UPLINKUEASSOCIATEDNRPPA(received_msg));
+        break;
+
+      case NGAP_UPLINKNONUEASSOCIATEDNRPPA:
+        ngap_gNB_uplink_non_ue_associated_nrppa_transport(instance, &NGAP_UPLINKNONUEASSOCIATEDNRPPA(received_msg));
         break;
 
       default:

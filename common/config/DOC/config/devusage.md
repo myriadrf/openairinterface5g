@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 The configuration module objectives are
 1. Allow easy parameters management in oai, helping the development of a flexible, modularized and fully configurable softmodem.
 2. Use a common configuration API in all oai modules

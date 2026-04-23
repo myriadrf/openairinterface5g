@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #include <stdio.h>
@@ -48,7 +31,7 @@ PHY_VARS_gNB *gNB;
 PHY_VARS_NR_UE *UE;
 RAN_CONTEXT_t RC;
 char *uecap_file = NULL;
-int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
+int64_t uplink_frequency_offset[MAX_NUM_CCs][4];
 
 double cpuf;
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
@@ -67,6 +50,8 @@ nrUE_params_t *get_nrUE_params(void)
 
 channel_desc_t *UE2gNB[MAX_MOBILES_PER_GNB][NUMBER_OF_gNB_MAX];
 configmodule_interface_t *uniqCfg = NULL;
+
+NR_IF_Module_t *NR_IF_Module_init(int Mod_id) { return (NULL); }
 
 void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req)
 {
@@ -325,8 +310,7 @@ int main(int argc, char *argv[])
     snr1 = snr0 + 10;
 
   double sampling_rate, tx_bandwidth, rx_bandwidth;
-  uint32_t samples;
-  get_samplerate_and_bw(mu, N_RB_DL, threequarter_fs, &sampling_rate, &samples, &tx_bandwidth, &rx_bandwidth);
+  get_samplerate_and_bw(mu, N_RB_DL, threequarter_fs, &sampling_rate, &tx_bandwidth, &rx_bandwidth);
 
   // Initialize gNB
   gNB = calloc_or_fail(1, sizeof(PHY_VARS_gNB));
@@ -337,7 +321,7 @@ int main(int argc, char *argv[])
   NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
   fp->N_RB_DL = N_RB_DL;
   fp->N_RB_UL = N_RB_UL;
-  fp->Ncp = extended_prefix_flag ? EXTENDED : NORMAL;
+  fp->Ncp = extended_prefix_flag ? NR_EXTENDED : NR_NORMAL;
   fp->nb_antennas_tx = n_tx;
   fp->nb_antennas_rx = n_rx;
   fp->threequarter_fs = threequarter_fs;
@@ -451,11 +435,7 @@ int main(int argc, char *argv[])
                                 .beamforming.num_prgs = m_SRS[srs_pdu.config_index],
                                 .beamforming.prg_size = 1};
 
-  gNB->srs->srs_pdu = srs_pdu;
-  gNB->srs->active = true;
-  gNB->srs->beam_nb = 0;
-  gNB->srs->frame = frame;
-  gNB->srs->slot = slot;
+  NR_gNB_SRS_job_t srs_job = {.frame = frame, .slot = slot, .srs_pdu = srs_pdu};
 
   // Configure SRS parameters at UE
   fapi_nr_ul_config_srs_pdu srs_config_pdu = {.rnti = srs_pdu.rnti,
@@ -483,11 +463,6 @@ int main(int argc, char *argv[])
                                               .beamforming.num_prgs = srs_pdu.beamforming.num_prgs,
                                               .beamforming.prg_size = srs_pdu.beamforming.prg_size};
 
-  nr_phy_data_tx_t phy_data = {0};
-  phy_data.srs_vars.active = true;
-  phy_data.srs_vars.srs_config_pdu = srs_config_pdu;
-  UE->nr_srs_info = malloc16_clear(sizeof(nr_srs_info_t));
-
   //----------- UE TX SRS procedures ---------------------
 
   UE_nr_rxtx_proc_t proc;
@@ -495,7 +470,7 @@ int main(int argc, char *argv[])
   proc.frame_tx = frame;
   proc.nr_slot_tx = slot;
   proc.nr_slot_rx = slot;
-  bool was_symbol_used[NR_NUMBER_OF_SYMBOLS_PER_SLOT] = {0};
+  bool was_symbol_used[NR_SYMBOLS_PER_SLOT] = {0};
   int slot_offset = get_samples_slot_timestamp(fp, slot);
   uint16_t ofdm_symbol_size = fp->ofdm_symbol_size;
   int slot_offsetF = (slot % RU_RX_SLOT_DEPTH) * fp->symbols_per_slot * ofdm_symbol_size;
@@ -508,7 +483,7 @@ int main(int argc, char *argv[])
   for (i = 0; i < n_tx; i++)
     txd[i] = txdata[i] + slot_offset;
 
-  ue_srs_procedures_nr(UE, &proc, (c16_t **)txF, &phy_data, was_symbol_used);
+  ue_srs_procedures_nr(UE, &proc, (c16_t **)txF, &srs_config_pdu, was_symbol_used);
 
   //------------ TX rotation and OFDM Modulation --------------------------
   nr_tx_rotation_and_ofdm_mod(slot, fp, n_tx, txF, txd, link_type_ul, was_symbol_used, false);
@@ -580,16 +555,15 @@ int main(int argc, char *argv[])
       //----------- UE RX SRS procedures ---------------------
 
       start_meas(&gNB->rx_srs_stats);
-      NR_gNB_SRS_t *srs = &gNB->srs[0];
-      uint8_t N_symb_SRS = 1 << srs->srs_pdu.num_symbols;
-      uint8_t N_ap = 1 << srs->srs_pdu.num_ant_ports;
-      int16_t snr_per_rb[srs->srs_pdu.bwp_size];
+      uint8_t N_symb_SRS = 1 << srs_pdu.num_symbols;
+      uint8_t N_ap = 1 << srs_pdu.num_ant_ports;
+      int16_t snr_per_rb[srs_pdu.bwp_size];
       uint16_t timing_advance_offset;
       int16_t timing_advance_offset_nsec[n_rx];
       int srs_est;
       c16_t srs_estimated_channel_freq[n_rx][N_ap][ofdm_symbol_size * N_symb_SRS] __attribute__((aligned(32)));
-      c16_t srs_estimated_channel_time[n_rx][N_ap][NR_SRS_IDFT_OVERSAMP_FACTOR * ofdm_symbol_size] __attribute__((aligned(32)));
 
+      int8_t snr;
       nr_srs_rx_procedures(gNB,
                            frame,
                            slot,
@@ -597,16 +571,15 @@ int main(int argc, char *argv[])
                            N_ap,
                            N_symb_SRS,
                            ofdm_symbol_size,
-                           srs,
-                           gNB->nr_srs_info[0],
+                           &srs_job,
                            &srs_est,
+                           &snr,
                            srs_estimated_channel_freq,
-                           srs_estimated_channel_time,
                            snr_per_rb,
                            &timing_advance_offset,
                            timing_advance_offset_nsec);
 
-      sum_srs_snr += pow(10, (double)gNB->srs->snr / 10.0);
+      sum_srs_snr += pow(10, (double)snr / 10.0);
 
       int16_t delay_ns = delay * 1e9 / (fp->samples_per_frame * 100);
       for (int ant_idx = 0; ant_idx < n_rx; ant_idx++) {
@@ -682,7 +655,6 @@ int main(int argc, char *argv[])
 
   phy_free_nr_gNB(gNB);
   free_channel_desc_scm(UE2gNB);
-  free_and_zero(UE->nr_srs_info);
   free(gNB->RU_list[0]);
   free(UE);
 

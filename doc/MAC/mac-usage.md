@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 This document describes the basic functioning of the 5G MAC scheduler,
 describes the periodic output, and explains
 out the various configuration options that influence its behavior.
@@ -67,6 +69,43 @@ happen.
 Say we have 0% PDCCH success rate (radio link failure scenario) but `pdcch_cl_adjust` is 0 indicating
 perfect PDCCH channel. it would take ~18 PDCCH failures to reach maximum aggregation level.
 
+## Power control
+
+The gNB tracks the average SNR used by the UE for PUSCH/PUCCH, and sends TPC
+commands to maintain the UE at a specific target SNR. Internally, it maintains
+an average of measured SNR and RSSI.  It also updates `tpc_in_flight`, which
+tracks TPC changes that don't show up in the average yet. For instance, imagine
+that the target SNR of 15 changes to 20. Three successive TPC commands need to
+be sent (+3, +1, +1), but it will take time to show up in the average SNR. To
+account for this, `tpc_in_flight` is updated by the TPCs sent, and an average
+will make it go down back to zero at the same pace as the average SNR
+approaches the target SNR.  The sum of average SNR and `tpc_in_flight` sums up
+to the actual, current SNR, which approximates the target SNR. The power
+control tries to keep the SNR within -1<=targetSNR<=+2dB to avoid too many TPC
+changes. On each DTX, `tpc_in_flight` is lowered by 1dB, correspondingly
+lowering the current SNR by 1dB, which result in "boosting" the UE's target
+SNR.
+
+For PUCCH, the gNB will try to keep the UE at the target SNR as configured by
+`pucch_TargetSNRx10`.
+
+For PUSCH, two modes are available currently. Both have in common that
+`pusch_TargetSNRx10` is used to configure a specific target SNR, but the
+meaning of the target SNR changes depending on the mode. (For the following,
+note that as per 38.213 Sec 7.1, the number of PRBs used for a PUSCH
+transmission is always taken into account by the UE).
+
+1. the "normal" mode (default), in which the gNB tries to keep the UE at the
+   target SNR, regardless of MCS (and layers) used. This is the default.
+   Depending on the target MCS and number of layers, the target SNR should be
+   placed in the 20-30dB range.
+2. the "deltaMCS" mode (`deltaMCS=1`, see below). In this mode, the UE accounts
+   for the MCS in the power used for PUSCH transmissions automatically (see
+   delta_TF factor in TS 38.213 Sec 7.1) when using only one layer. Thus it is
+   sufficient to set a lower target SNR (5-10dB). As the spec foresees that
+   this only works for one layer, it is suggested to disable SRS to disable
+   multi-layer operation in UL.
+
 ## Periodic output and interpretation
 
 The scheduler periodically outputs statistics that can help you judge the radio
@@ -81,8 +120,8 @@ Example:
 UE RNTI 2460 CU-UE-ID 2 in-sync PH 28 dB PCMAX 24 dBm, average RSRP -74 (8 meas), average SINR 40.0 (32 meas)
 UE 2460: CQI 15, RI 2, PMI (14,1)
 UE 2460: UL-RI 2 TPMI 0
-UE 2460: dlsch_rounds 32917/5113/1504/560, dlsch_errors 211, pucch0_DTX 1385, BLER 0.19557 MCS (1) 23 CCE fail 3
-UE 2460: ulsch_rounds 3756/353/182/179, ulsch_errors 170, ulsch_DTX 285, BLER 0.33021 MCS (1) 27 (Qm 8  dB) NPRB 5  SNR 31.0 dB CCE fail 0
+UE 2460: dlsch_rounds 32917/5113/1504/560, dlsch_errors 211, pucch0_DTX 1385 (SNR 19.8+0.2 dB), BLER 0.19557 MCS (1) 23 CCE fail 3
+UE 2460: ulsch_rounds 3756/353/182/179, ulsch_errors 170, ulsch_DTX 285, BLER 0.33021 MCS (1) 27 (Qm 8  dB) NPRB 5 SNR 31.0 (-1.0) dB CCE fail 0
 UE 2460: MAC:    TX     1530943191 RX         194148 bytes
 UE 2460: LCID 1: TX            651 RX           3031 bytes
 UE 2460: LCID 2: TX              0 RX              0 bytes
@@ -139,6 +178,8 @@ The fourth and fifth line show HARQ-related information:
   and ACK/NAK cannot be conveyed properly or DL DCIs are missed by the UE. This
   is also something that should be very small compared to `A` in
   `dlsch_rounds`.
+* `(SNR x+y dB)`: PUCCH SNR where `x` is the average PUCCH SNR and `y` the
+  difference to the target (positive: above SNR, negative: below)
 * `DLSCH BLER` is the current measured block-error rate of the DLSCH. Basically
   a moving average of `B`/`A` in `dlsch_rounds`. This is something that should always
   be close to the target bler that the MAC scheduler uses. typically 10-30% if
@@ -162,10 +203,9 @@ The fourth and fifth line show HARQ-related information:
   fluctuate a lot but when doing high throughput with iperf, it indicates the
   number of PRBs that the UE is actually able to use with its power budget and
   should be high.
-* ULSCH `SNR`: the current SNR that the gNB receives the UE signal with. It
-  should be close to the target in the gNB configuration file,
-  `pusch_TargetSNRx10`, which should be around 10 times the value shown in the
-  log
+* ULSCH `SNR`: the current SNR that the gNB receives the UE PUSCH signal with.
+  This value should be close to the target SNR; in paranthesis, the difference
+  to the target SNR.
 * Both ULSCH/DLSCH `CCE fail`: lists the number of failed CCE attempts. If this
   number gets high, it signifies that the scheduler tried to scheduled this UE,
   but could not allocate the DCI.
@@ -229,7 +269,7 @@ In the `MACRLCs` section of the gNB/DU configuration file:
   (see `ulsch_max_frame_inactivity`) or after scheduling request (SR)
 * `identity_precoding_matrix` (default 0=false): flag to enable to use only
   the identity precoding matrix in DL precoding
-* `set_analog_beamforming` (default 0=false): flag to enable analog
+* `set_analog_beamforming` (default "none"): parameter to enable analog
   beamforming (for more information [`analog_beamforming.md`](../analog_beamforming.md))
 * `beam_duration` (default 1): duration/number of consecutive slots for a given set of
   beams, depending on hardware switching performance
@@ -276,9 +316,7 @@ configuration](../RRC/rrc-usage.md) as well for SIB configuration.
 * `disable_harq` (default 0=false): flag whether to disable HARQ completely
   (useful for NTN operation, see <../RUNMODEM.md>). **this is a Rel-17 feature
   and you need to have a capable UE for this**
-* `use_deltaMCS` (default 0=false): flag whether to enable deltaMCS (**this is not fully tested
-  and might not work** and you might need to adjust other parameters such as
-  target SNRs)
+* `use_deltaMCS` (default 0=false): flag whether to enable deltaMCS
 * `num_dlharq` (default 16): number of HARQ processes to use in DL (other valid
   options are 2, 4, 6, 8, 10, 12, 32; **32 is a Rel-17 features**)
 * `num_ulharq` (default 16): as `num_dlharq` for UL (other valid option is 32;

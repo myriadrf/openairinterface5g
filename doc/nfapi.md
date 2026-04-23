@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # FAPI/nFAPI split in OAI
 
 This document describes the SmallCellForum (SCF) (n)FAPI split in 5G, i.e.,
@@ -158,7 +160,7 @@ patch is available [here](../cmake_targets/tools/install_wls_lib.patch)
 
 Clone the code and apply the patch
 
-    git clone -b oran_f_release https://gerrit.o-ran-sc.org/r/o-du/phy.git
+    git clone -b oran_f_release https://github.com/openairinterface/o-du-phy.git
     cd phy/wls_lib/
     git apply ~/openairinterface5g/cmake_targets/tools/install_wls_lib.patch
 
@@ -238,7 +240,7 @@ Run cu_stu and ric_stub in separate terminals
 
 Run the OAI PNF first, as it is the WLS memory master
 
-    sudo NFAPI_TRACE_LEVEL=info ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-pnf.band78.rfsim.2x2.conf --nfapi PNF --rfsim --rfsimulator.serveraddr server
+    sudo NFAPI_TRACE_LEVEL=info ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-pnf.band78.rfsim.2x2.conf --nfapi PNF --rfsim --rfsimulator.[0].serveraddr server
 
 Run the O-DU over GDB
 

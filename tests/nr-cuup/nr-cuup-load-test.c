@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #include <stdio.h>
@@ -29,6 +12,7 @@
 #include "openair2/E1AP/e1ap.h"
 #include "openair3/ocp-gtpu/gtp_itf.h"
 #include "openair2/E1AP/lib/e1ap_interface_management.h"
+#include "common/config/config_userapi.h"
 
 configmodule_interface_t *uniqCfg;
 
@@ -418,7 +402,9 @@ static void *sender_thread(void *v)
 {
   struct thr_data *d = v;
 
-  size_t oh = d->is_ul ? 3 : 0;
+  // Overhead: PDCP header (2 bytes) for UL packets
+  // SDAP headers are disabled, so only PDCP header is added
+  size_t oh = d->is_ul ? 2 : 0;
   size_t packet_len = d->data_len + oh;
   uint8_t buf[packet_len];
   memset(buf, 0, packet_len);

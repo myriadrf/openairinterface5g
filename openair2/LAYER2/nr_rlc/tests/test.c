@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include "../nr_rlc_entity.h"
 #include "../nr_rlc_entity_am.h"
 #include "../nr_rlc_entity_um.h"
@@ -107,9 +111,7 @@ int test[] = {
 #include TEST
 };
 
-void deliver_sdu_gnb_am(void *deliver_sdu_data,
-                        struct nr_rlc_entity_t *_entity,
-                        char *buf, int size)
+void deliver_sdu_gnb_am(void *deliver_sdu_data, nr_rlc_entity_t *_entity, char *buf, int size)
 {
   nr_rlc_entity_am_t *entity = (nr_rlc_entity_am_t *)_entity;
   printf("TEST: GNB: %"PRIu64": deliver SDU size %d [",
@@ -118,9 +120,7 @@ void deliver_sdu_gnb_am(void *deliver_sdu_data,
   printf("]\n");
 }
 
-void deliver_sdu_gnb_um(void *deliver_sdu_data,
-                        struct nr_rlc_entity_t *_entity,
-                        char *buf, int size)
+void deliver_sdu_gnb_um(void *deliver_sdu_data, nr_rlc_entity_t *_entity, char *buf, int size)
 {
   nr_rlc_entity_um_t *entity = (nr_rlc_entity_um_t *)_entity;
   printf("TEST: GNB: %"PRIu64": deliver SDU size %d [",
@@ -129,9 +129,7 @@ void deliver_sdu_gnb_um(void *deliver_sdu_data,
   printf("]\n");
 }
 
-void deliver_sdu_gnb_tm(void *deliver_sdu_data,
-                        struct nr_rlc_entity_t *_entity,
-                        char *buf, int size)
+void deliver_sdu_gnb_tm(void *deliver_sdu_data, nr_rlc_entity_t *_entity, char *buf, int size)
 {
   nr_rlc_entity_tm_t *entity = (nr_rlc_entity_tm_t *)_entity;
   printf("TEST: GNB: %"PRIu64": deliver SDU size %d [",
@@ -157,9 +155,7 @@ void max_retx_reached_gnb(void *max_retx_reached_data,
   exit(1);
 }
 
-void deliver_sdu_ue_am(void *deliver_sdu_data,
-                       struct nr_rlc_entity_t *_entity,
-                       char *buf, int size)
+void deliver_sdu_ue_am(void *deliver_sdu_data, nr_rlc_entity_t *_entity, char *buf, int size)
 {
   nr_rlc_entity_am_t *entity = (nr_rlc_entity_am_t *)_entity;
   printf("TEST: UE: %"PRIu64": deliver SDU size %d [",
@@ -168,9 +164,7 @@ void deliver_sdu_ue_am(void *deliver_sdu_data,
   printf("]\n");
 }
 
-void deliver_sdu_ue_um(void *deliver_sdu_data,
-                       struct nr_rlc_entity_t *_entity,
-                       char *buf, int size)
+void deliver_sdu_ue_um(void *deliver_sdu_data, nr_rlc_entity_t *_entity, char *buf, int size)
 {
   nr_rlc_entity_um_t *entity = (nr_rlc_entity_um_t *)_entity;
   printf("TEST: UE: %"PRIu64": deliver SDU size %d [",
@@ -179,9 +173,7 @@ void deliver_sdu_ue_um(void *deliver_sdu_data,
   printf("]\n");
 }
 
-void deliver_sdu_ue_tm(void *deliver_sdu_data,
-                       struct nr_rlc_entity_t *_entity,
-                       char *buf, int size)
+void deliver_sdu_ue_tm(void *deliver_sdu_data, nr_rlc_entity_t *_entity, char *buf, int size)
 {
   nr_rlc_entity_tm_t *entity = (nr_rlc_entity_tm_t *)_entity;
   printf("TEST: UE: %"PRIu64": deliver SDU size %d [",

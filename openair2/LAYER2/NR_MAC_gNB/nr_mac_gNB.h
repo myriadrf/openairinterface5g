@@ -1,36 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file mac.h
-* \brief MAC data structures, constant, and function prototype
-* \author Navid Nikaein and Raymond Knopp, WIE-TAI CHEN
-* \date 2011, 2018
-* \version 0.5
-* \company Eurecom, NTUST
-* \email navid.nikaein@eurecom.fr, kroempa@gmail.com
-
-*/
-/** @defgroup _oai2  openair2 Reference Implementation
- * @ingroup _ref_implementation_
- * @{
+/*!
+ * \brief MAC data structures, constant, and function prototype
  */
 
 /*@}*/
@@ -41,7 +14,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <complex.h>
 #include <pthread.h>
+#include "fsn.h"
 #include "common/utils/ds/seq_arr.h"
 #include "common/utils/nr/nr_common.h"
 #include "common/utils/ds/byte_array.h"
@@ -94,7 +69,6 @@
 /* Defs */
 #define MAX_NUM_BWP 5
 #define MAX_NUM_CORESET 12
-#define MAX_NUM_CCE 90
 /*!\brief Maximum number of random access process */
 #define NR_NB_RA_PROC_MAX 4
 #define MAX_NUM_OF_SSB 64
@@ -185,7 +159,23 @@ typedef enum {
   SSB_SINR,
 } nr_config_report_type_t;
 
-typedef struct nr_mac_config_t {
+typedef struct nr_beam_table {
+  int num_weights_per_beam;
+  int num_beams;
+  uint16_t *beam_ids;
+  double complex **beam_weights;
+} nr_beam_table_t;
+
+typedef struct nr_power_config {
+  /// target SNR
+  int target_snrx10;
+  /// RSSI threshold for power control. Limits power control commands when RSSI reaches threshold.
+  int rssi_threshold;
+  /// Failure threshold (compared to consecutive PUSCH DTX)
+  int failure_thres;
+} nr_power_config_t;
+
+typedef struct nr_mac_config_s {
   nr_pdsch_AntennaPorts_t pdsch_AntennaPorts;
   int pusch_AntennaPorts;
   int minRXTXTIME;
@@ -198,8 +188,10 @@ typedef struct nr_mac_config_t {
   bool use_deltaMCS;
   int maxMIMO_layers;
   bool disable_harq;
-  //int pusch_TargetSNRx10;
-  //int pucch_TargetSNRx10;
+  nr_power_config_t pusch;
+  /// SNR threshold needed to put or not a PRB in the black list
+  int ul_prbblack_SNR_threshold;
+  nr_power_config_t pucch;
   nr_mac_timers_t timer_config;
   int num_dlharq;
   int num_ulharq;
@@ -214,6 +206,7 @@ typedef struct nr_mac_config_t {
   nr_redcap_config_t *redcap;
   nr_ptrs_config_t *ptrs;
   nr_config_report_type_t report_type;
+  nr_beam_table_t bt;
 } nr_mac_config_t;
 
 typedef struct NR_preamble_ue {
@@ -459,6 +452,9 @@ typedef struct NR_sched_pusch {
   NR_pusch_dmrs_t dmrs_info;
   bwp_info_t bwp_info;
   int phr_txpower_calc;
+
+  /// TPC command for this PUSCH
+  int tpc_pusch;
 } NR_sched_pusch_t;
 
 typedef struct NR_pdsch_dmrs {
@@ -553,27 +549,22 @@ struct CRI_RI_LI_PMI_CQI {
   bool print_report;
 };
 
-typedef struct RSRP_report {
-  uint8_t nr_reports;
-  uint8_t resource_id[MAX_NR_OF_REPORTED_RS];
-  int RSRP[MAX_NR_OF_REPORTED_RS];
-  int SINRx10[MAX_NR_OF_REPORTED_RS];
+typedef struct {
+  uint8_t resource_id;
+  int RSRP;
+  int SINRx10;
 } RSRP_report_t;
 
-struct CSI_Report {
+typedef struct {
+  int nb;
+  RSRP_report_t r[MAX_NR_OF_REPORTED_RS];
+} RSRP_report_list_t;
+
+typedef struct CSI_Report {
   struct CRI_RI_LI_PMI_CQI cri_ri_li_pmi_cqi_report;
-  RSRP_report_t ssb_rsrp_report;
-  RSRP_report_t csirs_rsrp_report;
-};
-
-#define MAX_SR_BITLEN 8
-
-/*! As per the spec 38.212 and table:  6.3.1.1.2-12 in a single UCI sequence we can have multiple CSI_report 
-  the number of CSI_report will depend on number of CSI resource sets that are configured in CSI-ResourceConfig RRC IE
-  From spec 38.331 from the IE CSI-ResourceConfig for SSB RSRP reporting we can configure only one resource set 
-  From spec 38.214 section 5.2.1.2 For periodic and semi-persistent CSI Resource Settings, the number of CSI-RS Resource Sets configured is limited to S=1
- */
-#define MAX_CSI_RESOURCE_SET_IN_CSI_RESOURCE_CONFIG 16
+  RSRP_report_list_t ssb_rsrp_report;
+  RSRP_report_list_t csirs_rsrp_report;
+} CSI_report_t;
 
 typedef enum {
   INACTIVE = 0,
@@ -608,8 +599,15 @@ typedef struct nr_lc_config {
   NR_QoS_config_t qos_config[NR_MAX_NUM_QFI];
 } nr_lc_config_t;
 
+typedef struct nr_power_control {
+  float avg_snr; /// average SNR (in dB)
+  int target_snrx10; /// UE-specific target SNR x10
+  float avg_rssi; /// average RSSI
+  int rssi_threshold; /// UE-specific RSSI threshld in 0.1dBm/dBFS, range -1280 to 0
+  float tpc_in_flight; /// TPCs applied by UE but not yet in average SNR
+} nr_power_control_t;
+
 /*! \brief scheduling control information set through an API */
-#define MAX_CSI_REPORTS 48
 typedef struct {
   /// CCE index and aggregation, should be coherent with cce_list
   NR_SearchSpace_t *search_space;
@@ -635,8 +633,6 @@ typedef struct {
 
   /// PHR info: power headroom level (dB)
   int ph;
-  /// PHR info: power headroom level (dB) for 1 PRB
-  int ph0;
 
   /// PHR info: nominal UE transmit power levels (dBm)
   int pcmax;
@@ -650,7 +646,6 @@ typedef struct {
 
   /// total amount of data awaiting for this UE
   uint32_t num_total_bytes;
-  uint16_t dl_pdus_total;
   /// per-LC status data
   mac_rlc_status_resp_t rlc_status[NR_MAX_NUM_LCID];
 
@@ -661,18 +656,12 @@ typedef struct {
   uint16_t ta_frame;
   int16_t ta_update;
   bool ta_apply;
-  uint8_t tpc0;
-  uint8_t tpc1;
-  int raw_rssi;
-  int pusch_snrx10;
-  int pucch_snrx10;
-  uint16_t ul_rssi;
   int pusch_consecutive_dtx_cnt;
   int pucch_consecutive_dtx_cnt;
   bool ul_failure;
   int ul_failure_timer;
   int release_timer;
-  struct CSI_Report CSI_report;
+  CSI_report_t CSI_report;
   bool SR;
   /// information about every HARQ process
   NR_UE_harq_t harq_processes[NR_MAX_HARQ_PROCESSES];
@@ -709,6 +698,9 @@ typedef struct {
   // pdcch closed loop adjust for PDCCH aggregation level, range <0, 1>
   // 0 - good channel, 1 - bad channel
   float pdcch_cl_adjust;
+
+  nr_power_control_t pusch_pc;
+  nr_power_control_t pucch_pc;
 } NR_UE_sched_ctrl_t;
 
 typedef struct NR_mac_dir_stats {
@@ -735,7 +727,6 @@ typedef struct NR_mac_stats {
   int cumul_sinrx10;
   uint8_t num_sinr_meas;
   char srs_stats[50]; // Statistics may differ depending on SRS usage
-  int pusch_snrx10;
   int deltaMCS;
   int NPRB;
 } NR_mac_stats_t;
@@ -862,7 +853,7 @@ typedef struct gNB_MAC_INST_s gNB_MAC_INST;
 typedef void (*nr_pp_impl_dl)(gNB_MAC_INST *nr_mac, post_process_pdsch_t *pp_pdsch);
 typedef void (*nr_pp_impl_ul)(gNB_MAC_INST *nr_mac, post_process_pusch_t *pp_pusch);
 
-typedef struct f1_config_t {
+typedef struct {
   f1ap_setup_req_t *setup_req;
   f1ap_setup_resp_t *setup_resp;
   uint32_t gnb_id; // associated gNB's ID, not used in DU itself
@@ -888,13 +879,19 @@ typedef struct {
   NR_ControlResourceSet_t coreset;
 } NR_sched_ctrl_sib1_t;
 
-/// helper type to encapsulate a frame/slot combination in a single type.
-/// Currently only used in the UL preprocessor. Note: if you use this type
-/// further, please refactor it into a common type first.
-typedef struct fsn {
-  frame_t f;
-  slot_t s;
-} fsn_t;
+typedef struct NR_du_stats {
+  /// cell-wide wide-band CQI distribution, see 28.552 5.1.1.11.1;
+  /// 0-15 CQI, 1-8 RI, 1-3 CQI table
+  uint32_t wb_cqi_dist[16][8][3];
+
+  /// cell-wide MCS distribution in PDSCH, see 28.552 5.1.1.12.1
+  /// 1-8 RI, 1-3 MCS table, 0-31 MCS value
+  uint32_t pdsch_mcs_dist[8][3][32];
+
+  /// cell-wide MCS distribution in PUSCH, see 28.552 5.1.1.12.1
+  /// 1-8 RI, 1-2 MCS table, 0-31 MCS value
+  uint32_t pusch_mcs_dist[8][2][32];
+} NR_du_stats_t;
 
 /*! \brief top level eNB MAC structure */
 typedef struct gNB_MAC_INST_s {
@@ -902,8 +899,6 @@ typedef struct gNB_MAC_INST_s {
   eth_params_t                    eth_params_n;
   /// address for F1U to bind, ports in eth_params_n
   char *f1u_addr;
-  /// Ethernet parameters for fronthaul interface
-  eth_params_t                    eth_params_s;
   /// Nvipc parameters for FAPI interface with Aerial
   nvipc_params_t nvipc_params_s;
   /// Module
@@ -913,20 +908,6 @@ typedef struct gNB_MAC_INST_s {
   /// Pointer to IF module instance for PHY
   NR_IF_Module_t                  *if_inst;
   pthread_t                       stats_thread;
-  /// Pusch target SNR
-  int                             pusch_target_snrx10;
-  /// RSSI threshold for power control. Limits power control commands when RSSI reaches threshold.
-  int                             pusch_rssi_threshold;
-  /// Pucch target SNR
-  int                             pucch_target_snrx10;
-  /// RSSI threshold for PUCCH power control. Limits power control commands when RSSI reaches threshold.
-  int                             pucch_rssi_threshold;
-  /// SNR threshold needed to put or not a PRB in the black list
-  int                             ul_prbblack_SNR_threshold;
-  /// PUCCH Failure threshold (compared to consecutive PUCCH DTX)
-  int                             pucch_failure_thres;
-  /// PUSCH Failure threshold (compared to consecutive PUSCH DTX)
-  int                             pusch_failure_thres;
   /// Subcarrier Offset
   int                             ssb_SubcarrierOffset;
   int                             ssb_OffsetPointA;
@@ -1017,6 +998,9 @@ typedef struct gNB_MAC_INST_s {
 
   dlul_mac_stats_t mac_stats;
   uint64_t num_scheduled_prach_rx;
+
+  NR_du_stats_t du_stats;
+
 } gNB_MAC_INST;
 
 #endif /*__LAYER2_NR_MAC_GNB_H__ */

@@ -1,30 +1,10 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 /*
-  \brief NR UE PHY functions prototypes
-  \author R. Knopp, F. Kaltenberger
-  \company EURECOM
-  \email knopp@eurecom.fr
-*/
+ * \brief NR UE PHY functions prototypes
+ */
 
 #ifndef __openair_SCHED_H__
 #define __openair_SCHED_H__
@@ -37,10 +17,6 @@
                     DLC_SCHED_THREAD_INDEX,
                     openair_SCHED_NB_THREADS
                   };*/ // do not modify this line
-
-
-#define OPENAIR_THREAD_PRIORITY        255
-
 
 #define OPENAIR_THREAD_STACK_SIZE     PTHREAD_STACK_MIN //4096 //RTL_PTHREAD_STACK_MIN*6
 //#define DLC_THREAD_STACK_SIZE        4096 //DLC stack size
@@ -78,9 +54,6 @@
   openair_harq_RA
 };*/
 
-#define DAQ_AGC_ON 1
-#define DAQ_AGC_OFF 0
-
 /** @addtogroup _PHY_PROCEDURES_
  * @{
  */
@@ -98,8 +71,6 @@ void pdcch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_phy_
 void pdsch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_phy_data_t *phy_data);
 
 void processSlotTX(void *arg);
-
-int8_t nr_find_ue(uint16_t rnti, PHY_VARS_eNB *phy_vars_eNB);
 
 /*! \brief UL time alignment procedures for TA application
   @param ue
@@ -156,7 +127,6 @@ void nr_pdcch_dci_indication(const UE_nr_rxtx_proc_t *proc,
                              c16_t llr[phy_data->phy_pdcch_config.nb_search_space][max_monOcc][llr_size]);
 
 void nr_ue_csi_im_procedures(PHY_VARS_NR_UE *ue,
-                             const UE_nr_rxtx_proc_t *proc,
                              const c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP],
                              const fapi_nr_dl_config_csiim_pdu_rel15_t *csiim_config_pdu);
 
@@ -179,7 +149,6 @@ void nr_fill_sl_rx_indication(sl_nr_rx_indication_t *rx_ind,
                               uint8_t pdu_type,
                               PHY_VARS_NR_UE *ue,
                               uint16_t n_pdus,
-                              const UE_nr_rxtx_proc_t *proc,
                               void *typeSpecific,
                               uint16_t rx_slss_id);
 

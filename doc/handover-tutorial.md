@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Handover Tutorial for OAI
 
 This tutorial explains how to perform handovers. It covers both F1 handovers
@@ -76,7 +78,7 @@ Start the CU including telnet support:
 
 Start DU0:
 
-    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci0.conf --rfsimulator.serveraddr 127.0.0.1
+    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci0.conf --rfsimulator.[0].serveraddr 127.0.0.1
 
 This will show an error `[HW]   connect() to 127.0.0.1:4043 failed,
 errno(111)`. _This is expected_, because the RFsim server is at the UE (to be
@@ -84,7 +86,7 @@ able to serve two RFsim clients, one DU each; see below for more info). Proceed
 by starting the UE, and let it connect completely (this should make the error
 go away):
 
-    sudo ./nr-uesoftmodem -C 3450720000 -r 106 --numerology 1 --ssb 516 -O <config>  --rfsim --rfsimulator.serveraddr server
+    sudo ./nr-uesoftmodem -C 3450720000 -r 106 --numerology 1 --ssb 516 -O <config>  --rfsim --rfsimulator.[0].serveraddr server
 
 Note how the RFsimulator roles have been switched, and RFsim server is at the
 UE side; _this is important_. Replace `<config>` with the UE configuration
@@ -93,7 +95,7 @@ matching your core. If you followed the CN and oaiUE tutorials, you can remove
 
 Once the UE is connected, start DU1:
 
-    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci1.conf --rfsimulator.serveraddr 127.0.0.1
+    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci1.conf --rfsimulator.[0].serveraddr 127.0.0.1
 
 Once DU1 is online, you can trigger a handover by issuing this command
 
@@ -104,6 +106,9 @@ information further below.
 
 A number of remarks:
 
+1. DU0 and DU1 should use different SSBs, i.e., make sure that
+   `ssb_PositionsInBurst_Bitmap` is set to send SSB in different slots in the
+   configurataion files of DU0 (e.g., set to 1) and DU1 (e.g., set to 2).
 1. It is important that you start DU0, UE, DU1 in order, and having UE connect
    to DU0 before starting DU1. This is because we don't employ any channel
    emulation, and the UE could not decode the SIB1 of DU0 to connect.
@@ -433,6 +438,8 @@ a core-network-based handover.
 
 We assume:
 
+* `ssb_PositionsInBurst_Bitmap` set to different values for gNB-PCI0 and
+  gNB-PCI1 as described further above.
 * Two independent gNBs connected to the same 5GC via N2 interface.
 * A UE initially connected to gNB-PCI0, which will be handed over to gNB-PCI1.
 * Handover is triggered by either a decision based measurement event (e.g. A3)
@@ -461,13 +468,13 @@ Run the 5G Core Network if not already running.
 2. Start the source gNB (gNB-PCI0) e.g.
 
 ```sh
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.pci0.rfsim.conf --telnetsrv --telnetsrv.shrmod ci --gNBs.[0].min_rxtxtime 6 --rfsim --rfsimulator.serveraddr 127.0.0.1
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.pci0.rfsim.conf --telnetsrv --telnetsrv.shrmod ci --gNBs.[0].min_rxtxtime 6 --rfsim --rfsimulator.[0].serveraddr 127.0.0.1
 ```
 
 3. Start the UE e.g.
 
 ```sh
-sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --uicc0.imsi 001010000000001 -O ../../../ci-scripts/conf_files/nrue.uicc.conf --rfsimulator.serveraddr server
+sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --uicc0.imsi 001010000000001 -O ../../../ci-scripts/conf_files/nrue.uicc.conf --rfsimulator.[0].serveraddr server
 ```
 
 Ensure the UE successfully registers with the network.
@@ -475,7 +482,7 @@ Ensure the UE successfully registers with the network.
 4. Start the target gNB (gNB-PCI1) e.g.
 
 ```sh
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.pci1.rfsim.conf --rfsim --telnetsrv --telnetsrv.shrmod ci --gNBs.[0].min_rxtxtime 6 --rfsimulator.serveraddr 127.0.0.1
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.pci1.rfsim.conf --rfsim --telnetsrv --telnetsrv.shrmod ci --gNBs.[0].min_rxtxtime 6 --rfsimulator.[0].serveraddr 127.0.0.1
 ```
 
 **Note for same-machine setup:** When running both gNBs on the same machine,
@@ -505,8 +512,16 @@ configuration, e.g. [neighbour-config-rfsim.conf](../../ci-scripts/conf_files/ne
 This configuration can also be present in a different file and included in the
 gNB configuration file with `@include "neighbour-config-rfsim.conf"`.
 
-For each gNB there is a `neighbour_cell_configuration` linked to its serving
-cell ID.
+The neighbor configuration is nested:
+
+- `neighbour_list` outer entries are keyed by serving `nr_cellid`
+- each outer entry contains `neighbour_cell_configuration`, i.e., the list of neighbor cells for that serving cell
+
+In this model:
+
+- outer `nr_cellid` entries should be unique
+- neighbor `physical_cellId` values are defined in inner neighbor entries
+- the same serving-cell keyed neighbor mapping is used for both F1 and N2 handover logic
 
 See the example above for `neighbour-config-ho.conf`. The same configuration
 is for both F1 and N2 handover.

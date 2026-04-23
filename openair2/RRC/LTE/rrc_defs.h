@@ -1,31 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file rrc_defs.h
+/*!
  * \brief RRC struct definitions and function prototypes
- * \author Navid Nikaein and Raymond Knopp
- * \date 2010 - 2014
- * \version 1.0
- * \company Eurecom
- * \email: navid.nikaein@eurecom.fr, raymond.knopp@eurecom.fr
  */
 
 #ifndef __OPENAIR_RRC_DEFS_H__
@@ -50,26 +28,17 @@
 #include "LAYER2/MAC/mac.h"
 #include "openair2/RRC/common.h"
 // for D2D
-#define DEBUG_CTRL_SOCKET
 
 #define CONTROL_SOCKET_PORT_NO 8888
 #define MAX_NUM_DEST           10
 //netlink
 //#define DEBUG_PDCP
-#define UE_IP_PDCP_NETLINK_ID  31
-#define PDCP_PID               1
-#define NETLINK_HEADER_SIZE    16
-#define SL_DEFAULT_RAB_ID      3
-#define SLRB_ID                3
 
 #define MAX_PAYLOAD 1024 /* maximum payload size*/
 
 #define MAX_NUM_NEIGH_CELLs 6 /* maximum neighbouring cells number */
 
 #define MAX_NUM_GNB_CELLs 1   /* maximum gNB cells number */
-
-#define UE_STATE_NOTIFICATION_INTERVAL      50
-
 #define IPV4_ADDR    "%u.%u.%u.%u"
 #define IPV4_ADDR_FORMAT(aDDRESS)                 \
   (uint8_t)((aDDRESS)  & 0x000000ff),         \
@@ -307,9 +276,6 @@ typedef enum SL_TRIGGER_e {
 #define RRC_BUF_SIZE 1024
 #define UNDEF_SECURITY_MODE 0xff
 #define NO_SECURITY_MODE 0x20
-
-#define CBA_OFFSET        0xfff4
-// #define NUM_MAX_CBA_GROUP 4 // in the platform_constants
 
 /* TS 36.331: RRC-TransactionIdentifier ::= INTEGER (0..3) */
 #define RRC_TRANSACTION_IDENTIFIER_NUMBER  3

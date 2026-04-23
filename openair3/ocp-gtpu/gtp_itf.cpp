@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include <map>
 using namespace std;
 
@@ -15,14 +19,14 @@ extern "C" {
 #include <openair3/UTILS/conversions.h>
 #include "common/utils/LOG/log.h"
 #include <common/utils/ocp_itti/intertask_interface.h>
-#include <openair2/COMMON/gtpv1_u_messages_types.h>
-#include <openair3/ocp-gtpu/gtp_itf.h>
-#include <openair2/LAYER2/PDCP_v10.1.0/pdcp.h>
-#include <openair2/LAYER2/nr_pdcp/nr_pdcp_oai_api.h>
-#include <openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h>
-#include "openair2/SDAP/nr_sdap/nr_sdap.h"
-#include "openair3/ocp-gtpu/gtpu_extensions.h"
 #include "sim.h"
+
+// TODO these dependencies should not exist and be removed
+#include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
+#include "openair2/LAYER2/RLC/rlc.h"
+
+#include "gtp_itf.h"
+#include "gtpu_extensions.h"
 
 #pragma pack(1)
 
@@ -613,6 +617,20 @@ instance_t gtpv1Init(openAddr_t context)
   return id;
 }
 
+/* \brief remove the GTP instance from the list of instances. Does not make an
+ * attempt to free corresponding TEIDs, as we have many and will simply not
+ * reuse it later. */
+int gtpv1Term(instance_t instance)
+{
+  pthread_mutex_lock(&globGtp.gtp_lock);
+  getInstRetInt(compatInst(instance));
+  gtpv1uReceiverCancel(inst->thrData.t);
+  close(instance);
+  globGtp.instances.erase(instance);
+  pthread_mutex_unlock(&globGtp.gtp_lock);
+  return 0;
+}
+
 void GtpuUpdateTunnelOutgoingAddressAndTeid(instance_t instance,
                                             ue_id_t ue_id,
                                             ebi_t bearer_id,
@@ -890,6 +908,9 @@ int gtpv1u_create_x2u_tunnel(const instance_t instanceP,
                              const gtpv1u_enb_create_x2u_tunnel_req_t *const create_tunnel_req_pP,
                              gtpv1u_enb_create_x2u_tunnel_resp_t *const create_tunnel_resp_pP)
 {
+  UNUSED(instanceP);
+  UNUSED(create_tunnel_req_pP);
+  UNUSED(create_tunnel_resp_pP);
   AssertFatal(false, "to be developped\n");
 }
 
@@ -984,6 +1005,8 @@ int gtpv1u_delete_all_s1u_tunnel(const instance_t instance, const rnti_t rnti)
 
 int gtpv1u_delete_x2u_tunnel(const instance_t instanceP, const gtpv1u_enb_delete_tunnel_req_t *const req_pP)
 {
+  UNUSED(instanceP);
+  UNUSED(req_pP);
   LOG_E(GTPU, "x2 tunnel not implemented\n");
   return 0;
 }
@@ -995,7 +1018,7 @@ static gtpv1u_bearer_t create_bearer(int socket, const struct sockaddr_in *addr,
   return bearer;
 }
 
-static int Gtpv1uHandleEchoReq(int h, uint8_t *msgBuf, uint32_t msgBufLen, const struct sockaddr_in *addr)
+static int Gtpv1uHandleEchoReq(int h, uint8_t *msgBuf, const struct sockaddr_in *addr)
 {
   Gtpv1uMsgHeaderT *msgHdr = (Gtpv1uMsgHeaderT *)msgBuf;
 
@@ -1023,7 +1046,7 @@ static int Gtpv1uHandleEchoReq(int h, uint8_t *msgBuf, uint32_t msgBufLen, const
                                 0);
 }
 
-static int Gtpv1uHandleError(int h, uint8_t *msgBuf, uint32_t msgBufLen, const struct sockaddr_in *addr)
+static int Gtpv1uHandleError(uint8_t *msgBuf, uint32_t msgBufLen)
 {
   if (msgBufLen < sizeof(Gtpv1uError))
     LOG_E(GTPU, "Received GTP error indication with truncated size %u (mini size: %lu)\n", msgBufLen,sizeof(Gtpv1uError)+4);
@@ -1045,7 +1068,7 @@ static int Gtpv1uHandleError(int h, uint8_t *msgBuf, uint32_t msgBufLen, const s
   return rc;
 }
 
-static int Gtpv1uHandleSupportedExt(int h, uint8_t *msgBuf, uint32_t msgBufLen, const sockaddr_in *addr)
+static int Gtpv1uHandleSupportedExt()
 {
   LOG_E(GTPU, "Supported extensions to be dev\n");
   int rc = GTPNOK;
@@ -1055,7 +1078,7 @@ static int Gtpv1uHandleSupportedExt(int h, uint8_t *msgBuf, uint32_t msgBufLen, 
 // When end marker arrives, we notify the client with buffer size = 0
 // The client will likely call "delete tunnel"
 // nevertheless we don't take the initiative
-static int Gtpv1uHandleEndMarker(int h, uint8_t *msgBuf, uint32_t msgBufLen, const sockaddr_in *addr)
+static int Gtpv1uHandleEndMarker(int h, uint8_t *msgBuf)
 {
   Gtpv1uMsgHeaderT *msgHdr = (Gtpv1uMsgHeaderT *)msgBuf;
 
@@ -1284,19 +1307,19 @@ static bool gtpv1uReceiveHandleMessage(int h)
         break;
 
       case GTP_ECHO_REQ:
-        Gtpv1uHandleEchoReq(h, udpData, udpDataLen, &addr);
+        Gtpv1uHandleEchoReq(h, udpData, &addr);
         break;
 
       case GTP_ERROR_INDICATION:
-        Gtpv1uHandleError(h, udpData, udpDataLen, &addr);
+        Gtpv1uHandleError(udpData, udpDataLen);
         break;
 
       case GTP_SUPPORTED_EXTENSION_HEADER_INDICATION:
-        Gtpv1uHandleSupportedExt(h, udpData, udpDataLen, &addr);
+        Gtpv1uHandleSupportedExt();
         break;
 
       case GTP_END_MARKER:
-        Gtpv1uHandleEndMarker(h, udpData, udpDataLen, &addr);
+        Gtpv1uHandleEndMarker(h, udpData);
         break;
 
       case GTP_GPDU:
@@ -1333,6 +1356,7 @@ static void gtpv1uReceiverCancel(pthread_t t)
 
 void *gtpv1uTask(void *args)
 {
+  UNUSED(args);
   while (1) {
     /* Trying to fetch a message from the message queue.
        If the queue is empty, this function will block till a

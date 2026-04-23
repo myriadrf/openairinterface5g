@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # logging facility source files
 
 The oai logging facility is implemented in two source files, located in [common/utils/LOG](LOG)

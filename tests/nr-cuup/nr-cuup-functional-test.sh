@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
 
 # this script takes one argument, which is the path to the CU-UP configuration
 if [ $# -ne 1 ]; then

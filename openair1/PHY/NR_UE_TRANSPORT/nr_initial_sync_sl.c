@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include "PHY/defs_nr_UE.h"
 #include "PHY/TOOLS/tools_defs.h"
 #include "PHY/NR_REFSIG/sss_nr.h"
@@ -151,7 +155,6 @@ static int sl_nr_pss_correlation(PHY_VARS_NR_UE *UE, int frame_index)
 }
 
 static void sl_nr_extract_sss(PHY_VARS_NR_UE *ue,
-                              UE_nr_rxtx_proc_t *proc,
                               int32_t *tot_metric,
                               uint8_t *phase_max,
                               c16_t rxdataF[][ue->SL_UE_PHY_PARAMS.sl_frame_params.samples_per_slot_wCP])
@@ -162,7 +165,6 @@ static void sl_nr_extract_sss(PHY_VARS_NR_UE *ue,
   NR_DL_FRAME_PARMS *sl_fp = &ue->SL_UE_PHY_PARAMS.sl_frame_params;
   int16_t *d;
   uint16_t Nid1 = 0;
-  uint8_t phase;
   c16_t *rxF_ext;
 
   for (int aarx = 0; aarx < sl_fp->nb_antennas_rx; aarx++) {
@@ -261,15 +263,16 @@ static void sl_nr_extract_sss(PHY_VARS_NR_UE *ue,
   c16_t *sss = &sss_ext[0][0][0];
 
   for (uint16_t id1 = 0; id1 < SL_NR_NUM_IDs_IN_SSS; id1++) { // all possible SSS Nid1 values
-    for (phase = 0; phase < PHASE_HYPOTHESIS_NUMBER; phase++) { // phase offset between PSS and SSS
+    for (int phase = -15; phase < 16; phase += 2) { // phase offset between PSS and SSS
 
       int32_t metric = 0, metric_re = 0;
-
+      const c64_t rot = (c64_t){round(cos(M_PI / 3 / 15 * (phase)) * 32767), round(sin(M_PI / 3 / 15 * (phase)) * 32767)};
       d = (int16_t *)&ue->SL_UE_PHY_PARAMS.init_params.sl_sss_for_sync[Nid2 * SL_NR_NUM_IDs_IN_SSS + id1];
 
       // This is the inner product using one particular value of each unknown parameter
       for (int i = 0; i < SL_NR_SSS_SEQUENCE_LENGTH; i++) {
-        metric_re += d[i] * (((int64_t)phase_nr[phase].r * sss[i].r - phase_nr[phase].i * sss[i].i) >> 15);
+        // metric is only real part because sss is a pure real signal (imaginary is 0)
+        metric_re += d[i] * ((rot.r * sss[i].r - rot.i * sss[i].i) >> 15);
       }
 
       metric = metric_re;
@@ -440,7 +443,7 @@ nr_initial_sync_t sl_nr_slss_search(PHY_VARS_NR_UE *UE, UE_nr_rxtx_proc_t *proc,
                       UE->common_vars.rxdata);
         }
 
-        sl_nr_extract_sss(UE, NULL, &metric_tdd_ncp, &phase_tdd_ncp, rxdataF);
+        sl_nr_extract_sss(UE, &metric_tdd_ncp, &phase_tdd_ncp, rxdataF);
 
         // save detected cell id to psbch
         rx_slss_id = UE->SL_UE_PHY_PARAMS.sync_params.N_sl_id;
@@ -501,7 +504,7 @@ nr_initial_sync_t sl_nr_slss_search(PHY_VARS_NR_UE *UE, UE_nr_rxtx_proc_t *proc,
                 sync_params->DFN,
                 sync_params->slot_offset);
 
-          UE->adjust_rxgain = nr_sl_psbch_rsrp_measurements(sl_ue, frame_parms, rxdataF, false, UE->openair0_cfg);
+          UE->adjust_rxgain = nr_sl_psbch_rsrp_measurements(UE, sl_ue, frame_parms, rxdataF, false);
 
           UE->init_sync_frame = sync_params->remaining_frames;
           result.rx_offset = sync_params->rx_offset;
@@ -510,7 +513,7 @@ nr_initial_sync_t sl_nr_slss_search(PHY_VARS_NR_UE *UE, UE_nr_rxtx_proc_t *proc,
           sl_nr_rx_indication_t rx_ind = {0};
           uint16_t number_pdus = 1;
           nr_fill_sl_indication(&sl_indication, &rx_ind, NULL, proc, UE, NULL);
-          nr_fill_sl_rx_indication(&rx_ind, SL_NR_RX_PDU_TYPE_SSB, UE, number_pdus, proc, (void *)decoded_output, rx_slss_id);
+          nr_fill_sl_rx_indication(&rx_ind, SL_NR_RX_PDU_TYPE_SSB, UE, number_pdus, (void *)decoded_output, rx_slss_id);
 
           LOG_D(PHY, "Sidelink SLSS SEARCH PSBCH RX OK. Send SL-SSB TO MAC\n");
 

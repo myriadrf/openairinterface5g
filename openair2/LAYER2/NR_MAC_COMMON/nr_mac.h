@@ -1,33 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
- */
-
-/* \file       nr_mac.h
- * \brief      common MAC data structures and constants
- * \author     R. Knopp, K.H. HSU, G. Casati
- * \date       2019
- * \version    0.1
- * \company    Eurecom / NTUST / Fraunhofer IIS
- * \email:     knopp@eurecom.fr, kai-hsiang.hsu@eurecom.fr, guido.casati@iis.fraunhofer.de
- * \note
- * \warning
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #ifndef __LAYER2_NR_MAC_H__
@@ -45,18 +17,6 @@
 #define NR_SHORT_BSR_TABLE_SIZE 32
 #define NR_LONG_BSR_TABLE_SIZE 256
 
-#define TABLE_38213_13_1_NUM_INDEXES 15
-#define TABLE_38213_13_2_NUM_INDEXES 14
-#define TABLE_38213_13_3_NUM_INDEXES 9
-#define TABLE_38213_13_4_NUM_INDEXES 16
-#define TABLE_38213_13_5_NUM_INDEXES 9
-#define TABLE_38213_13_6_NUM_INDEXES 10
-#define TABLE_38213_13_7_NUM_INDEXES 12
-#define TABLE_38213_13_8_NUM_INDEXES 8
-#define TABLE_38213_13_9_NUM_INDEXES 4
-#define TABLE_38213_13_10_NUM_INDEXES 8
-#define TABLE_38213_13_11_NUM_INDEXES 16
-#define TABLE_38213_13_12_NUM_INDEXES 14
 
 // Definitions for MAC control and data
 #define NR_BCCH_DL_SCH 3 // SI
@@ -432,7 +392,6 @@ typedef struct {
 #define UL_SCH_LCID_PADDING                        0x3F
 
 #define NR_MAX_NUM_LCGID              8
-#define MAX_RLC_SDU_SUBHEADER_SIZE          3
 
 //=========
 // DCI defs

@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/* \file mac_defs.h
+/*
  * \brief MAC data structures and constants
- * \author R. Knopp, K.H. HSU
- * \date 2018
- * \version 0.1
- * \company Eurecom / NTUST
- * \email: knopp@eurecom.fr, kai-hsiang.hsu@eurecom.fr
- * \note
- * \warning
  */
 
 #ifndef __LAYER2_NR_MAC_DEFS_H__
@@ -37,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "common/platform_types.h"
+#include "common/utils/threadPool/notified_fifo.h"
 
 /* IF */
 #include "NR_IF_Module.h"
@@ -310,14 +287,13 @@ typedef struct {
   NR_PUCCH_Resource_t *pucch_resource;
   uint32_t ack_payload;
   uint8_t sr_payload;
-  uint64_t csi_part1_payload;
-  uint64_t csi_part2_payload;
+  nfapi_nr_ue_csi_payload_t csi_payload;
   int n_sr;
-  int n_csi;
   int n_harq;
   int n_CCE;
   int N_CCE;
   int initial_pucch_id;
+  int pucch_ResourceCommon;
 } PUCCH_sched_t;
 
 typedef struct {
@@ -431,7 +407,7 @@ typedef struct {
 typedef struct {
   /// SSB RSRP in dBm
   int ssb_rsrp_dBm;
-  float_t ssb_sinr_dB;
+  float ssb_sinr_dB;
 } NR_SSB_meas_t;
 
 typedef struct {
@@ -489,13 +465,6 @@ typedef struct {
   A_SEQUENCE_OF(NR_SearchSpace_t) list_common_SS;
   A_SEQUENCE_OF(NR_SearchSpace_t) list_SS;
 } NR_BWP_PDCCH_t;
-
-typedef struct csi_payload {
-  uint64_t part1_payload;
-  uint64_t part2_payload;
-  int p1_bits;
-  int p2_bits;
-} csi_payload_t;
 
 typedef enum {
   WIDEBAND_ON_PUCCH,
@@ -615,6 +584,8 @@ typedef struct NR_UE_MAC_INST_s {
   uint16_t nr_band;
   uint8_t ssb_subcarrier_offset;
   int ssb_start_subcarrier;
+  uint64_t dl_frequency;
+  int numerology;
 
   NR_SSB_meas_t ssb_measurements[MAX_NB_SSB];
   NR_CSIRS_meas_t csirs_measurements;
@@ -646,6 +617,9 @@ typedef struct NR_UE_MAC_INST_s {
   pthread_mutex_t if_mutex;
   ue_mac_stats_t stats;
   notifiedFIFO_t input_nf;
+  // set when mac configuration changes during reconf with sync
+  // reset when pdcch config is changed after pbch read after reconf
+  bool update_pdcch_config;
 } NR_UE_MAC_INST_t;
 
 static inline int GET_NTN_UE_K_OFFSET(const fapi_nr_ntn_config_t *ntn_ta, int scs)

@@ -137,7 +137,7 @@ static void trx_lms7002m_end(openair0_device *device) {
   delete context;
 }
 
-static int trx_lms7002m_write(openair0_device *device, openair0_timestamp timestamp,
+static int trx_lms7002m_write(openair0_device *device, openair0_timestamp_t timestamp,
                           void **buff, int nsamps, int channelCount, int flags) 
 {
   if (!buff) // Nothing to transmit
@@ -157,7 +157,7 @@ static int trx_lms7002m_write(openair0_device *device, openair0_timestamp timest
   return LimePlugin_Write_complex12(context, samples, nsamps, DEFAULT_PORT, meta);
 }
 
-static int trx_lms7002m_read(openair0_device *device, openair0_timestamp *ptimestamp,
+static int trx_lms7002m_read(openair0_device *device, openair0_timestamp_t *ptimestamp,
                           void **buff, int nsamps, int channelCount)
 {
   LimePluginContext *context = (LimePluginContext*)device->priv;

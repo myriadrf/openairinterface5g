@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 This document contains documentation for the 5G RRC layer, destined towards
 developers. It explains the basic working of the RRC, and various UE procedure
 schemes (connection, reestablishment, handover) including their interworking
@@ -175,6 +177,12 @@ with the reestablishment procedure; if any check fails, the CU-CP tries to
 release the old UE at the AMF, and continues with the "normal" connection setup
 (registration/service request) described above.
 
+The re-establishment flow implements transparent forwarding of CellGroupConfig
+per TS 38.473: the CU requests CellGroupConfig from the DU via UE Context
+Modification Request with `gNB_DU_Configuration_Query=true`, and the DU responds
+with an encoded CellGroupConfig that the CU forwards to the UE without
+decode/re-encode cycles.
+
 ```mermaid
 sequenceDiagram
   participant ue as UE
@@ -185,30 +193,59 @@ sequenceDiagram
 
   ue->>du: Msg1/Preamble
   du->>ue: Msg2/RAR
-  ue->>du: Msg3 w/ RRC Reestabishment Request (old C-RNTI/PCI)
+  ue->>du: Msg3 w/ RRC Reestablishment Request (old C-RNTI/PCI)
   Note over du: DU creates UE context for new RNTI
   du->>cucp: F1AP Initial UL RRC Msg Tr (RRC Reestab Req, in Msg3)
   Note over cucp: rrc_handle_RRCReestablishmentRequest()
-  alt UE known and at the original DU
-      Note over cucp: rrc_gNB_generate_RRCReestablishment()<br />SRB1 PDCP reestablishment
-      cucp->>du: F1AP DL RRC Msg Tr (old gNB-DU-UE ID)
-      Note over du: Reuse configuration of and delete old UE<br />(in dl_rrc_message_transfer())
+  alt UE known
+      opt PCI mismatch AND Association ID mismatch
+        Note over cucp: Detect different DU (assoc_id != du_assoc_id)<br/>Update du_assoc_id, set f1_ue_context_active=false
+      end
+      Note over cucp: rrc_gNB_generate_RRCReestablishment()<br/>SRB1 PDCP reestablishment
+      cucp->>du: F1AP DL RRC Msg Tr (gNB-DU-UE ID)
+      Note over du: dl_rrc_message_transfer()
+        alt Old UE found
+          Note over du: Reuse configuration of and delete old UE
+        else Old UE not found
+          Note over du: do nothing
+        end
+      Note over du: Set reestablishRLC=true
+      Note over du: - Store CellGroup in reconfigCellGroup<br/>- Remove spCellConfig from CellGroup
       du->>ue: RRC Reestablishment
       ue->>du: RRC Reestablishment Complete
       du->>cucp: F1AP UL RRC Msg Tr (RRC Reestab Complete)
       Note over cucp: handle_rrcReestablishmentComplete()
-      Note over cucp: cuup_notify_reestablishment()
-        cucp->>cuup: E1AP Bearer Context Modification Req
-      cucp->>ue: F1AP DL RRC Msg Transfer (RRC Reconfiguration)
-        cuup->>cucp: E1AP Bearer Context Modification Resp
+      Note over cucp: rrc_gNB_process_RRCReestablishmentComplete()<br/>Re-establish SRB2 PDCP
+      Note over cucp: cuup_notify_reestablishment()<br/>Notify CU-UP for DRB re-establishment
+      cucp->>cuup: E1AP Bearer Context Modification Req
+      cuup->>cucp: E1AP Bearer Context Modification Resp (asynchronous)
+      alt on the original DU
+          Note over cucp: Send UE Context Modification Request<br/>with gNB_DU_Configuration_Query=true
+          cucp->>du: F1AP UE Context Modification Req
+          du->>cucp: F1AP UE Context Modification Resp<br/>(CellGroupConfig with spCellConfig and reestablishRLC flags)
+      else on a different DU
+          Note over cucp: Detect different DU (!f1_ue_context_active)<br/>Trigger UE Context Setup on new DU
+          cucp->>du: F1AP UE Context Setup Request<br/>
+          du->>cucp: F1AP UE Context Setup Response<br/>(CellGroupConfig with spCellConfig and reestablishRLC flags)
+      end
+      Note over cucp: rrc_CU_process_ue_context_setup/modification_response()<br/>Detect re-establishment via rrc_detect_reestablishment()<br/>rrc_gNB_generate_dedicatedRRCReconfiguration()<br/>(with is_reestablishment=true)
+      cucp->>ue: F1AP DL RRC Msg Transfer (RRC Reconfiguration<br/>with transparent CellGroupConfig)
       ue->>cucp: F1AP UL RRC Msg Transfer (RRC Reconfiguration Complete)
-      Note over cucp: handle_rrcReestablishmentComplete()
+      Note over cucp: handle_rrcReconfigurationComplete()
   else Fallback*
       cucp->>amf: NGAP UE Context Release Request
       Note over cucp: rrc_gNB_generate_RRCSetup()
       Note over ue,amf: Continue with connection setup (registration/service request)
   end
 ```
+
+Note on re-establishment on different DU: The "UE known and on a different DU"
+case is shown in the sequence diagram above. When a UE re-establishes on a
+different DU than the original one (detected by comparing `du_assoc_id` at
+RRCReestablishmentRequest), the CU updates `du_assoc_id` and sets
+`f1_ue_context_active=false`. At RRCReestablishmentComplete, if
+`f1_ue_context_active` is false, the CU triggers UE Context Setup on the new
+DU per TS 38.401 §8.7.
 
 ### Inter-DU Handover (F1)
 
@@ -355,13 +392,347 @@ sequenceDiagram
 
 ## Structures
 
-### Cells
+### DUs and Cells
 
-OAI 5G RRC does not actually handle multiple cells as of now, but multiple DUs,
-each being limited to one cell.
+OAI 5G RRC is enabling support for multiple DUs, with each DU potentially
+serving multiple cells (though currently each DU is limited to one cell in practice).
+The architecture separates DU management from cell management to enable future
+multi-cell per DU capability.
 
-Cell-related data is stored in `nr_rrc_du_container_t`, and kept in a tree
-indexed by the SCTP association ID.
+#### DU Management
+
+DU-related data is stored in `nr_rrc_du_container_t`, and kept in a red-black
+tree indexed by the unique SCTP association ID (`assoc_id`). Each DU container stores:
+- DU identity and name
+- SCTP association ID for F1 interface communication
+- RRC version information
+- Sequential array of cell pointers (`cells`) - stores pointers to cells belonging to this DU (seq_arr_t)
+
+Key Functions:
+- `get_du_by_assoc_id()` - Lookup DU by SCTP association ID (O(log d) tree lookup)
+- `get_du_for_ue()` - Get DU associated with a specific UE
+- `find_target_du()` - Find a target DU for handover operations
+
+#### Cell Management
+
+Cell-related data is stored in `nr_rrc_cell_container_t`. Cells are stored in two data structures:
+
+1. Global cell tree (`rrc->cells`): Red-black tree indexed by `cell_id`, containing all cells from all DUs. Used for efficient O(log N_CELL) lookups across all DUs. PCI reuse across the network is allowed and this is reflected in the tree.
+2. DU cell array (`du->cells`): Sequential array (seq_arr_t) of cell pointers, storing only cells belonging to that specific DU. Used for DU-specific operations. PCI must be unique within a DU.
+
+Each cell container stores:
+- Cell identity (NR Cell ID) and PCI (Physical Cell ID)
+- Link to serving DU via the unique `assoc_id`
+- Cell-specific information (PLMN, TAC, frequency, mode TDD/FDD)
+- MIB, SIB1, and MeasurementTimingConfiguration messages
+
+Key Functions:
+- `get_cell_by_cell_id()` - Lookup cell by NR Cell ID using global cell tree
+- `rrc_get_cell_for_du()` - Lookup cell by cell_id within a specific DU's cell array
+- `rrc_get_cell_by_pci_for_du()` - Lookup cell by PCI within DU's cells array
+- `rrc_add_cell_to_du()` - Add cell to DU's sequential array
+- `rrc_free_cell_container()` - Free cell container and associated ASN.1 structures
+
+Architecture Notes:
+- The `assoc_id` field (in cell and DUs containers) links cells to their serving DUs
+- When a DU connects via F1 Setup, cells are added to both the global tree and the DU's array
+- When a DU disconnects, cells are removed from both structures
+- Global tree enables efficient cross-DU cell lookups (O(log N_CELL))
+- DU array enables efficient per-DU cell iteration (O(k) where k=cells per DU)
+- Each DU maintains a sequential array of cell pointers
+
+##### DU and Cell Lifecycle
+
+The following diagram shows the lifecycle of DUs and their associated cells, including the main F1AP messages and internal operations:
+
+```mermaid
+sequenceDiagram
+  participant CellTree as Cell Tree
+  participant DUTree as DU Tree
+  participant CU as CU-CP
+  participant DU as gNB-DU
+  participant UE as UE
+
+  Note over DU,CellTree: DU Connection & Cell Registration
+  DU->>CU: F1AP F1 Setup Request(DU ID, Cell Info, MIB/SIB1)
+  Note over CU: Validate: PLMN match with CU configuration
+  alt PLMN mismatch
+    CU->>DU: F1AP F1 Setup Failure (PLMN not served)
+  end
+  Note over CU: Validate: DU ID uniqueness (RB_FOREACH gNB_DU_id in DU tree)
+  alt DU ID already exists
+    CU->>DU: F1AP F1 Setup Failure (Unspecified)
+  end
+  Note over CU: Validate: Neighbour cell configuration (if configured)
+  alt Neighbour config invalid
+    CU->>DU: F1AP F1 Setup Failure (Unspecified)
+  end
+  Note over CU: Extract MIB/SIB1 from system info (if present)
+  alt System info extraction fails
+    CU->>DU: F1AP F1 Setup Failure (Semantic error)
+  end
+  alt All Validations Success
+    CU->>CU: Create cell container (nr_rrc_cell_container_t), set assoc_id, copy cell info, set MIB/SIB1
+    CU->>CellTree: rrc_add_cell(rrc, new) - RB_INSERT into global tree, increment rrc->num_cells
+    alt Duplicate cell_id (collision)
+      CU->>DU: F1AP F1 Setup Failure (Cell not available)
+    else Cell added to tree
+      CU->>CU: Create DU container (nr_rrc_du_container_t)
+      CU->>CU: seq_arr_init(&du->cells) - Initialize DU's cell array
+      CU->>DUTree: rrc_add_du(rrc, du) - RB_INSERT(du), increment rrc->num_dus
+      CU->>CU: rrc_add_cell_to_du(&du->cells, new) - Add cell to DU's array
+      Note over CU,UE: Cell available for UE association
+      CU->>CU: Encode CU SIBs (if configured)
+      CU->>DU: F1AP F1 Setup Response(Cells to Activate, CU SIBs)
+      Note over CU,CellTree: DU and cell now active
+    end
+  end
+
+  UE->>CU: RRC Setup Request
+  Note over CU: rrc_handle_RRCSetupRequest()
+  CU->>CU: get_cell_by_cell_id(&rrc->cells) - Use global tree
+  alt Cell not found
+    CU->>UE: RRC Reject
+  end
+  Note over CU: UE Cell Association
+  CU->>CU: rrc_add_ue_serving_cell(UE, cell, RRC_PCELL_INDEX)
+
+  Note over DU,CellTree: Optional: Cell Configuration Update
+  opt DU sends configuration update
+    DU->>CU: F1AP DU Configuration Update(Add/Modify/Delete cells)
+    Note over CU: get_du_by_assoc_id(assoc_id)
+    loop For each cell to add
+      CU->>CU: get_cell_by_cell_id(&rrc->cells) - Check cell_id uniqueness globally
+      alt Duplicate cell_id found
+        Note over CU: Reject and return
+      end
+      CU->>CU: rrc_get_cell_by_pci_for_du(&du->cells) - Check PCI unique within DU
+      alt Duplicate PCI in DU
+        Note over CU: Reject and return
+      end
+    end
+    loop Cell Modification
+      CU->>CU: get_cell_by_cell_id(cells, old_nr_cellid) - Find cell by old cell_id
+      CU->>CU: update_cell_info(rrc, old_nci, new_ci) - Update in place
+      Note over CU: If cell_id changes: RB_REMOVE then re-insert after update
+      Note over CU: Free old MTC if new measurement timing config provided
+      Note over CU: If sys_info present: extract MIB/SIB1 and set on cell
+    end
+    CU->>DU: F1AP DU Configuration Update Acknowledge
+  end
+
+  Note over DU,CellTree: DU Disconnection & Cell Cleanup
+  DU-->>CU: F1AP Lost Connection(SCTP connection lost)
+  Note over CU: rrc_CU_process_f1_lost_connection()
+  CU->>DUTree: RB_FIND(du) - Find DU by assoc_id using temporary struct
+  alt DU not found
+    Note over CU: Log warning and return
+  end
+  Note over CU: rrc_cleanup_du() then invalidate_du_connections()
+  CU->>CU: Iterate cells in DU's array (last to first)
+  loop For each cell in DU's array
+    CU->>CU: seq_arr_erase(&du->cells, cell_ptr) - Remove from DU's array
+    CU->>CellTree: rrc_rm_cell(): RB_REMOVE(cell), decrement num_cells, rrc_free_cell_container()
+  end
+  CU->>DUTree: rrc_rm_du(): RB_REMOVE(du) - Remove DU from tree
+  CU->>CU: Decrement rrc->num_dus counter
+  CU->>CU: seq_arr_free(&du->cells) - Free DU's cell array
+  CU->>CU: rrc_free_du_container() - Free DU container
+  Note over CU: invalidate_du_connections()
+  loop For each UE:
+    CU->>CU: rrc_remove_ue_scells_from_du() - Remove SCells from disconnected DU
+    alt UE belongs to disconnected DU
+      CU->>CU: Set du_assoc_id = 0 (mark DU offline)
+      CU->>CU: Trigger NGAP UE Context Release Request
+    end
+  end
+  Note over CU,CellTree: DU and all cells removed
+```
+
+Key Functions:
+- `rrc_gNB_process_f1_setup_req()` - Handles F1 Setup Request, creates DU and cell containers.
+  Validates PLMN match, DU ID uniqueness, and cell_id/PCI uniqueness before creating containers.
+- `rrc_gNB_process_f1_du_configuration_update()` - Handles cell configuration updates.
+  Currently supports cell modification (MIB/SIB1 updates) and validates cell additions, but cell addition
+  and deletion are not yet fully implemented.
+- `rrc_CU_process_f1_lost_connection()` - Handles DU disconnection. Calls `rrc_cleanup_du()` to
+  remove all cells and the DU from their trees and free resources, then
+  `invalidate_du_connections()` to clean up UE associations (e.g. trigger NGAP UE Context Release Request for UEs on that DU).
+
+#### UE Cell Association Management
+
+The RRC maintains a per-UE association with serving cells, tracking which cells
+a UE is currently using. This replaces the previous single-cell assumption and
+enables proper multi-cell support where each UE can have multiple serving cells
+(one PCell and up to 31 SCells). The servCellIndex (TS 38.331) is tracked per-UE
+in the `ue_serving_cell_t` structure in the UE context (the same cell can have
+different servCellIndex values for different UEs).
+
+Data Structures:
+- `ue_serving_cell_t`: Stores serving cell information (nci, servCellIndex, assoc_id)
+- `gNB_RRC_UE_t.serving_cells`: Dynamic array (seq_arr_t) of serving cell entries. PCell is always at index 0.
+
+Key Functions:
+- `rrc_add_ue_serving_cell()` - Adds a new serving cell to UE's serving_cells array.
+- `rrc_get_ue_serving_cell_by_id()` - Retrieves serving cell entry by servCellIndex.
+- `ue_get_pcell_entry()` - Returns the PCell serving cell entry (first element in serving_cells).
+- `rrc_remove_ue_scells_from_du()` - Removes all serving cells belonging to a specific DU via assoc_id (e.g. during handover or DU disconnection).
+
+##### Handover and Cell Association Updates
+
+During handover, the UE's serving cell list is updated so the PCell reflects the target cell and source-DU cells are removed.
+
+###### F1 handover (inter-DU, same CU-CP)
+
+Cell association is updated when the **source** DU sends F1AP UE Context Modification Response (after it has sent the RRC Reconfiguration to the UE). The CU-CP is a single RRC instance; both source DU and target DU are under the same CU.
+
+```mermaid
+sequenceDiagram
+  participant SourceDU as Source DU
+  participant CU as CU-CP
+
+  Note over CU,CU: F1 handover: cell association update on Context Modification Response
+  SourceDU->>CU: F1AP UE Context Modification Response
+  Note over CU: rrc_CU_process_ue_context_modification_response()
+  Note over CU: Check: ho_context && source && target (F1 HO)
+
+  alt F1 handover in progress
+    CU->>CU: nr_rrc_apply_target_context(UE)
+    Note over CU: F1 UE data: du_assoc_id = target DU, secondary_ue = target DU UE ID, RNTI = target RNTI
+    CU->>CU: nr_rrc_update_cell_assoc_after_ho(rrc, UE)
+    Note over CU: F1 branch (ho_context->source present):
+    CU->>CU: rrc_remove_ue_scells_from_du(UE, source_ctx->cell->assoc_id)
+    Note over CU: Remove all serving cells (incl. PCell) belonging to source DU
+    CU->>CU: rrc_add_ue_serving_cell(UE, target_ctx->cell, RRC_PCELL_INDEX)
+    Note over CU: Handover complete: PCell = target cell, source DU cells removed
+  end
+```
+
+###### N2 handover (inter-gNB: source CU vs target CU)
+
+Cell association is updated only on the target CU-CP, when the target DU sends F1AP UE Context Setup Response. The UE context was created for handover, so there is no existing serving cell to remove. The flow is triggered inside the handover request acknowledge callback.
+
+- Target CU-CP: Receives HANDOVER REQUEST, sets up bearer and F1 UE context on target DU; when the target DU sends F1AP UE Context Setup Response, the target CU runs the cell-association update and then sends HANDOVER REQUEST ACKNOWLEDGE.
+
+```mermaid
+sequenceDiagram
+  participant TargetDU as Target DU
+  participant TargetCU as Target CU-CP
+
+  Note over TargetCU: N2 handover: cell association update
+  Note over TargetCU: F1AP UE Context Setup Resp from target DU (in nr_rrc_n2_ho_acknowledge)
+  TargetDU->>TargetCU: F1AP UE Context Setup Response
+  Note over TargetCU: rrc_CU_process_ue_context_setup_response() then callback ho_req_ack()
+  Note over TargetCU: nr_rrc_n2_ho_acknowledge(rrc, UE)
+
+  TargetCU->>TargetCU: nr_rrc_apply_target_context(UE)
+  Note over TargetCU: F1 UE data: du_assoc_id = target DU, secondary_ue = target DU UE ID, RNTI = target RNTI
+  TargetCU->>TargetCU: nr_rrc_update_cell_assoc_after_ho(rrc, UE)
+  Note over TargetCU: N2 branch (ho_context->source NULL): no SCells to remove
+  TargetCU->>TargetCU: rrc_add_ue_serving_cell(UE, target_ctx->cell, RRC_PCELL_INDEX)
+  Note over TargetCU: Then: encode Handover Command, send NGAP HANDOVER REQUEST ACKNOWLEDGE
+```
+
+### Neighbour cells
+
+#### SIB3/SIB4 and measurement-gap implementation
+
+The following section documents the implementation-level control flow
+for SIB3/SIB4 and measurement-gap handling in current OAI, using the configured
+neighbor cell list as a shared input model.
+
+Briefly, the three procedures are:
+- SIB3: CU derives and provides intra-frequency neighbour SI, which DU broadcasts
+  and UE uses for autonomous idle/inactive intra-frequency reselection.
+- SIB4: CU derives and provides inter-frequency carrier/neighbour SI, which DU
+  broadcasts and UE uses for autonomous idle/inactive inter-frequency reselection.
+- MeasGap: CU/DU coordinate dedicated `MeasGapConfig` in UE `MeasConfig`, DU
+  scheduler interrupts transmission (`nr_measgap_scheduling()`) for the UE to
+  apply the MeasGap configuration in connected mode for gap-based measurements that
+  are sent as `MeasurementReport` and processed at CU-CP (`rrc_gNB_process_MeasurementReport()`).
+  Event-driven reports (for example A3) are used by CU-side mobility logic and can
+  trigger handover procedures.
+
+### MeasGap
+
+```mermaid
+sequenceDiagram
+  participant DM as Data model (neighbour_cell_configuration)
+  participant CU as CU-CP (RRC)
+  participant DU as DU (MAC/RRC)
+  participant UE as UE
+
+  CU-->>DM: Read serving + neighbour frequency/PCI/band data
+  DM-->>CU: Provide neighbour/frequency inputs for MeasConfig
+  CU->>CU: nr_rrc_get_measconfig
+  Note over CU: Build UE MeasConfig
+  CU->>CU: get_meas_timing_config (cell.mtc, ue.measConfig)
+  Note over CU: Check distinct ssbFrequency
+  alt one frequency only
+    Note over CU: returns NULL, no meas_timing_config sent to DU
+  else multiple frequencies
+    CU->>DU: F1AP UE Context Setup Request
+    Note over CU,DU: Includes cu_to_du_rrc_info.meas_timing_config
+    DU->>DU: create_measgap_config
+    DU->>DU: encode_measgap_config
+    DU-->>CU: F1AP UE Context Setup Response
+    Note over DU,CU: Includes du_to_cu_rrc_info.meas_gap_config
+    CU->>CU: get_meas_gap_config
+    Note over CU: Decode/store gap in UE MeasConfig (UE.measConfig.measGapConfig)
+    CU->>UE: RRCReconfiguration
+    Note over CU,UE: Includes MeasConfig.measGapConfig
+    rect rgba(210, 235, 255, 0.35)
+      Note over DU,UE: Measurement-gap window
+      DU->>DU: nr_measgap_scheduling
+      Note over DU: Interrupt transmission for meas gap
+      UE->>UE: nr_rrc_handle_meas_indication
+      Note over UE: Perform gap-based neighbour/inter-frequency measurements
+      UE-->>CU: MeasurementReport
+    end
+    Note over UE,CU: UL-DCCH MeasurementReport for configured events (e.g. A3)
+    CU->>CU: rrc_gNB_process_MeasurementReport
+    Note over CU: Run mobility decision logic (may trigger handover)
+  end
+```
+
+### SIB3/SIB4
+
+```mermaid
+sequenceDiagram
+  participant DM as Data model (neighbour_cell_configuration)
+  participant CU as CU-CP (RRC)
+  participant DU as DU
+  participant UE as UE
+
+  CU->>CU: cp_f1_served_cell_info_to_cell
+  CU->>DM: get_cell_neighbour_list
+  DM-->>CU: neighbour_cell_configuration for serving cell
+  CU->>CU: get_ssb_arfcn
+  Note over CU: Derive serving_ssb_arfcn from cell MTC
+  loop for each configured neighbour
+    Note over CU: Compare neighbour.absoluteFrequencySSB vs serving_ssb_arfcn
+    alt equal
+      CU->>CU: get_sib3_intra_freq_neighbors
+    else different
+      CU->>CU: get_sib4_inter_freq_neighbors
+    end
+  end
+  CU-->>DU: F1AP F1 Setup Response
+  DU-->>UE: BCCH-DL-SCH-Message
+  Note over DU,UE: Broadcast SystemInformation including configured SIB3/SIB4
+  UE->>UE: nr_rrc_ue_decode_NR_BCCH_DL_SCH_Message
+  Note over UE: Evaluate idle/inactive reselection criteria and timers
+  Note over UE,DU: After reselection, access/registration continues on selected cell DU as needed
+```
+
+## UE Context
+
+UE context information is stored in `gNB_RRC_UE_t`, which includes:
+- Serving cells tracking: Dynamic array of serving cells (PCell + SCells)
+- Security context: Keys, algorithms, and security state
+- Radio bearers: SRB and DRB configurations
+- PDU sessions: Active PDU session information
+- Handover context: Temporary data during handover procedures
 
 ### CU-UPs
 

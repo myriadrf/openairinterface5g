@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 add_library(nfapi_socket_lib
         socket_pnf.c
         socket_vnf.c

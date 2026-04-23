@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # OAI 7.2 Fronthaul Interface Tutorial
 
 **Table of Contents**
@@ -61,19 +63,18 @@ We tested the category A radio units listed below.
 |-----------------|---------------------------------------------|
 |VVDN LPRU        |03-v3.0.5                                    |
 |LiteON RU        |01.00.08/02.00.03/02.00.10                   |
-|Benetel 650      |RAN650-1v1.0.4-dda1bf5|RAN650-1v1.2.2-2fa04bc|
-|Benetel 550      |RAN550-1v1.0.4-605a25a|RAN550-1v1.2.2-2fa04bc|
+|Benetel 650      |RAN650-1v1.0.4-dda1bf5/RAN650-1v1.2.2-2fa04bc/RAN650-1v1.4.2-NM-c48047d|
+|Benetel 550      |RAN550-1v1.0.4-605a25a/RAN550-1v1.2.2-2fa04bc/RAN550-1v1.4.1-M-25fa970/RAN550-1v2.0.5-M-92a9d2c|
 |Foxconn RPQN     |v3.1.15q.551_rc10                            |
 
 Tested libxran releases:
 
 | Vendor                                  |
 |-----------------------------------------|
-| `oran_e_maintenance_release_v1.0`       |
 | `oran_f_release_v1.0`                   |
 
 
-**Note**: The libxran driver of OAI identifies the above E release version as "5.1.0" (E is fifth letter, then 1.0), and the above F release as "6.1.0".
+**Note**: The libxran driver of OAI identifies the above F release version as "6.1.0" (F is the sixth letter, then 1.0).
 
 ### Configure your server
 
@@ -375,17 +376,9 @@ cd ~/openairinterface5g/
 
 Download ORAN FHI DU library, checkout the correct version, and apply the correct patch (available in `oai_folder/cmake_targets/tools/oran_fhi_integration_patches`).
 
-#### E release
-```bash
-git clone https://gerrit.o-ran-sc.org/r/o-du/phy.git ~/phy
-cd ~/phy
-git checkout oran_e_maintenance_release_v1.0
-git apply ~/openairinterface5g/cmake_targets/tools/oran_fhi_integration_patches/E/oaioran_E.patch
-```
-
 #### F release
 ```bash
-git clone https://gerrit.o-ran-sc.org/r/o-du/phy.git ~/phy
+git clone https://github.com/openairinterface/o-du-phy.git ~/phy
 cd ~/phy
 git checkout oran_f_release_v1.0
 git apply ~/openairinterface5g/cmake_targets/tools/oran_fhi_integration_patches/F/oaioran_F.patch
@@ -404,7 +397,6 @@ This feature is intended to enable experiments and future improvements on Arm sy
 ```bash
 cd ~/phy/fhi_lib/lib
 make clean
-RTE_SDK=~/dpdk-stable-20.11.9/ XRAN_DIR=~/phy/fhi_lib make XRAN_LIB_SO=1 # E release
 WIRELESS_SDK_TOOLCHAIN=gcc RTE_SDK=~/dpdk-stable-20.11.9/ XRAN_DIR=~/phy/fhi_lib make XRAN_LIB_SO=1 # F release
 ...
 [AR] build/libxran.so
@@ -526,7 +518,7 @@ Contact the RU vendor and get the configuration manual to understand the below c
 The OAI configuration file [`gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf) corresponds to:
 - TDD pattern `DDDSU`, 2.5ms
 - Bandwidth 100MHz
-- MTU 9600
+- MTU 9216
 - 4TX4R
 
 ##### RU configuration
@@ -552,7 +544,7 @@ dl_ul_tuning_special_slot=0xfd00000
 The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf) corresponds to:
 - TDD pattern `DDDDDDDSUU`, 5ms
 - Bandwidth 100MHz
-- MTU 9600
+- MTU 9216
 - 4TX4R
 
 ##### RU configuration
@@ -573,13 +565,16 @@ flexran_prach_workaround=disabled
 dl_tuning_special_slot=0x13b6
 ```
 
-#### LITEON
+In addition, PRACH format 0 is also verified with FW v2.0.5. An example gNB config file can be found at [`gnb.sa.band77.273prb.fhi72.2x2-benetel550-long-prach.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.273prb.fhi72.2x2-benetel550-long-prach.conf). On the RU side, the following parameters shall be modified:
+```bash
+mimo_mode=1_3
+prach_format=long
+prach_freq_offset_dynamic=false
+lf_prach_compression_enable=true
+lf_prach_slot_id=0
+```
 
-The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-liteon.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-liteon.conf) corresponds to:
-- TDD pattern `DDDSU`, 2.5ms
-- Bandwidth 100MHz
-- MTU 1500
-- MTU 9600: v02.00.10
+#### LITEON
 
 ##### RU configuration
 
@@ -603,13 +598,112 @@ Once the RU is PTP synced, and RF state and DPD are `Ready`, write `configure te
 - DU MAC address
 ...
 
-The configuration mode example:
+###### FR1
+
+The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4x4-liteon.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-liteon.conf) corresponds to:
+- TDD pattern `DDDSU`, 2.5ms
+- Bandwidth 100MHz
+- MTU 1500
+- MTU 9216: v02.00.10
+
+The RU configuration mode example:
 ```bash
 compression-bit 9 # set IQ bitwidth for PxSCH/PRACH
 eAXC_id 4 5 6 7 # set PRACH eAxC IDs
 jumboframe 1 # enable jumbo frame
 ...
 ```
+
+###### FR2
+
+The OAI configuration file [`gnb.sa.band257.66prb.fhi72.2x2-liteon.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band257.66prb.fhi72.2x2-liteon.conf) corresponds to:
+- TDD pattern `DDDDDDDSUU`, 1.25ms
+- Bandwidth 100MHz
+- FW v02.00.07
+- DL uses jumbo frame, UL uses standard MTU of 1500 bytes
+
+The RU configuration mode example:
+```bash
+compression-bit 8 # set IQ bitwidth for PxSCH/PRACH
+eAXC_id 0 1 # set PRACH eAxC IDs
+...
+```
+
+#### MICROAMP FR2
+
+
+Interaction with RU is performed using `rucfg` utility provided by Microamp.
+
+To check PTP status, you can use `rucfg ptp`. the output should be similar to:
+```bash
+[INFO] Check if RU is available
+[INFO] RU available
+[INFO] Check SSH to RU available
+[INFO] SSH to RU available
+[INFO] Getting PTP status
+[INFO] ptp4l status = 
+{
+Feb 12 16:26:02 bbv1 ptp4l[23822]: ptp4l[6280.658]: rms    0 max    1 freq     +2 +/-   7 delay  1184 +/-   0
+Feb 12 16:26:00 bbv1 ptp4l[23822]: ptp4l[6279.535]: rms    0 max    1 freq     -8 +/-  13 delay  1184 +/-   0
+Feb 12 16:25:59 bbv1 ptp4l[23822]: ptp4l[6278.413]: rms    1 max    1 freq    -35 +/-  13 delay  1184 +/-   0
+Feb 12 16:25:58 bbv1 ptp4l[23822]: ptp4l[6277.290]: rms    0 max    1 freq    -68 +/-   9 delay  1184 +/-   0
+Feb 12 16:25:57 bbv1 ptp4l[23822]: ptp4l[6276.167]: rms    1 max    1 freq    -69 +/-  10 delay  1184 +/-   0
+Feb 12 16:25:56 bbv1 ptp4l[23822]: ptp4l[6275.044]: rms    0 max    1 freq    -46 +/-   9 delay  1184 +/-   0
+Feb 12 16:25:55 bbv1 ptp4l[23822]: ptp4l[6273.921]: rms    1 max    1 freq    -65 +/-  10 delay  1184 +/-   0
+Feb 12 16:25:54 bbv1 ptp4l[23822]: ptp4l[6272.800]: rms    0 max    1 freq    -91 +/-   6 delay  1184 +/-   0
+Feb 12 16:25:53 bbv1 ptp4l[23822]: ptp4l[6271.677]: rms    4 max   17 freq   -107 +/-  48 delay  1184 +/-   0
+Feb 12 16:25:52 bbv1 ptp4l[23822]: ptp4l[6270.554]: rms    6 max   17 freq   +179 +/- 106 delay  1184 +/-   0
+Feb 12 16:25:50 bbv1 ptp4l[23822]: ptp4l[6269.431]: rms    1 max    2 freq   +191 +/-  12 delay  1184 +/-   0
+Feb 12 16:25:49 bbv1 ptp4l[23822]: ptp4l[6268.308]: rms    1 max    1 freq   +119 +/-  21 delay  1184 +/-   0
+Feb 12 16:25:48 bbv1 ptp4l[23822]: ptp4l[6267.186]: rms    1 max    1 freq   +103 +/-  13 delay  1184 +/-   0
+Feb 12 16:25:47 bbv1 ptp4l[23822]: ptp4l[6266.063]: rms    7 max   17 freq   -101 +/- 160 delay  1184 +/-   0
+Feb 12 16:25:46 bbv1 ptp4l[23822]: ptp4l[6264.940]: rms    7 max   17 freq    -65 +/- 154 delay  1184 +/-   0
+Feb 12 16:25:45 bbv1 ptp4l[23822]: ptp4l[6263.817]: rms    1 max    2 freq   +176 +/-  33 delay  1183 +/-   0
+Feb 12 16:25:44 bbv1 ptp4l[23822]: ptp4l[6262.695]: rms    0 max    1 freq   +100 +/-   7 delay  1184 +/-   0
+Feb 12 16:25:43 bbv1 ptp4l[23822]: ptp4l[6261.572]: rms    1 max    2 freq    +56 +/-  34 delay  1184 +/-   0
+Feb 12 16:25:41 bbv1 ptp4l[23822]: ptp4l[6260.449]: rms    1 max    1 freq    -37 +/-  14 delay  1184 +/-   0
+Feb 12 16:25:40 bbv1 ptp4l[23822]: ptp4l[6259.326]: rms    7 max   16 freq   +114 +/- 149 delay  1183 +/-   0
+}
+
+```
+
+##### RU configuration
+
+You can use `rucfg show` to display the current RU configuration. 
+
+The OAI configuration file [`gnb.sa.band257.132prb.fhi72.2x2-microamp.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band257.132prb.fhi72.2x2-microamp.conf) corresponds to the following RU configuration:
+
+```bash
+[INFO] Check if RU is available
+[INFO] RU available
+[INFO] Check SSH to RU available
+[INFO] SSH to RU available
+[INFO] Downloading oran_autostart
+[INFO] Downloading ructl_config.sh
+[INFO] Downloading udc_pll_configurator_startup
+[INFO] Downloaded Cellbox config = 
+{
+	eCPRI Compression: True
+	RF Bandwidth: 200MHz
+	CC Bandwidth: 200MHz
+	CCs: 1
+	LO frequency: 7.91642667e9
+	UL compensation frequency: 28.04928e9
+	DL compensation frequency: -28.04928e9
+	RU MAC: 10:70:FD:B8:86:02
+	DU MAC: 50:7C:6F:31:00:61
+	TDD config: dddsu
+	RF Power level: -5 dB - relative to maximum
+	VLAN ORAN: Enabled, tag: 600
+	VLAN PTP: Enabled, tag: 1
+	VLAN MGMT: False
+	Beamforming: dynamic-mirrored-beam
+}
+```
+
+Execute `rucfg config -h` to check how to configure the RU.
+
+You can also execute `rucfg stats` to show fronthaul statistics including on-time/late packet' counters.
 
 #### VVDN LPRU
 
@@ -618,7 +712,7 @@ jumboframe 1 # enable jumbo frame
 The OAI configuration file [`gnb.sa.band77.273prb.fhi72.4x4-vvdn.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.273prb.fhi72.4x4-vvdn.conf) corresponds to:
 - TDD pattern `DDDSU`, 2.5ms
 - Bandwidth 100MHz
-- MTU 9600
+- MTU 9216
 
 ##### RU configuration
 
@@ -692,7 +786,7 @@ At this stage, RU must be rebooted so the changes apply.
 The OAI configuration file [`gnb.sa.band78.273prb.fhi72.4X4-foxconn.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4X4-foxconn.conf) corresponds to:
 - TDD pattern `DDDSU`, 2.5ms
 - Bandwidth 100MHz
-- MTU 9600
+- MTU 9216
 
 ##### RU configuration
 
@@ -719,7 +813,37 @@ RU must be rebooted so the changes apply.
 - The measured throughput was **520 Mbps DL** and **40 Mbps UL**.
 - With newer OAI versions, throughput degrades. This issue is currently under investigation.
 
-### Configure Network Interfaces and DPDK VFs
+#### ProtO-RU
+
+[ProtO-RU](https://github.com/NUS-CIR/ProtO-RU) is a software implementation of an O-RAN 7.2 RU using a NI USRP.
+Different from other COTS RUs, ProtO-RU requires a larger DU delay profile which is larger than the TTI interval.
+
+The OAI configuration file [`gnb.sa.band78.106prb.fhi72.1x1-proto-ru.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.106prb.fhi72.1x1-proto-ru.conf) corresponds to:
+
+- TDD pattern `DDDSU`, 2.5ms
+- Bandwidth 40MHz
+- MTU 9216
+- 1T1R
+
+##### RU configuration
+
+First, compile the RU as outlined in the [building ProtO-RU tutorial](https://github.com/NUS-CIR/ProtO-RU/tree/proto-ru?tab=readme-ov-file#building-proto-ru).
+Then, ensure that both your DU and ProtO-RU host are PTP synchronized.
+
+Next, use the RU config, [protoru-OAI-B210-TDD-n78-40MHz-1x1-30kHz.yml](https://github.com/NUS-CIR/ProtO-RU/blob/proto-ru/proto-ru/conf-files/protoru-OAI-B210-TDD-n78-40MHz-1x1-30kHz.yml), which corresponds to the above mentioned DU config file. 
+In addition, please adapt the DU MAC address and VLAN tag to your needs.
+
+ProtO-RU was successfully tested with USRP B210.
+If you are using a different SDR (e.g., N310), you will need to update the ProtO-RU and the DU configurations accordingly.
+
+Launch ProtO-RU with the adapted configuration file with the command:
+```bash
+sudo ./ru_emulator -c <path-to/protoru-OAI-B210-TDD-n78-40MHz-1x1-30kHz.yml>
+```
+
+Finally, start the OAI gNB.
+
+## Configure Network Interfaces and DPDK VFs
 
 The 7.2 fronthaul uses the xran library, which requires DPDK. In this step, we
 need to configure network interfaces to send data to the RU, and configure DPDK
@@ -895,7 +1019,7 @@ We recommand to put the above four steps into one script file to quickly repeat 
 set -x
 IF_NAME=eno12409
 MAX_RING_BUFFER_SIZE=4096
-MTU=9600
+MTU=9216
 DU_U_PLANE_MAC_ADD=00:11:22:33:44:66
 DU_C_PLANE_MAC_ADD=00:11:22:33:44:67
 VLAN=3
@@ -931,12 +1055,13 @@ Sample configuration files for OAI gNB, specific to the manufacturer of the radi
 2. VVDN RU:
 [`gnb.sa.band77.273prb.fhi72.4x4-vvdn.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.273prb.fhi72.4x4-vvdn.conf)
 [`gnb.sa.band77.106prb.fhi72.4x4-vvdn.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.106prb.fhi72.4x4-vvdn.conf)
-[`gnb.sa.band77.273prb.fhi72.2x2-vvdn.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.273prb.fhi72.2x2-vvdn.conf)
+[`gnb.sa.band77.273prb.fhi72.2x2-vvdn-16b.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band77.273prb.fhi72.2x2-vvdn-16b.conf)
 3. Benetel 650 RU:
 [`gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band77.273prb.fhi72.4x4-benetel650.conf)
 4. Benetel 550 RU:
 [`gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-benetel550.conf)
 [`gnb.sa.band78.273prb.fhi72.4x2-benetel550.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x2-benetel550.conf)
+[`gnb.sa.band78.273prb.fhi72.2x2-benetel550-16b.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.2x2-benetel550-16b.conf) - tested successfully with E release; with F, UL U-plane fragmentation is not correct
 5. Metanoia RU:
 [`gnb.sa.band78.273prb.fhi72.4x4-metanoia.conf`](../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.273prb.fhi72.4x4-metanoia.conf)
 
@@ -949,6 +1074,14 @@ Edit the sample OAI gNB configuration file and check following parameters:
   * `GNB_IPV4_ADDRESS_FOR_NGU` shall match your gNB N3 interface IP address
   * `prach_ConfigurationIndex`
   * `prach_msg1_FrequencyStart`
+  * `ssPBCH_BlockPower` is average EPRE of the resource elements carrying the secondary synchronization signals, expressed in dBm. It can be estimated using the following formula:
+
+    > ssPBCH_BlockPower = P_TX − 10 x log10(N_RE) + 10 x log10(N_antenna_SSB)
+
+    where:
+    * `P_TX` is the total transmit power of the RU in dBm (configured on the RU).
+    * `N_RE` is the number of resource elements used for the transmission.
+    * `N_antenna_SSB` is the number of antenna ports used for SSB transmission (currently, a single antenna port is used for SSB transmission).
   * Adjust the frequency, bandwidth and SSB position
 
 * `L1s` section
@@ -970,7 +1103,7 @@ Edit the sample OAI gNB configuration file and check following parameters:
   * `io_core`: absolute CPU core ID for XRAN library, it should be an isolated core, in our environment we are using CPU 4
   * `worker_cores`: array of absolute CPU core IDs for XRAN library, they should be isolated cores, in our environment we are using CPU 2
   * `ru_addr`: RU U- and C-plane MAC-addresses (format `UU:VV:WW:XX:YY:ZZ`, hexadecimal numbers)
-  * `mtu`: Maximum Transmission Unit for the RU, specified by RU vendor; either 1500 or 9600 B (Jumbo Frames); if not set, 1500 is used
+  * `mtu`: Maximum Transmission Unit for the RU, specified by RU vendor; either 1500 or 9600 B (Jumbo Frames); if not set, 1500 is used; if the testbed contains a switch, and its max supported MTU < 9600, then please set the same value in the config file as well
   * `file_prefix` : used to specify a unique prefix for shared memory and files created by multiple DPDK processes; if not set, default value of `wls_0` is used
   * `dpdk_mem_size`: the huge page size that should be pre-allocated by DPDK
     _for NUMA node 0_; by default, this is 8192 MiB (corresponding to 8 huge
@@ -991,6 +1124,7 @@ Edit the sample OAI gNB configuration file and check following parameters:
       [Memory in DPDK](https://www.dpdk.org/memory-in-dpdk-part-2-deep-dive-into-iova/)
   * `owdm_enable`: used for eCPRI One-Way Delay Measurements; it depends if the RU supports it; if not set to 1 (enabled), default value is 0 (disabled)
   * `fh_config`
+    * `RunSlotPrbMapBySymbol`: enable CP multisection (one symbol per section); default value is 0
     *  DU delay profile (`T1a` and `Ta4`): pairs of numbers `(x, y)` specifying minimum and maximum delays
     * `ru_config`: RU-specific configuration:
       * `iq_width`: Width of DL/UL IQ samples: if 16, no compression, if <16, applies
@@ -1000,6 +1134,7 @@ Edit the sample OAI gNB configuration file and check following parameters:
     * `prach_config`: PRACH-specific configuration
       * `eAxC_offset`:  PRACH antenna offset; if not set, default value of `N = max(Nrx,Ntx)` is used
       * `kbar`: the PRACH guard interval, provided in RU
+  * `app_id`: `DU` or `RU`. Sets the application `id` value in xRAN. Use the default value: `DU`.
 
 Layer mapping (eAxC offsets) happens as follows:
 - For PUSCH/PDSCH, the layers are mapped to `[0,1,...,Nrx-1]/[0,1,...,Ntx-1]` where `Nrx/Ntx` is the
@@ -1171,7 +1306,7 @@ fhi_72 = {
   io_core = 1;
   worker_cores = (2);
   ru_addr = ("8c:1f:64:d1:10:46","8c:1f:64:d1:10:46","8c:1f:64:d1:10:43","8c:1f:64:d1:10:43")
-  mtu = 9600;
+  mtu = 9216;
   fh_config = (
 # RAN650 #1
    {
@@ -1460,6 +1595,7 @@ fhi_72 = {
   * `dpdk_iova_mode`: [*]
   * `owdm_enable`: [*]
   * `fh_config`: only DU delay profile (`T1a` and `Ta4`)
+  * `app_id`: [*]
 
 [*] see [Configure OAI gNB](#configure-oai-gnb) for more details
 
@@ -1587,11 +1723,11 @@ sequenceDiagram
 [HW]   [MPLANE] Watchdog timer answer: 
 	<next-update-at xmlns="urn:o-ran:supervision:1.0">2025-03-30T08:52:31+02:00</next-update-at>
 
-[HW]   [MPLANE] Interface MTU 1500 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9600.
+[HW]   [MPLANE] Interface MTU 1500 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9216.
 [HW]   [MPLANE] IQ bitwidth 16 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9.
 [HW]   [MPLANE] Storing the following information to forward to xran:
     RU MAC address 8c:1f:64:d1:11:c0
-    MTU 9600
+    MTU 9216
     IQ bitwidth 9
     PRACH offset 4
     DU port bitmask 61440
@@ -2238,11 +2374,11 @@ sequenceDiagram
 [HW]   [MPLANE] Watchdog timer answer: 
 	<next-update-at xmlns="urn:o-ran:supervision:1.0">2025-08-29T06:49:32+02:00</next-update-at>
 
-[HW]   [MPLANE] Interface MTU 1500 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9600.
+[HW]   [MPLANE] Interface MTU 1500 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9216.
 [HW]   [MPLANE] IQ bitwidth 16 unreliable/not correctly reported by Benetel O-RU, hardcoding to 9.
 [HW]   [MPLANE] Storing the following information to forward to xran:
     RU MAC address 70:b3:d5:e1:5b:81
-    MTU 9600
+    MTU 9216
     IQ bitwidth 9
     PRACH offset 4
     DU port bitmask 61440

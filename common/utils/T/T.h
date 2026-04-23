@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #ifndef _T_T_T_
 #define _T_T_T_
 
@@ -14,7 +18,6 @@
 /* T message IDs */
 #include "T_IDs.h"
 
-#define T_ACTIVE_STDOUT  2
 
 /* known type - this is where you add new types */
 #define T_INT(x) int, (x)

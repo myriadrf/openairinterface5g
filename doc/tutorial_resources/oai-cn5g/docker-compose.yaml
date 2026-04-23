@@ -1,7 +1,7 @@
 services:
     mysql:
         container_name: "mysql"
-        image: mysql:8.0
+        image: mysql:9.6
         volumes:
             - ./database/oai_db.sql:/docker-entrypoint-initdb.d/oai_db.sql
             - ./healthscripts/mysql-healthcheck.sh:/tmp/mysql-healthcheck.sh
@@ -154,9 +154,9 @@ services:
         privileged: true
         init: true
         container_name: oai-ext-dn
-        image: oaisoftwarealliance/trf-gen-cn5g:jammy
+        image: oaisoftwarealliance/trf-gen-cn5g:latest
         entrypoint: /bin/bash -c \
-              "ip route add 10.0.0.0/16 via 192.168.70.134 dev eth0; ip route; sleep infinity"
+              "ip route add 10.0.0.0/16 via 192.168.70.134 dev eth0; ip route; iperf3 -s -D; sleep infinity"
         command: ["/bin/bash", "-c", "trap : SIGTERM SIGINT; sleep infinity & wait"]
         healthcheck:
             test: /bin/bash -c "ip r | grep 10.0.0"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 add_executable(nr-cuup-load-test nr-cuup-load-test.c)
 add_dependencies(nr-cuup-load-test params_libconfig)
 target_link_libraries(nr-cuup-load-test PRIVATE GTPV1U ${T_LIB} utils ITTI e1ap

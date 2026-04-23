@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # OAI console logging facility
 
 oai includes a console logging facility that any component should use when writting informational or debugging messages to the softmodem or uesoftmodem stdout stream.

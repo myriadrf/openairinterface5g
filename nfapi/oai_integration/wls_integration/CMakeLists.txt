@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 message(STATUS "Building with support for WLS")
 add_library(wls_integration_lib
         wls_pnf.c

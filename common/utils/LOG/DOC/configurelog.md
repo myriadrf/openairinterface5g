@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 ### Initializing and configuring the logging facility
 
 #### logging facility APIs

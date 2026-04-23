@@ -1,31 +1,10 @@
-/* Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file RRC/LTE/defs_NB_IoT.h
-* \brief NB-IoT RRC struct definitions and function prototypes
-* \author Navid Nikaein, Raymond Knopp and Michele Paffetti
-* \date 2010 - 2014, 2017
-* \version 1.0
-* \company Eurecom
-* \email: navid.nikaein@eurecom.fr, raymond.knopp@eurecom.fr, michele.paffetti@studio.unibo.it
-*/
+/*!
+ * \brief NB-IoT RRC struct definitions and function prototypes
+ */
 
 #ifndef __OPENAIR_RRC_DEFS_NB_IOT_H__
 #define __OPENAIR_RRC_DEFS_NB_IOT_H__
@@ -65,13 +44,6 @@
 
 # include "intertask_interface.h"
 # include "commonDef.h"
-
-
-#if ENABLE_RAL
-  #include "collection/hashtable/obj_hashtable.h"
-#endif
-
-
 
 /*I will change the name of the structure for compile purposes--> hope not to undo this process*/
 
@@ -442,7 +414,6 @@ typedef struct eNB_RRC_INST_NB_IoT_s {
 
 } eNB_RRC_INST_NB_IoT;
 
-#define RRC_HEADER_SIZE_MAX_NB_IoT 64
 #define MAX_UE_CAPABILITY_SIZE_NB_IoT 255
 
 //not needed for the moment
@@ -452,10 +423,6 @@ typedef struct OAI_UECapability_NB_IoT_s {
   ////NB-IoT------
   LTE_UE_Capability_NB_r13_t  UE_Capability_NB_IoT; //replace the UE_EUTRA_Capability of LTE
 } OAI_UECapability_NB_IoT_t;
-
-#define RRC_BUFFER_SIZE_MAX_NB_IoT 1024
-
-
 
 typedef struct UE_RRC_INST_NB_IoT_s {
   Rrc_State_NB_IoT_t     RrcState;

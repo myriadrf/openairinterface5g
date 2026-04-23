@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #ifndef _CONF_NETWORK_H
 #define _CONF_NETWORK_H
 
@@ -11,9 +15,6 @@
 #define SHORTNAME "SHORTNAME"
 #define MNC "MNC"
 #define MCC "MCC"
-
-#define MIN_TAC     0x0000
-#define MAX_TAC     0xFFFE
 
 /*
  * PLMN network operator record

@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file common/utils/websrv/websrv_noforms.h
+/*!
  * \brief: include file to replace forms.h when compiling nr_phy_scope.c for the webserver shared lib
- * \author Francois TABURET
- * \date 2022
- * \version 0.1
- * \company NOKIA BellLabs France
- * \email: francois.taburet@nokia-bell-labs.com
- * \note
- * \warning
  */
 
 #ifndef FL_FORMS_H
@@ -35,7 +11,6 @@
 
 #define FL_VERSION 1
 #define FL_REVISION 2
-#define FL_FIXLEVEL "3"
 #define FL_INCLUDE_VERSION (FL_VERSION * 1000 + FL_REVISION)
 
 #include <stdio.h>
@@ -194,15 +169,10 @@ typedef enum {
   FL_CLASS_END /* sentinel */
 } FL_CLASS;
 
-#define FL_BEGIN_GROUP 10000
-#define FL_END_GROUP 20000
 
-#define FL_USER_CLASS_START 1001 /* min. user class  value */
-#define FL_USER_CLASS_END 9999 /* max. user class  value */
 
 /* Maximum border width (in pixel) */
 
-#define FL_MAX_BW 10
 
 /* How to display a form onto screen */
 
@@ -332,21 +302,11 @@ enum { FL_MBUTTON1 = 1, FL_MBUTTON2, FL_MBUTTON3, FL_MBUTTON4, FL_MBUTTON5 };
 #define FL_SCROLLUP_MOUSE FL_MBUTTON4
 #define FL_SCROLLDOWN_MOUSE FL_MBUTTON5
 
-#define FL_LEFTMOUSE FL_LEFT_MOUSE
-#define FL_MIDDLEMOUSE FL_MIDDLE_MOUSE
-#define FL_RIGHTMOUSE FL_RIGHT_MOUSE
-#define FL_SCROLLUPMOUSE FL_SCROLLUP_MOUSE
-#define FL_SCROLLDOWNMOUSE FL_SCROLLDOWN_MOUSE
 
 /* control when to return input, slider and dial etc. object. */
 
-#define FL_RETURN_NONE 0U
-#define FL_RETURN_CHANGED 1U
 #define FL_RETURN_END 2U
 #define FL_RETURN_END_CHANGED 4U
-#define FL_RETURN_SELECTION 8U
-#define FL_RETURN_DESELECTION 16U
-#define FL_RETURN_TRIGGERED 1024U
 #define FL_RETURN_ALWAYS (~FL_RETURN_END_CHANGED)
 
 /*  Some special color indices for FL private colormap. It does not matter
@@ -532,22 +492,13 @@ typedef enum {
 } FL_PD_COL;
 
 #define FL_BUILT_IN_COLS (FL_YELLOWGREEN + 1)
-#define FL_INACTIVE_COL FL_INACTIVE
 
 /* Some aliases for a number of colors */
 
-#define FL_GRAY16 FL_RIGHT_BCOL
-#define FL_GRAY35 FL_BOTTOM_BCOL
-#define FL_GRAY80 FL_TOP_BCOL
-#define FL_GRAY90 FL_LEFT_BCOL
-#define FL_GRAY63 FL_COL1
-#define FL_GRAY75 FL_MCOL
 #define FL_LCOL FL_BLACK
-#define FL_NoColor FL_NOCOLOR
 
 /* An alias probably for an earlier typo */
 
-#define FL_DOGERBLUE FL_DODGERBLUE
 
 /* Events that a form reacts to  */
 
@@ -609,9 +560,7 @@ typedef enum {
 #define FL_ALT_MASK (1L << 25) /* alt + Key --> FL_ALT_MASK + key */
 #define FL_CONTROL_MASK (1L << 26)
 #define FL_SHIFT_MASK (1L << 27)
-#define FL_ALT_VAL FL_ALT_MASK /* Don' use! */
 
-#define MAX_SHORTCUTS 8
 
 /* Pop-up menu item attributes. NOTE if more than 8, need to change
  * choice and menu class where mode is kept by a single byte */
@@ -619,8 +568,6 @@ typedef enum {
 enum { FL_PUP_NONE, FL_PUP_GREY = 1, FL_PUP_BOX = 2, FL_PUP_CHECK = 4, FL_PUP_RADIO = 8 };
 
 #define FL_PUP_GRAY FL_PUP_GREY
-#define FL_PUP_TOGGLE FL_PUP_BOX /* not used anymore */
-#define FL_PUP_INACTIVE FL_PUP_GREY
 
 /* Popup and menu entries */
 
@@ -633,7 +580,6 @@ typedef struct {
   int mode; /* FL_PUP_GRAY, FL_PUP_CHECK etc */
 } FL_PUP_ENTRY;
 
-#define FL_MENU_ENTRY FL_PUP_ENTRY
 
 /*******************************************************************
  * FONTS
@@ -670,7 +616,6 @@ typedef enum {
   FL_EMBOSSED_STYLE = (1 << 11)
 } FL_TEXT_STYLE;
 
-#define FL_FONT_STYLE FL_TEXT_STYLE
 
 #define special_style(a) ((a) >= FL_SHADOW_STYLE && (a) <= (FL_EMBOSSED_STYLE + FL_MAXFONTS))
 
@@ -683,26 +628,16 @@ typedef enum {
 #define FL_LARGE_SIZE 18
 #define FL_HUGE_SIZE 24
 
-#define FL_DEFAULT_SIZE FL_SMALL_SIZE
 
 /* Defines for compatibility */
 
-#define FL_TINY_FONT FL_TINY_SIZE
 #define FL_SMALL_FONT FL_SMALL_SIZE
-#define FL_NORMAL_FONT FL_NORMAL_SIZE
-#define FL_MEDIUM_FONT FL_MEDIUM_SIZE
-#define FL_LARGE_FONT FL_LARGE_SIZE
-#define FL_HUGE_FONT FL_HUGE_SIZE
 
-#define FL_NORMAL_FONT1 FL_SMALL_FONT
-#define FL_NORMAL_FONT2 FL_NORMAL_FONT
-#define FL_DEFAULT_FONT FL_SMALL_FONT
 
 #define FL_BOUND_WIDTH (FL_Coord)1 /* Border width of boxes */
 
 /* Definition of basic struct that holds an object */
 
-#define FL_CLICK_TIMEOUT 400 /* double click interval */
 
 typedef struct FL_FORM_ FL_FORM;
 typedef struct FL_OBJECT_ FL_OBJECT;
@@ -969,7 +904,6 @@ FL_EXPORT FL_OBJECT *fl_get_focus_object(FL_FORM *form)
 
 FL_EXPORT void fl_reset_focus_object(FL_OBJECT *ob){};
 
-#define fl_set_object_focus fl_set_focus_object
 
 FL_EXPORT FL_FORM_ATCLOSE fl_set_form_atclose(FL_FORM *form, FL_FORM_ATCLOSE fmclose, void *data){};
 
@@ -1014,7 +948,6 @@ FL_EXPORT void fl_set_app_nomainform(int flag){};
 
 FL_EXPORT void fl_set_form_callback(FL_FORM *form, FL_FORMCALLBACKPTR callback, void *d){};
 
-#define fl_set_form_call_back fl_set_form_callback
 
 FL_EXPORT void fl_set_form_size(FL_FORM *form, FL_Coord w, FL_Coord h){};
 
@@ -1036,7 +969,6 @@ FL_EXPORT unsigned long fl_get_form_event_cmask(FL_FORM *form){};
 
 FL_EXPORT void fl_set_form_geometry(FL_FORM *form, FL_Coord x, FL_Coord y, FL_Coord w, FL_Coord h){};
 
-#define fl_set_initial_placement fl_set_form_geometry
 
 FL_EXPORT Window fl_show_form(FL_FORM *form, int place, int border, const char *name)
 {
@@ -1088,7 +1020,6 @@ FL_EXPORT int fl_form_is_iconified(FL_FORM *form)
 
 FL_EXPORT FL_RAW_CALLBACK fl_register_raw_callback(FL_FORM *form, unsigned long mask, FL_RAW_CALLBACK rcb){};
 
-#define fl_register_call_back fl_register_raw_callback
 
 FL_EXPORT FL_OBJECT *fl_bgn_group(void)
 {
@@ -1204,7 +1135,6 @@ FL_EXPORT FL_OBJECT *fl_get_object_component(FL_OBJECT *composite, int objclass,
 
 FL_EXPORT void fl_for_all_objects(FL_FORM *form, int (*cb)(FL_OBJECT *, void *), void *v){};
 
-#define fl_draw_object_outside_label fl_draw_object_label_outside
 
 FL_EXPORT void fl_set_object_dblclick(FL_OBJECT *obj, unsigned long timeout){};
 
@@ -1218,7 +1148,6 @@ FL_EXPORT void fl_set_object_geometry(FL_OBJECT *obj, FL_Coord x, FL_Coord y, FL
 FL_EXPORT void fl_move_object(FL_OBJECT *obj, FL_Coord dx, FL_Coord dy){};
 
 #define fl_set_object_lcolor fl_set_object_lcol
-#define fl_get_object_lcolor fl_get_object_lcol
 
 FL_EXPORT void fl_fit_object_label(FL_OBJECT *obj, FL_Coord xmargin, FL_Coord ymargin){};
 
@@ -1233,7 +1162,6 @@ FL_EXPORT void fl_get_object_bbox(FL_OBJECT *obj, FL_Coord *x, FL_Coord *y, FL_C
   *x = *y = *w = *h = 0;
 };
 
-#define fl_compute_object_geometry fl_get_object_bbox
 
 FL_EXPORT void fl_call_object_callback(FL_OBJECT *ob){};
 
@@ -1243,8 +1171,6 @@ FL_EXPORT FL_HANDLEPTR fl_set_object_posthandler(FL_OBJECT *ob, FL_HANDLEPTR pos
 
 FL_EXPORT FL_CALLBACKPTR fl_set_object_callback(FL_OBJECT *obj, FL_CALLBACKPTR callback, long argument){};
 
-#define fl_set_object_align fl_set_object_lalign
-#define fl_set_call_back fl_set_object_callback
 
 FL_EXPORT void fl_redraw_object(FL_OBJECT *obj){};
 
@@ -1320,7 +1246,6 @@ FL_EXPORT int fl_get_string_widthTAB(int style, int size, const char *s, int len
 
 FL_EXPORT void fl_get_string_dimension(int fntstyle, int fntsize, const char *s, int len, int *width, int *height){};
 
-#define fl_get_string_size fl_get_string_dimension
 
 FL_EXPORT void fl_get_align_xy(int align, int x, int y, int w, int h, int xsize, int ysize, int xoff, int yoff, int *xx, int *yy){};
 
@@ -1364,7 +1289,6 @@ FL_EXPORT long fl_mapcolorname(FL_COLOR col, const char *name)
   return 0;
 };
 
-#define fl_mapcolor_name fl_mapcolorname
 
 FL_EXPORT void fl_free_colors(FL_COLOR *c, int n){};
 
@@ -1382,7 +1306,6 @@ FL_EXPORT unsigned long fl_get_pixel(FL_COLOR col)
   return 0;
 };
 
-#define fl_get_flcolor fl_get_pixel
 
 FL_EXPORT void fl_get_icm_color(FL_COLOR col, int *r, int *g, int *b){};
 
@@ -1489,7 +1412,6 @@ FL_EXPORT char **fl_get_cmdline_args(int *ia)
 
 #define fl_set_error_logfp fl_set_err_logfp
 
-#define fl_mousebutton fl_mouse_button
 
 /* These give more flexibility for future changes. Also application
  * can re-assign these pointers to whatever function it wants, e.g.,
@@ -1510,7 +1432,6 @@ FL_EXPORT int fl_msleep(unsigned long msec)
   return 0;
 };
 
-#define FL_MAX_MENU_CHOICE_ITEMS 128
 
 typedef const char *(*FL_VAL_FILTER)(FL_OBJECT *, double, int);
 
@@ -1535,7 +1456,6 @@ FL_EXPORT int fl_is_same_object(FL_OBJECT *obj1, FL_OBJECT *obj2)
 
 enum { FL_XOR = 0, FL_COPY = 1, FL_AND = 2 };
 
-#define FL_MINDEPTH 1
 
 /* FL_xxx does not do anything anymore, but kept for compatibility */
 
@@ -1554,7 +1474,6 @@ enum { FL_North = 0, FL_NorthEast, FL_NorthWest, FL_South, FL_SouthEast, FL_Sout
 
 #ifndef GreyScale
 #define GreyScale GrayScale
-#define StaticGrey StaticGray
 #endif
 
 #define FL_is_gray(v) ((v) == GrayScale || (v) == StaticGray)
@@ -1589,7 +1508,6 @@ typedef struct {
   unsigned int bshift, bmask, bbits;
 } FL_State;
 
-#define FL_STATE FL_State /* for compatibility */
 
 /***** Global variables ******/
 
@@ -1689,7 +1607,6 @@ FL_EXPORT void fl_point(FL_Coord x, FL_Coord y, FL_COLOR c){};
 
 FL_EXPORT void fl_points(FL_POINT *p, int np, FL_COLOR c){};
 
-#define fl_simple_line fl_line
 
 FL_EXPORT void fl_dashedlinestyle(const char *dash, int ndash){};
 
@@ -1722,9 +1639,6 @@ FL_EXPORT int fl_get_drawmode(void)
   return 0;
 };
 
-#define fl_set_linewidth fl_linewidth
-#define fl_set_linestyle fl_linestyle
-#define fl_set_drawmode fl_drawmode
 
 /*
  * Interfaces
@@ -1733,7 +1647,6 @@ FL_EXPORT int fl_get_drawmode(void)
 FL_EXPORT XFontStruct *fl_get_fontstruct(int style, int size){};
 
 #define fl_get_font_struct fl_get_fontstruct
-#define fl_get_fntstruct fl_get_font_struct
 
 FL_EXPORT Window fl_get_mouse(FL_Coord *x, FL_Coord *y, unsigned int *keymask)
 {
@@ -1839,9 +1752,6 @@ FL_EXPORT void fl_winicontitle_f(Window win, const char *fmt, ...){};
 FL_EXPORT void fl_winposition(FL_Coord x, FL_Coord y){};
 
 #define fl_pref_winposition fl_winposition
-#define fl_win_background fl_winbackground
-#define fl_winstepunit fl_winstepsize
-#define fl_set_winstepunit fl_winstepsize
 
 FL_EXPORT void fl_winminsize(Window win, FL_Coord w, FL_Coord h){};
 
@@ -1855,7 +1765,6 @@ FL_EXPORT void fl_winsize(FL_Coord w, FL_Coord h){};
 
 FL_EXPORT void fl_initial_winsize(FL_Coord w, FL_Coord h){};
 
-#define fl_pref_winsize fl_winsize
 
 FL_EXPORT void fl_initial_winstate(int state){};
 
@@ -1863,7 +1772,6 @@ FL_EXPORT Colormap fl_create_colormap(XVisualInfo *xv, int nfill){};
 
 FL_EXPORT void fl_wingeometry(FL_Coord x, FL_Coord y, FL_Coord w, FL_Coord h){};
 
-#define fl_pref_wingeometry fl_wingeometry
 
 FL_EXPORT void fl_initial_wingeometry(FL_Coord x, FL_Coord y, FL_Coord w, FL_Coord h){};
 
@@ -1879,10 +1787,6 @@ FL_EXPORT void fl_get_wingeometry(Window win, FL_Coord *x, FL_Coord *y, FL_Coord
 
 /* For compatibility */
 
-#define fl_get_win_size fl_get_winsize
-#define fl_get_win_origin fl_get_winorigin
-#define fl_get_win_geometry fl_get_wingeometry
-#define fl_initial_winposition fl_pref_winposition
 
 #define fl_get_display() fl_display
 #define FL_FormDisplay(form) fl_display
@@ -1895,7 +1799,6 @@ FL_EXPORT void fl_get_wingeometry(Window win, FL_Coord *x, FL_Coord *y, FL_Coord
 
 FL_EXPORT Window fl_get_real_object_window(FL_OBJECT *ob){};
 
-#define FL_OBJECT_WID FL_ObjWin
 
 /*  All registerable events, including Client Message */
 
@@ -1941,7 +1844,6 @@ FL_EXPORT long fl_remove_selected_xevent(Window win, long mask)
   return 0;
 };
 
-#define fl_add_selected_xevent fl_addto_selected_xevent
 
 FL_EXPORT void fl_set_idle_delta(long delta){};
 
@@ -1960,7 +1862,6 @@ FL_EXPORT void fl_XFlush(void){};
 #define controlkey_down(mask) ((mask)&ControlMask)
 #define button_down(mask) (((mask)&Button1Mask) || ((mask)&Button2Mask) || ((mask)&Button3Mask) || ((mask)&Button4Mask) || ((mask)&Button5Mask))
 
-#define fl_keypressed fl_keysym_pressed
 
 /****************** Resources ***************/
 
@@ -1975,7 +1876,6 @@ typedef struct {
   int nbytes; /* used only for strings                */
 } FL_RESOURCE;
 
-#define FL_resource FL_RESOURCE
 
 #define FL_CMD_OPT XrmOptionDescRec
 
@@ -2002,9 +1902,6 @@ FL_EXPORT int fl_keysym_pressed(KeySym k)
   return 0;
 };
 
-#define buttonLabelSize buttonFontSize
-#define sliderLabelSize sliderFontSize
-#define inputLabelSize inputFontSize
 
 /* All Form control variables. Named closely as its resource name */
 
@@ -2035,9 +1932,6 @@ typedef struct {
   char vname[24];
 } FL_IOPT;
 
-#define FL_PDButtonLabelSize FL_PDButtonFontSize
-#define FL_PDSliderLabelSize FL_PDSliderFontSize
-#define FL_PDInputLabelSize FL_PDInputFontSize
 
 /* Program default masks */
 
@@ -2068,7 +1962,6 @@ enum {
   FL_PDLabelFontSize = (1 << 24)
 };
 
-#define FL_PDButtonLabel FL_PDButtonLabelSize
 
 FL_EXPORT void fl_set_defaults(unsigned long mask, FL_IOPT *cntl){};
 
@@ -2133,11 +2026,8 @@ typedef unsigned int FL_PACKED4;
 
 #define FL_RMASK 0x000000ff
 #define FL_RSHIFT 0
-#define FL_GMASK 0x0000ff00
 #define FL_GSHIFT 8
-#define FL_BMASK 0x00ff0000
 #define FL_BSHIFT 16
-#define FL_AMASK 0xff000000
 #define FL_ASHIFT 24
 
 /* If PCBITS is not 8, we need to apply the RGBmask */
@@ -2225,8 +2115,6 @@ typedef int (*FL_MODIFY_CANVAS_PROP)(FL_OBJECT *);
 
 /******************** Default *********************/
 
-#define FL_CANVAS_BOXTYPE FL_DOWN_BOX /* really the decoration frame */
-#define FL_CANVAS_ALIGN FL_ALIGN_TOP
 
 /************ Interfaces    ************************/
 
@@ -2244,7 +2132,6 @@ FL_EXPORT FL_OBJECT *fl_create_canvas(int type, FL_Coord x, FL_Coord y, FL_Coord
 
   /* backward compatibility */
 
-#define fl_set_canvas_decoration fl_set_object_boxtype
 
 FL_EXPORT void fl_set_canvas_colormap(FL_OBJECT *ob, Colormap colormap){};
 
@@ -2306,10 +2193,6 @@ FL_EXPORT void fl_canvas_yield_to_shortcut(FL_OBJECT *ob, int yes){};
 
 enum { FL_NORMAL_TEXT };
 
-#define FL_TEXT_BOXTYPE FL_FLAT_BOX
-#define FL_TEXT_COL1 FL_COL1
-#define FL_TEXT_COL2 FL_MCOL
-#define FL_TEXT_LCOL FL_LCOL
 #define FL_TEXT_ALIGN (FL_ALIGN_LEFT | FL_ALIGN_INSIDE)
 
 FL_EXPORT FL_OBJECT *fl_create_text(int type, FL_Coord x, FL_Coord y, FL_Coord w, FL_Coord h, const char *label)
@@ -2356,10 +2239,6 @@ enum { FL_GRID_NONE = 0, FL_GRID_MAJOR = 1, FL_GRID_MINOR = 2 };
 
 /***** Defaults *****/
 
-#define FL_XYPLOT_BOXTYPE FL_FLAT_BOX
-#define FL_XYPLOT_COL1 FL_COL1
-#define FL_XYPLOT_LCOL FL_LCOL
-#define FL_XYPLOT_ALIGN FL_ALIGN_BOTTOM
 #define FL_MAX_XYPLOTOVERLAY 32
 
 /***** Others   *****/
@@ -2382,7 +2261,6 @@ FL_EXPORT int fl_set_xyplot_file(FL_OBJECT *ob, const char *f, const char *title
 
 FL_EXPORT void fl_insert_xyplot_data(FL_OBJECT *ob, int id, int n, double x, double y){};
 
-#define fl_set_xyplot_datafile fl_set_xyplot_file
 
 FL_EXPORT void fl_add_xyplot_text(FL_OBJECT *ob, double x, double y, const char *text, int al, FL_COLOR col){};
 

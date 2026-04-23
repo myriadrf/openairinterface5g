@@ -1,27 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
- */
-
-/** sodera_lib.c
- *
- * Author: Raymond Knopp
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
  
 #include <vector>
@@ -87,7 +65,7 @@ typedef struct
 
   int64_t tx_count;
   int64_t rx_count;
-  openair0_timestamp rx_timestamp;
+  openair0_timestamp_t rx_timestamp;
 
 } sodera_t;
 
@@ -131,7 +109,7 @@ uint16_t SPI_read(LMScomms* dataPort, uint16_t address)
     return 0;
 }
 
-static int trx_sodera_start(openair0_device *device)
+static int trx_sodera_start(openair0_device_t *device)
 {
   sodera_t *s = (sodera_t*)device->priv;
 
@@ -182,7 +160,7 @@ static int trx_sodera_start(openair0_device *device)
   return 0;
 }
 
-static void trx_sodera_end(openair0_device *device)
+static void trx_sodera_end(openair0_device_t *device)
 {
   sodera_t *s = (sodera_t*)device->priv;
 
@@ -193,7 +171,7 @@ static void trx_sodera_end(openair0_device *device)
 
 }
 
-static int trx_sodera_write(openair0_device *device, openair0_timestamp timestamp, void **buff, int nsamps, int cc, int flags)
+static int trx_sodera_write(openair0_device_t *device, openair0_timestamp_t timestamp, void **buff, int nsamps, int cc, int flags)
 {
   sodera_t *s = (sodera_t*)device->priv;
 
@@ -203,7 +181,7 @@ static int trx_sodera_write(openair0_device *device, openair0_timestamp timestam
 
 #define DEBUG_READ 1
 
-static int trx_sodera_read(openair0_device *device, openair0_timestamp *ptimestamp, void **buff, int nsamps, int cc)
+static int trx_sodera_read(openair0_device_t *device, openair0_timestamp_t *ptimestamp, void **buff, int nsamps, int cc)
 {
    sodera_t *s = (sodera_t*)device->priv;
    int samples_received=0,i,j;
@@ -350,19 +328,18 @@ static bool is_equal(double a, double b)
   return fabs(a-b) < 1e-6;
 }
 
-int trx_sodera_set_freq(openair0_device* device, openair0_config_t *openair0_cfg, int dummy) {
-
+int trx_sodera_set_freq(openair0_device_t *device, openair0_config_t *openair0_cfg, int dummy)
+{
   sodera_t *s = (sodera_t*)device->priv;
 
   //  s->usrp->set_tx_freq(openair0_cfg[0].tx_freq[0]);
   //  s->usrp->set_rx_freq(openair0_cfg[0].rx_freq[0]);
 
-  return(0);
-  
+  return (0);
 }
 
-int openair0_set_rx_frequencies(openair0_device* device, openair0_config_t *openair0_cfg) {
-
+int openair0_set_rx_frequencies(openair0_device_t *device, openair0_config_t *openair0_cfg)
+{
   sodera_t *s = (sodera_t*)device->priv;
   static int first_call=1;
   static double rf_freq,diff;
@@ -374,13 +351,11 @@ int openair0_set_rx_frequencies(openair0_device* device, openair0_config_t *open
   //  rf_freq=openair0_cfg[0].rx_freq[0];
   //  s->usrp->set_rx_freq(rx_tune_req);
 
-  return(0);
-  
+  return (0);
 }
 
-int trx_sodera_set_gains(openair0_device* device, 
-		       openair0_config_t *openair0_cfg) {
-
+int trx_sodera_set_gains(openair0_device_t *device, openair0_config_t *openair0_cfg)
+{
   sodera_t *s = (sodera_t*)device->priv;
 
   //  s->usrp->set_tx_gain(openair0_cfg[0].tx_gain[0]);
@@ -456,20 +431,17 @@ void set_rx_gain_offset(openair0_config_t *openair0_cfg, int chain_index,int bw_
   
 }
 
-
-int trx_sodera_get_stats(openair0_device* device) {
-
-  return(0);
-
-}
-int trx_sodera_reset_stats(openair0_device* device) {
-
-  return(0);
-
+int trx_sodera_get_stats(openair0_device_t *device)
+{
+  return (0);
 }
 
+int trx_sodera_reset_stats(openair0_device_t *device)
+{
+  return (0);
+}
 
-int openair0_dev_init_sodera(openair0_device* device, openair0_config_t *openair0_cfg)
+int openair0_dev_init_sodera(openair0_device_t *device, openair0_config_t *openair0_cfg)
 {
 
   sodera_t *s=&sodera_state;

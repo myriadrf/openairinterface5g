@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 ### Adding console traces in oai code
 #### console messages macros
 ```C

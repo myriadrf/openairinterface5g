@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file ra_procedures.c
+/*!
  * \brief Routines for UE MAC-layer Random Access procedures (TS 38.321, Release 15)
- * \author R. Knopp, Navid Nikaein, Guido Casati
- * \date 2019
- * \version 0.1
- * \company Eurecom
- * \email: knopp@eurecom.fr navid.nikaein@eurecom.fr, guido.casati@iis.fraunhofer.de
- * \note
- * \warning
  */
 
 /* RRC */
@@ -425,8 +401,8 @@ static bool check_mixed_slot_prach(frame_structure_t *fs, int slot, int start_pr
     tdd_bitmap_t *bitmap = &fs->period_cfg.tdd_slot_bitmap[slot % fs->numb_slots_period];
     if (bitmap->num_ul_symbols == 0)
       return false;
-    int ul_end = NR_NUMBER_OF_SYMBOLS_PER_SLOT - 1;
-    int ul_start = NR_NUMBER_OF_SYMBOLS_PER_SLOT - bitmap->num_ul_symbols;
+    int ul_end = NR_SYMBOLS_PER_SLOT - 1;
+    int ul_start = NR_SYMBOLS_PER_SLOT - bitmap->num_ul_symbols;
     if (start_prach < ul_start || end_prach > ul_end)
       return false;
   }
@@ -819,7 +795,7 @@ static void setup_ra_response_window(NR_UE_MAC_INST_t *mac,
 
 // Random Access procedure initialization as per 5.1.1 and initialization of variables specific
 // to Random Access type as specified in clause 5.1.1a (3GPP TS 38.321 version 16.2.1 Release 16)
-bool init_RA(NR_UE_MAC_INST_t *mac, int frame)
+bool init_RA(NR_UE_MAC_INST_t *mac)
 {
   RA_config_t *ra = &mac->ra;
   LOG_D(NR_MAC, "Initialization of RA\n");
@@ -1023,7 +999,7 @@ bool init_RA(NR_UE_MAC_INST_t *mac, int frame)
   return true;
 }
 
-void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac, uint8_t CC_id, frame_t frameP, slot_t slotP, uint8_t gNB_id)
+void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac)
 {
   RA_config_t *ra = &mac->ra;
   NR_RACH_ConfigCommon_t *nr_rach_ConfigCommon = mac->current_UL_BWP->rach_ConfigCommon;
@@ -1109,7 +1085,7 @@ void nr_get_Msg3_MsgA_PUSCH_payload(NR_UE_MAC_INST_t *mac, uint8_t *buf, int TBS
 // according to section 5 of 3GPP TS 38.321 version 16.2.1 Release 16
 // todo:
 // - complete handling of received contention-based RA preamble
-void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const uint8_t gNB_index, const frame_t frame, const int slot)
+void nr_ra_succeeded(NR_UE_MAC_INST_t *mac, const frame_t frame, const int slot)
 {
   RA_config_t *ra = &mac->ra;
 
@@ -1223,6 +1199,8 @@ void prepare_msg4_msgb_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
                          .n_harq = 1};
   current_harq->active = false;
   current_harq->ack_received = false;
+  const NR_UE_UL_BWP_t *current_UL_BWP = mac->current_UL_BWP;
+  configure_initial_pucch(&pucch, current_harq->pucch_resource_indicator, current_UL_BWP->pucch_ConfigCommon->pucch_ResourceCommon);
 
   RA_config_t *ra = &mac->ra;
   ra->ra_pucch = calloc_or_fail(1, sizeof(*ra->ra_pucch));

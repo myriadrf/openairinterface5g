@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # loader source files
 
 The oai shared library loader is implemented in two source files, located in [common/utils](https://gitlab.eurecom.fr/oai/openairinterface5g/tree/develop/common/utils)

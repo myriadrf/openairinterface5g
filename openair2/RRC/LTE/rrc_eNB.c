@@ -1,34 +1,11 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file rrc_eNB.c
+/*!
  * \brief rrc procedures for eNB
- * \author Navid Nikaein and  Raymond Knopp
- * \date 2011 - 2014
- * \version 1.0
- * \company Eurecom
- * \email: navid.nikaein@eurecom.fr and raymond.knopp@eurecom.fr
  */
 #define RRC_ENB
-#define RRC_ENB_C
 #include "oai_asn1.h"
 #include <asn_application.h>
 #include "uper_encoder.h"
@@ -79,7 +56,7 @@
 #include "T.h"
 #include "LTE_MeasResults.h"
 
-#include "common/utils/tun_if.h"
+#include "common/utils/tuntap_if.h"
 
 #include "rrc_eNB_S1AP.h"
 #include "rrc_eNB_GTPV1U.h"
@@ -93,16 +70,11 @@
 #include "intertask_interface.h"
 #include "softmodem-common.h"
 
-#if ENABLE_RAL
-  #include "rrc_eNB_ral.h"
-#endif
-
 #include "SIMULATION/TOOLS/sim.h" // for taus
 
 #include "openair1/PHY/LTE_TRANSPORT/transport_proto.h"
 
 #define ASN_MAX_ENCODE_SIZE 4096
-#define NUMBEROF_DRBS_TOBE_ADDED 1
 static int encode_CG_ConfigInfo(char *buffer,int buffer_size,rrc_eNB_ue_context_t *const ue_context_pP,int *enc_size);
 
 mui_t                               rrc_eNB_mui = 0;

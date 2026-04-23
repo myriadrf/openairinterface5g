@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #ifndef _GNU_SOURCE
@@ -31,11 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "LAYER2/MAC/mac_extern.h"
-#include "LTE_DRB-ToAddModList.h"
-#include "LTE_DRB-ToReleaseList.h"
-#include "LTE_PMCH-InfoList-r9.h"
-#include "LTE_SRB-ToAddModList.h"
 #include "NR_DRB-ToAddMod.h"
 #include "NR_QFI.h"
 #include "NR_SDAP-Config.h"
@@ -46,14 +24,14 @@
 #include "common/platform_constants.h"
 #include "common/ran_context.h"
 #include "common/utils/T/T.h"
-#include "common/utils/tun_if.h"
+#include "common/utils/tuntap_if.h"
 #include "cuup_cucp_if.h"
 #include "executables/lte-softmodem.h"
 #include "executables/softmodem-common.h"
 #include "f1ap_messages_types.h"
 #include "gnb_config.h"
 #include "gtpv1_u_messages_types.h"
-#include "hashtable.h"
+#include "ds/hashtable.h"
 #include "intertask_interface.h"
 #include "common/utils/LOG/log.h"
 #include "nfapi/oai_integration/vendor_ext.h"
@@ -405,7 +383,7 @@ void nr_pdcp_layer_init(void)
 
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "executables/lte-softmodem.h"
-#include "common/utils/tun_if.h"
+#include "common/utils/tuntap_if.h"
 #include "openair2/SDAP/nr_sdap/nr_sdap.h"
 
 static void deliver_sdu_drb(void *_ue, nr_pdcp_entity_t *entity,
@@ -420,7 +398,7 @@ static void deliver_sdu_drb(void *_ue, nr_pdcp_entity_t *entity,
     LOG_D(PDCP, "IP packet received with size %d, to be sent to SDAP interface, UE ID/RNTI: %ld\n", size, ue->ue_id);
     // in NoS1 mode: the SDAP should write() packets to an FD (TUN interface),
     // so below, set is_gnb == 0 to do that
-    sdap_data_ind(entity->rb_id, 0, entity->has_sdap_rx, entity->pdusession_id, ue->ue_id, buf, size);
+    sdap_data_ind(entity->rb_id, 0, entity->pdusession_id, ue->ue_id, buf, size);
   }
   else{
     for (i = 0; i < MAX_DRBS_PER_UE; i++) {
@@ -436,13 +414,7 @@ static void deliver_sdu_drb(void *_ue, nr_pdcp_entity_t *entity,
     rb_found:
     {
       LOG_D(PDCP, "%s() (drb %d) sending message to SDAP size %d\n", __func__, rb_id, size);
-      sdap_data_ind(rb_id,
-                    ue->drb[rb_id - 1]->is_gnb,
-                    ue->drb[rb_id - 1]->has_sdap_rx,
-                    ue->drb[rb_id - 1]->pdusession_id,
-                    ue->ue_id,
-                    buf,
-                    size);
+      sdap_data_ind(rb_id, ue->drb[rb_id - 1]->is_gnb, ue->drb[rb_id - 1]->pdusession_id, ue->ue_id, buf, size);
     }
   }
 }
@@ -506,6 +478,7 @@ srb_found:
      * RRC, the RLC-PDCP interface does not transport this information */
     f1_ue_data_t ue_data = cu_get_f1_ue_data(ue->ue_id);
     ul_rrc->gNB_DU_ue_id = ue_data.secondary_ue;
+    message_p->ittiMsgHeader.originInstance = ue_data.du_assoc_id;
     ul_rrc->srb_id = srb_id;
     ul_rrc->rrc_container = malloc(size);
     AssertFatal(ul_rrc->rrc_container != NULL, "OUT OF MEMORY\n");

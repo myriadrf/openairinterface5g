@@ -1,24 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Author and copyright: Laurent Thomas, open-cells.com
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #ifndef E1AP_MESSAGES_TYPES_H
@@ -33,7 +14,6 @@
 /* Definitions according to 3GPP TS 38.463 */
 #define E1AP_MAX_NUM_TRANSAC_IDS 4
 #define E1AP_MAX_NUM_PLMNS 4
-#define E1AP_MAX_NUM_SLICES 1024
 #define E1AP_MAX_NUM_CELL_GROUPS 4
 #define E1AP_MAX_NUM_QOS_FLOWS 64
 #define E1AP_MAX_NUM_PDU_SESSIONS 4
@@ -200,7 +180,7 @@ typedef struct {
 
 typedef nssai_t e1ap_nssai_t;
 
-typedef struct e1ap_net_config_t {
+typedef struct {
   net_ip_address_t CUUP_e1_ip_address;
   net_ip_address_t CUCP_e1_ip_address;
   uint16_t remotePortF1U;
@@ -231,7 +211,7 @@ typedef struct e1ap_cucp_setup_req_s {
   uint64_t transac_id;
 } e1ap_cucp_setup_req_t;
 
-typedef struct e1ap_register_req_t {
+typedef struct {
   e1ap_setup_req_t setup_req;
   e1ap_net_config_t net_config;
   uint32_t gnb_id; // unused in CU-UP, but might be necessary for some functionality, e.g., E2 agent
@@ -269,8 +249,8 @@ typedef struct up_params_s {
 /* IE SDAP Configuration (clause 9.3.1.39 of 3GPP TS 38.463) */
 typedef struct bearer_context_sdap_config_s {
   long defaultDRB;
-  long sDAP_Header_UL;
-  long sDAP_Header_DL;
+  bool sDAP_Header_UL;
+  bool sDAP_Header_DL;
 } bearer_context_sdap_config_t;
 
 /* IE PDCP Configuration (clause 9.3.1.38 of 3GPP TS 38.463) */
@@ -405,10 +385,16 @@ typedef struct DRB_nGRAN_to_modify_s {
   // DL UP Transport Layer Information (O) (clause 9.3.1.13, 9.3.2.1)
   int numDlUpParam;
   up_params_t DlUpParamList[E1AP_MAX_NUM_UP_PARAM];
-  // QoS Flows Information To Modify (O) (clause 9.3.1.25, 9.3.1.26)
-  int numQosFlow2Setup;
+  // Flow Mapping Information (O) (clause 9.3.1.25, 9.3.1.26)
+  int numQosFlowsMod;
   qos_flow_to_setup_t qosFlows[E1AP_MAX_NUM_QOS_FLOWS];
 } DRB_nGRAN_to_mod_t;
+
+/* DRB To Remove Item (NG-RAN) clause 9.3.1.11 */
+typedef struct {
+  // DRB ID (M)
+  long id;
+} drb_to_remove_t;
 
 typedef enum e1ap_indication_e {
   SECURITY_REQUIRED = 0,
@@ -473,6 +459,9 @@ typedef struct pdu_session_to_mod_s {
   long numDRB2Modify;
   // DRB To Modify Item (1..<E1AP_MAX_NUM_DRBS>)
   DRB_nGRAN_to_mod_t DRBnGRanModList[E1AP_MAX_NUM_DRBS];
+  // DRB To Remove List (0..maxnoofDRBs)
+  int n_drb_to_remove;
+  drb_to_remove_t drbs_to_remove[E1AP_MAX_NUM_DRBS];
 } pdu_session_to_mod_t;
 
 /** PDU Session Resource To Remove List (3GPP TS 38.463 clause 9.3.3.12) */
@@ -650,7 +639,7 @@ typedef struct e1ap_bearer_modif_resp_s {
 } e1ap_bearer_modif_resp_t;
 
 /* E1AP Connection Loss indication */
-typedef struct e1ap_lost_connection_t {
+typedef struct {
   int dummy;
 } e1ap_lost_connection_t;
 

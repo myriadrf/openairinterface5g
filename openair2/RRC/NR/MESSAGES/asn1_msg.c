@@ -1,32 +1,10 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file asn1_msg.c
-* \brief primitives to build the asn1 messages
-* \author Raymond Knopp and Navid Nikaein, WEI-TAI CHEN
-* \date 2011, 2018
-* \version 1.0
-* \company Eurecom, NTUST
-* \email: {raymond.knopp, navid.nikaein}@eurecom.fr and kroempa@gmail.com
-*/
+/*!
+ * \brief primitives to build the asn1 messages
+ */
 
 #include <stdio.h>
 #include <sys/types.h>
@@ -245,39 +223,67 @@ NR_UE_NR_Capability_t *decode_nr_ue_capability(int rnti, const NR_UE_CapabilityR
   return NULL;
 }
 
-//------------------------------------------------------------------------------
-
-int do_SIB2_NR(uint8_t **msg_SIB2, NR_SSB_MTC_t *ssbmtc)
+byte_array_t do_SIB2_NR(const NR_SIB2_t *sib2)
 {
-  NR_SIB2_t *sib2 = calloc(1, sizeof(*sib2));
-  sib2->cellReselectionInfoCommon.q_Hyst = NR_SIB2__cellReselectionInfoCommon__q_Hyst_dB0;
-  struct NR_SIB2__cellReselectionInfoCommon__speedStateReselectionPars *speed = calloc(1, sizeof(*speed));
-  NR_MobilityStateParameters_t mobilityStateParameters = {0};
-  mobilityStateParameters.t_Evaluation = NR_MobilityStateParameters__t_Evaluation_s30;
-  mobilityStateParameters.t_HystNormal = NR_MobilityStateParameters__t_HystNormal_s30;
-  mobilityStateParameters.n_CellChangeMedium = 1;
-  mobilityStateParameters.n_CellChangeHigh = 2;
-  speed->mobilityStateParameters = mobilityStateParameters;
-  struct NR_SIB2__cellReselectionInfoCommon__speedStateReselectionPars__q_HystSF qhyst = {0};
-  qhyst.sf_Medium = NR_SIB2__cellReselectionInfoCommon__speedStateReselectionPars__q_HystSF__sf_Medium_dB_4;
-  qhyst.sf_High = NR_SIB2__cellReselectionInfoCommon__speedStateReselectionPars__q_HystSF__sf_High_dB_6;
-  speed->q_HystSF = qhyst;
-  sib2->cellReselectionInfoCommon.speedStateReselectionPars = speed;
-  sib2->cellReselectionServingFreqInfo.cellReselectionPriority = 0; // INTEGER (0..7)
-  sib2->cellReselectionServingFreqInfo.threshServingLowP = 0;
-  NR_ReselectionThresholdQ_t *threshServingLowQ = calloc(1, sizeof(*threshServingLowQ));
-  *threshServingLowQ = 0;
-  sib2->cellReselectionServingFreqInfo.threshServingLowQ = threshServingLowQ;
-  sib2->intraFreqCellReselectionInfo.q_RxLevMin = -56; // INTEGER (-70..-22)
-  sib2->intraFreqCellReselectionInfo.s_IntraSearchP = 22; // INTEGER (0..31)
-  sib2->intraFreqCellReselectionInfo.t_ReselectionNR = 1; // INTEGER (0..7)
-  sib2->intraFreqCellReselectionInfo.deriveSSB_IndexFromCell = true;
-  sib2->intraFreqCellReselectionInfo.smtc = ssbmtc;
+  byte_array_t msg = {.buf = NULL, .len = 0};
+  char errbuf[256] = {0};
+  size_t errlen = sizeof(errbuf);
+  int ret = asn_check_constraints(&asn_DEF_NR_SIB2, sib2, errbuf, &errlen);
+  if (ret != 0) {
+    LOG_E(NR_RRC, "SIB2 constraint check failed: %s\n", errbuf);
+    return msg;
+  }
 
-  ssize_t size = uper_encode_to_new_buffer(&asn_DEF_NR_SIB2, NULL, (void *)sib2, (void **)msg_SIB2);
-  AssertFatal (size > 0, "ASN1 message encoding failed (encoded %lu bytes)!\n", size);
-  ASN_STRUCT_FREE(asn_DEF_NR_SIB2, sib2);
-  return size;
+  int val = uper_encode_to_new_buffer(&asn_DEF_NR_SIB2, NULL, (void *)sib2, (void **)&msg.buf);
+  if (val <= 0) {
+    LOG_E(NR_RRC, "Failed to encode SIB2\n");
+    return msg;
+  }
+
+  msg.len = val;
+  return msg;
+}
+
+byte_array_t do_SIB3_NR(const NR_SIB3_t *sib3)
+{
+  byte_array_t msg = {.buf = NULL, .len = 0};
+  char errbuf[256] = {0};
+  size_t errlen = sizeof(errbuf);
+  int ret = asn_check_constraints(&asn_DEF_NR_SIB3, sib3, errbuf, &errlen);
+  if (ret != 0) {
+    LOG_E(NR_RRC, "SIB3 constraint check failed: %s\n", errbuf);
+    return msg;
+  }
+
+  int val = uper_encode_to_new_buffer(&asn_DEF_NR_SIB3, NULL, (void *)sib3, (void **)&msg.buf);
+  if (val <= 0) {
+    LOG_E(NR_RRC, "Failed to encode SIB3\n");
+    return msg;
+  }
+
+  msg.len = val;
+  return msg;
+}
+
+byte_array_t do_SIB4_NR(NR_SIB4_t *sib4)
+{
+  byte_array_t msg = {.buf = NULL, .len = 0};
+  char errbuf[256] = {0};
+  size_t errlen = sizeof(errbuf);
+  int ret = asn_check_constraints(&asn_DEF_NR_SIB4, sib4, errbuf, &errlen);
+  if (ret != 0) {
+    LOG_E(NR_RRC, "SIB4 constraint check failed: %s\n", errbuf);
+    return msg;
+  }
+
+  int val = uper_encode_to_new_buffer(&asn_DEF_NR_SIB4, NULL, (void *)sib4, (void **)&msg.buf);
+  if (val <= 0) {
+    LOG_E(NR_RRC, "Failed to encode SIB4\n");
+    return msg;
+  }
+
+  msg.len = val;
+  return msg;
 }
 
 int do_RRCReject(uint8_t *const buffer)
@@ -325,7 +331,6 @@ int do_RRCSetup(uint8_t *const buffer,
                 const uint8_t transaction_id,
                 const uint8_t *masterCellGroup,
                 int masterCellGroup_len,
-                const gNB_RrcConfigurationReq *configuration,
                 NR_SRB_ToAddModList_t *SRBs)
 //------------------------------------------------------------------------------
 {
@@ -532,7 +537,7 @@ static NR_RRCReconfiguration_IEs_t *build_RRCReconfiguration_IEs(const nr_rrc_re
   ie->measConfig = params->meas_config;
 
   /* nonCriticalExtension, RRCReconfiguration-v1530-IEs */
-  if (params->cell_group_config || params->num_nas_msg) {
+  if (params->cgc || params->num_nas_msg) {
     // Allocate memory for extension IE
     ie->nonCriticalExtension = calloc_or_fail(1, sizeof(*ie->nonCriticalExtension));
   }
@@ -549,37 +554,13 @@ static NR_RRCReconfiguration_IEs_t *build_RRCReconfiguration_IEs(const nr_rrc_re
       }
     }
 
-    /* masterCellGroup */
-    if (params->cell_group_config) {
-      uint8_t temp[4096];
-      asn_enc_rval_t enc = uper_encode_to_buffer(&asn_DEF_NR_CellGroupConfig, NULL, params->cell_group_config, temp, sizeof(temp));
-
-      if (enc.encoded <= 0) {
-        LOG_E(NR_RRC, "ASN.1 encoding failed for NR_CellGroupConfig (encoded=%ld)\n", enc.encoded);
-        if (enc.failed_type) {
-          LOG_E(NR_RRC, "Failed at ASN.1 type: %s\n", enc.failed_type->name);
-        }
-        if (enc.structure_ptr) {
-          LOG_E(NR_RRC, "Failed at structure element: %p\n", enc.structure_ptr);
-        }
-        // Print diagnostic information to help debug the issue
-        LOG_E(NR_RRC, "CellGroupConfig structure that failed to encode:\n");
-        xer_fprint(stdout, &asn_DEF_NR_CellGroupConfig, (const void *)params->cell_group_config);
-        ASN_STRUCT_FREE(asn_DEF_NR_RRCReconfiguration_IEs, ie);
-        return NULL;
-      }
-      DevAssert(enc.encoded <= sizeof(temp) * 8); // Encoded data must fit in temp buffer
-      // Allocate buffer for the encoded data and copy it
-      // enc.encoded is in bits, convert to bytes
-      size_t encoded_bytes = (enc.encoded + 7) / 8;
-      uint8_t *buf = calloc_or_fail(1, encoded_bytes);
-      memcpy(buf, temp, encoded_bytes);
-
-      if (LOG_DEBUGFLAG(DEBUG_ASN1)) {
-        xer_fprint(stdout, &asn_DEF_NR_CellGroupConfig, (const void *)params->cell_group_config);
-      }
+    /* masterCellGroup - Transparent forwarding per TS 38.473 */
+    if (params->cgc) {
+      // Copy pre-encoded CellGroupConfig bytes directly without decode/re-encode (TS 38.473 transparency)
+      // CU receives encoded bytes from DU and forwards to UE without modification
+      LOG_D(NR_RRC, "Transparent forwarding CellGroupConfig (len=%ld bytes)\n", params->cgc->len);
       ie->nonCriticalExtension->masterCellGroup = calloc_or_fail(1, sizeof(*ie->nonCriticalExtension->masterCellGroup));
-      *ie->nonCriticalExtension->masterCellGroup = (OCTET_STRING_t){.buf = buf, .size = encoded_bytes};
+      OCTET_STRING_fromBuf(ie->nonCriticalExtension->masterCellGroup, (const char *)params->cgc->buf, params->cgc->len);
     }
 
     /* masterKeyUpdate */
@@ -630,6 +611,49 @@ static byte_array_t do_HO_RRCReconfiguration(nr_rrc_reconfig_param_t *params)
   return msg;
 }
 
+void dump_cgc(const uint8_t *buf, size_t len)
+{
+  // Decode the encoded CellGroupConfig for debugging
+  NR_CellGroupConfig_t *temp_cellGroupConfig = NULL;
+  asn_dec_rval_t dec_rval = uper_decode_complete(NULL, &asn_DEF_NR_CellGroupConfig, (void **)&temp_cellGroupConfig, buf, len);
+  if (dec_rval.code == RC_OK && dec_rval.consumed > 0) {
+    xer_fprint(stdout, &asn_DEF_NR_CellGroupConfig, temp_cellGroupConfig);
+    ASN_STRUCT_FREE(asn_DEF_NR_CellGroupConfig, temp_cellGroupConfig);
+  } else {
+    LOG_W(NR_RRC, "Failed to decode CellGroupConfig (code=%d consumed=%zu)\n", dec_rval.code, dec_rval.consumed);
+  }
+}
+
+static void dump_mcg(const NR_DL_DCCH_Message_t *dl_dcch_msg)
+{
+  if (!dl_dcch_msg) {
+    LOG_W(NR_RRC, "DL_DCCH_Message is NULL\n");
+    return;
+  }
+
+  const NR_RRCReconfiguration_IEs_t *reconf_ies = NULL;
+  const struct NR_DL_DCCH_MessageType__c1 *c1 = NULL;
+
+  if (dl_dcch_msg->message.present == NR_DL_DCCH_MessageType_PR_c1
+      && (c1 = dl_dcch_msg->message.choice.c1)
+      && c1->present == NR_DL_DCCH_MessageType__c1_PR_rrcReconfiguration
+      && c1->choice.rrcReconfiguration
+      && c1->choice.rrcReconfiguration->criticalExtensions.present
+             == NR_RRCReconfiguration__criticalExtensions_PR_rrcReconfiguration
+      && c1->choice.rrcReconfiguration->criticalExtensions.choice.rrcReconfiguration) {
+    reconf_ies = c1->choice.rrcReconfiguration->criticalExtensions.choice.rrcReconfiguration;
+  }
+
+  if (reconf_ies && reconf_ies->nonCriticalExtension && reconf_ies->nonCriticalExtension->masterCellGroup) {
+    const OCTET_STRING_t *mcg = reconf_ies->nonCriticalExtension->masterCellGroup;
+
+    /* decode and XER print CellGroupConfig */
+    dump_cgc(mcg->buf, mcg->size);
+  } else {
+    LOG_W(NR_RRC, "No masterCellGroup found in RRCReconfiguration nonCriticalExtension\n");
+  }
+}
+
 byte_array_t do_RRCReconfiguration(const nr_rrc_reconfig_param_t *params)
 {
   byte_array_t msg = {.buf = NULL, .len = 0};
@@ -651,6 +675,7 @@ byte_array_t do_RRCReconfiguration(const nr_rrc_reconfig_param_t *params)
 
   if (LOG_DEBUGFLAG(DEBUG_ASN1)) {
     xer_fprint(stdout, &asn_DEF_NR_DL_DCCH_Message, (void *)&dl_dcch_msg);
+    dump_mcg(&dl_dcch_msg);
   }
 
   int val = uper_encode_to_new_buffer(&asn_DEF_NR_DL_DCCH_Message, NULL, &dl_dcch_msg, (void **)&msg.buf);
@@ -697,7 +722,7 @@ int do_RRCSetupRequest(uint8_t *buffer, size_t buffer_size, uint8_t *rv, uint64_
     str->buf[3] = rv[3];
     str->buf[4] = rv[4] & 0xfe;
   } else {
-    uint64_t fiveG_S_TMSI_part1 = fiveG_S_TMSI & ((1ULL << 39) - 1);
+    uint64_t fiveG_S_TMSI_part1 = nr_extract_5g_s_tmsi_part1(fiveG_S_TMSI);
     /** set the ue-Identity to ng-5G-S-TMSI-Part1
      * ng-5G-S-TMSI-Part1: the rightmost 39 bits of 5G-S-TMSI
      * BIT STRING (SIZE (39)) - 3GPP TS 38.331 */
@@ -821,7 +846,7 @@ int do_RRCSetupComplete(uint8_t *buffer,
       str->size = 2;
       str->bits_unused = 7;
       str->buf = calloc_or_fail(str->size, sizeof(str->buf[0]));
-      uint16_t fiveG_s_tmsi_part2 = (fiveG_s_tmsi >> 39) & ((1ULL << 9) - 1);
+      uint16_t fiveG_s_tmsi_part2 = nr_extract_5g_s_tmsi_part2(fiveG_s_tmsi);
       str->buf[0] = (fiveG_s_tmsi_part2 >> (8 - str->bits_unused)) & 0xFF;
       str->buf[1] = (fiveG_s_tmsi_part2 << str->bits_unused) & 0xFF;
       LOG_D(NR_RRC, "5G-S-TMSI part 2 %d in RRCSetupComplete (5G-S-TMSI %ld)\n", fiveG_s_tmsi_part2, fiveG_s_tmsi);
@@ -1144,7 +1169,6 @@ static NR_MeasIdToAddMod_t *get_MeasId(NR_MeasId_t measId, NR_ReportConfigId_t r
 
 NR_MeasConfig_t *get_MeasConfig(const NR_MeasTiming_t *mt,
                                 int band,
-                                int scs,
                                 int nr_pci,
                                 NR_ReportConfigToAddMod_t *rc_PER,
                                 NR_ReportConfigToAddMod_t *rc_A2,
@@ -1350,20 +1374,33 @@ void fill_removal_lists_from_source_measConfig(NR_MeasConfig_t *currentMC, byte_
   ASN_STRUCT_FREE(asn_DEF_NR_RRCReconfiguration, rrcReconf);
 }
 
-int doRRCReconfiguration_from_HandoverCommand(byte_array_t *ba, const byte_array_t handoverCommand)
+byte_array_t doRRCReconfiguration_from_HandoverCommand(const byte_array_t handoverCommand)
 {
+  DevAssert(handoverCommand.buf);
+  DevAssert(handoverCommand.len > 0);
+  byte_array_t msg = {.buf = NULL, .len = 0};
+
   // Decode Handover Command
   NR_HandoverCommand_t *hoCommand = NULL;
   asn_dec_rval_t dec_rval = uper_decode_complete(NULL, &asn_DEF_NR_HandoverCommand, (void **)&hoCommand, handoverCommand.buf, handoverCommand.len);
 
-  if (dec_rval.code != RC_OK && dec_rval.consumed == 0) {
-    LOG_E(NR_RRC, "Can not decode Handover Command!\n");
-    return -1;
+  if (dec_rval.code != RC_OK || !hoCommand) {
+    LOG_E(NR_RRC, "Failed to decode Handover Command (dec_rval.code=%d)!\n", dec_rval.code);
+    return msg;
+  }
+
+  // Validate HandoverCommand structure
+  if (hoCommand->criticalExtensions.present != NR_HandoverCommand__criticalExtensions_PR_c1
+      || !hoCommand->criticalExtensions.choice.c1
+      || hoCommand->criticalExtensions.choice.c1->present != NR_HandoverCommand__criticalExtensions__c1_PR_handoverCommand
+      || !hoCommand->criticalExtensions.choice.c1->choice.handoverCommand) {
+    LOG_E(NR_RRC, "Invalid HandoverCommand in criticalExtensions.choice.c1->choice.handoverCommand\n");
+    ASN_STRUCT_FREE(asn_DEF_NR_HandoverCommand, hoCommand);
+    return msg;
   }
 
   // Prepare DL DCCH message for RRCReconfiguration
   NR_DL_DCCH_Message_t dl_dcch_msg = {0};
-  asn_enc_rval_t enc_rval;
   dl_dcch_msg.message.present = NR_DL_DCCH_MessageType_PR_c1;
   asn1cCalloc(dl_dcch_msg.message.choice.c1, c1);
   c1->present = NR_DL_DCCH_MessageType__c1_PR_rrcReconfiguration;
@@ -1371,18 +1408,37 @@ int doRRCReconfiguration_from_HandoverCommand(byte_array_t *ba, const byte_array
 
   // Decode RRCReconfiguration from handoverCommandMessage
   OCTET_STRING_t *ho = &hoCommand->criticalExtensions.choice.c1->choice.handoverCommand->handoverCommandMessage;
-  uper_decode_complete(NULL, &asn_DEF_NR_RRCReconfiguration, (void **)&rrcReconf, ho->buf, ho->size);
+  if (!ho->buf || ho->size == 0) {
+    LOG_E(NR_RRC, "Invalid handoverCommandMessage OCTET_STRING (buf=%p, size=%zu)!\n", ho->buf, ho->size);
+    ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NR_DL_DCCH_Message, &dl_dcch_msg);
+    ASN_STRUCT_FREE(asn_DEF_NR_HandoverCommand, hoCommand);
+    return msg;
+  }
+  asn_dec_rval_t rrc_dec_rval = uper_decode_complete(NULL, &asn_DEF_NR_RRCReconfiguration, (void **)&rrcReconf, ho->buf, ho->size);
+  if (rrc_dec_rval.code != RC_OK || !rrcReconf) {
+    LOG_E(NR_RRC, "Failed to decode RRCReconfiguration from Handover Command!\n");
+    ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NR_DL_DCCH_Message, &dl_dcch_msg);
+    ASN_STRUCT_FREE(asn_DEF_NR_HandoverCommand, hoCommand);
+    return msg;
+  }
   if (LOG_DEBUGFLAG(DEBUG_ASN1))
     xer_fprint(stdout, &asn_DEF_NR_DL_DCCH_Message, (void *)&dl_dcch_msg);
 
-  // Encode DL DCCH message in buffer
-  enc_rval = uper_encode_to_buffer(&asn_DEF_NR_DL_DCCH_Message, NULL, &dl_dcch_msg, ba->buf, ba->len);
-  AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
+  // Encode DL DCCH message to new buffer
+  int val = uper_encode_to_new_buffer(&asn_DEF_NR_DL_DCCH_Message, NULL, &dl_dcch_msg, (void **)&msg.buf);
+  if (val <= 0) {
+    LOG_E(NR_RRC, "Failed to encode RRCReconfiguration from Handover Command!\n");
+    ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NR_DL_DCCH_Message, &dl_dcch_msg);
+    ASN_STRUCT_FREE(asn_DEF_NR_HandoverCommand, hoCommand);
+    return msg;
+  }
+  msg.len = val;
+  LOG_D(NR_RRC, "RRCReconfiguration from HandoverCommand: Encoded (%ld bytes)\n", msg.len);
 
   ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NR_DL_DCCH_Message, &dl_dcch_msg);
   ASN_STRUCT_FREE(asn_DEF_NR_HandoverCommand, hoCommand);
 
-  return ((enc_rval.encoded + 7) / 8);
+  return msg;
 }
 
 byte_array_t get_HandoverCommandMessage(nr_rrc_reconfig_param_t *params)
@@ -1415,7 +1471,7 @@ byte_array_t get_HandoverCommandMessage(nr_rrc_reconfig_param_t *params)
  *         2) encodes UE Capabilities from UE Context
  *         3) encodes AS context
  *         4) generates HO Preparation Info */
-byte_array_t get_HandoverPreparationInformation(nr_rrc_reconfig_param_t *params, int scell_pci)
+byte_array_t get_HandoverPreparationInformation(nr_rrc_reconfig_param_t *params)
 {
   // Buffer to return
   byte_array_t buffer = {.buf = NULL, .len = 0};

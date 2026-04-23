@@ -1,34 +1,10 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file PHY/NR_TRANSPORT/nr_dci.c
-* \brief Implements DCI encoding and PDCCH TX procedures (38.212/38.213/38.214). V15.4.0 2019-01.
-* \author Guy De Souza
-* \date 2018
-* \version 0.1
-* \company Eurecom
-* \email: desouza@eurecom.fr
-* \note
-* \warning
-*/
+/*!
+ * \brief Implements DCI encoding and PDCCH TX procedures (38.212/38.213/38.214). V15.4.0 2019-01.
+ */
 
 
 #include "nr_dci.h"
@@ -53,7 +29,6 @@ static void nr_pdcch_scrambling(uint32_t *in, uint32_t size, uint32_t Nid, uint3
 
 void nr_generate_dci(PHY_VARS_gNB *gNB,
                      const nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_pdu_rel15,
-                     int txdataF_offset,
                      NR_DL_FRAME_PARMS *frame_parms,
                      int slot)
 {
@@ -68,7 +43,7 @@ void nr_generate_dci(PHY_VARS_gNB *gNB,
   if (pdcch_pdu_rel15->CoreSetType == 1)
     additional_offset = (pdcch_pdu_rel15->BWPStart + 5) / 6 * 6 - pdcch_pdu_rel15->BWPStart;
   int rb_offset = cset_start + additional_offset;
-  uint16_t cset_start_sc = frame_parms->first_carrier_offset + (pdcch_pdu_rel15->BWPStart + rb_offset) * NR_NB_SC_PER_RB;
+  uint16_t cset_start_sc = (pdcch_pdu_rel15->BWPStart + rb_offset) * NR_NB_SC_PER_RB;
   int idx1 = pdcch_pdu_rel15->StartSymbolIndex+pdcch_pdu_rel15->DurationSymbols;
   int idx2 = (((n_rb + rb_offset + pdcch_pdu_rel15->BWPStart) * 3) + 15) & ~15;
   c16_t mod_dmrs[idx1][idx2] __attribute__((aligned(16)));
@@ -179,9 +154,7 @@ void nr_generate_dci(PHY_VARS_gNB *gNB,
 
     /// Resource mapping
     uint16_t amp = gNB->TX_AMP;
-    c16_t *txdataF = gNB->common_vars.txdataF[beam_nb][0] + txdataF_offset;
-    if (cset_start_sc >= frame_parms->ofdm_symbol_size)
-      cset_start_sc -= frame_parms->ofdm_symbol_size;
+    c16_t *txdataF = gNB->common_vars.txdataF[beam_nb][0];
 
     int num_regs = dci_pdu->AggregationLevel * NR_NB_REG_PER_CCE / pdcch_pdu_rel15->DurationSymbols;
     /*Mapping the encoded DCI along with the DMRS */
@@ -190,8 +163,6 @@ void nr_generate_dci(PHY_VARS_gNB *gNB,
       for (int reg_count = 0; reg_count < num_regs; reg_count++) {
         int k = cset_start_sc + reg_list[d][reg_count] * NR_NB_SC_PER_RB;
         LOG_D(NR_PHY_DCI, "REG %d k %d\n", reg_list[d][reg_count], k);
-        if (k >= frame_parms->ofdm_symbol_size)
-          k -= frame_parms->ofdm_symbol_size;
 
         int l = cset_start_symb + symbol_idx;
 
@@ -227,9 +198,6 @@ void nr_generate_dci(PHY_VARS_gNB *gNB,
           }
 
           k++;
-
-          if (k >= frame_parms->ofdm_symbol_size)
-            k -= frame_parms->ofdm_symbol_size;
         } // m
       } // reg_count
     } // symbol_idx

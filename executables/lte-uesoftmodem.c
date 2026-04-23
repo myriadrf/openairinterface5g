@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file lte-uesoftmodem.c
+/*!
  * \brief Top-level threads for eNodeB
- * \author R. Knopp, F. Kaltenberger, Navid Nikaein
- * \date 2012
- * \version 0.1
- * \company Eurecom
- * \email: {knopp, florian.kaltenberger, navid.nikaein}@eurecom.fr
- * \note
- * \warning
  */
 
 
@@ -92,7 +68,7 @@ unsigned int                    mmapped_dma=0;
 UE_MAC_INST *UE_mac_inst = NULL;
 
 uint64_t                 downlink_frequency[MAX_NUM_CCs][4];
-int32_t                  uplink_frequency_offset[MAX_NUM_CCs][4];
+int64_t                  uplink_frequency_offset[MAX_NUM_CCs][4];
 
 
 
@@ -343,28 +319,23 @@ static void init_openair0(LTE_DL_FRAME_PARMS *frame_parms, int rxgain)
     if(frame_parms->N_RB_DL == 100) {
       if (frame_parms->threequarter_fs) {
         openair0_cfg[card].sample_rate=23.04e6;
-        openair0_cfg[card].samples_per_frame = 230400;
         openair0_cfg[card].tx_bw = 10e6;
         openair0_cfg[card].rx_bw = 10e6;
       } else {
         openair0_cfg[card].sample_rate=30.72e6;
-        openair0_cfg[card].samples_per_frame = 307200;
         openair0_cfg[card].tx_bw = 10e6;
         openair0_cfg[card].rx_bw = 10e6;
       }
     } else if(frame_parms->N_RB_DL == 50) {
       openair0_cfg[card].sample_rate=15.36e6;
-      openair0_cfg[card].samples_per_frame = 153600;
       openair0_cfg[card].tx_bw = 5e6;
       openair0_cfg[card].rx_bw = 5e6;
     } else if (frame_parms->N_RB_DL == 25) {
       openair0_cfg[card].sample_rate=7.68e6;
-      openair0_cfg[card].samples_per_frame = 76800;
       openair0_cfg[card].tx_bw = 2.5e6;
       openair0_cfg[card].rx_bw = 2.5e6;
     } else if (frame_parms->N_RB_DL == 6) {
       openair0_cfg[card].sample_rate=1.92e6;
-      openair0_cfg[card].samples_per_frame = 19200;
       openair0_cfg[card].tx_bw = 1.5e6;
       openair0_cfg[card].rx_bw = 1.5e6;
     }
@@ -374,7 +345,6 @@ static void init_openair0(LTE_DL_FRAME_PARMS *frame_parms, int rxgain)
     else //FDD
       openair0_cfg[card].duplex_mode = duplex_mode_FDD;
 
-    openair0_cfg[card].Mod_id = 0;
     openair0_cfg[card].num_rb_dl=frame_parms->N_RB_DL;
     openair0_cfg[card].clock_source = get_softmodem_params()->clock_source;
     openair0_cfg[card].time_source = get_softmodem_params()->timing_source;

@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # I/Q record-playback
 ## using the iq recorder or iq player
 

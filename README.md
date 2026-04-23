@@ -1,13 +1,15 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 <h1 align="center">
     <a href="https://openairinterface.org/"><img src="https://openairinterface.org/wp-content/uploads/2015/06/cropped-oai_final_logo.png" alt="OAI" width="550"></a>
 </h1>
 
 <p align="center">
-    <a href="https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-OAI--Public--V1.1-blue" alt="License"></a>
+    <a href="https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-CSSL--v1.0-blue" alt="License"></a>
     <a href="https://releases.ubuntu.com/22.04/"><img src="https://img.shields.io/badge/OS-Ubuntu22-Green" alt="Supported OS Ubuntu 22"></a>
     <a href="https://releases.ubuntu.com/24.04/"><img src="https://img.shields.io/badge/OS-Ubuntu24-Green" alt="Supported OS Ubuntu 24"></a>
     <a href="https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux"><img src="https://img.shields.io/badge/OS-RHEL9-Green" alt="Supported OS RHEL9"></a>
-    <a href="https://getfedora.org/en/workstation/"><img src="https://img.shields.io/badge/OS-Fedore41-Green" alt="Supported OS Fedora 41"></a>
+    <a href="https://getfedora.org/en/workstation/"><img src="https://img.shields.io/badge/OS-Fedore41-Green" alt="Supported OS Fedora 43"></a>
 </p>
 
 <p align="center">
@@ -31,13 +33,25 @@
 # OpenAirInterface License #
 
  *  [OAI License Model](http://www.openairinterface.org/?page_id=101)
- *  [OAI License v1.1 on our website](http://www.openairinterface.org/?page_id=698)
+ *  [CSSL v1.0](http://www.openairinterface.org/?page_id=698)
 
-It is distributed under **OAI Public License V1.1**.
+The source code is distributed under [**CSSL v1.0**](LICENSE).
+Some files, such as for orchestration, are distributed under
+[MIT license](preferred)(MIT.txt). Documentation is distributed under
+[Creative Commons Attribution 4.0 International license](LICENSES/preferred/CC-BY-4.0.txt).
 
-The license information is distributed under [LICENSE](LICENSE) file in the same directory.
+All the files without an explicit copyright header have an implicit "Copyright
+of OpenAirInterface Authors".
 
-Please see [NOTICE](NOTICE.md) file for third party software that is included in the sources.
+Please see [NOTICE](NOTICE) for other licenses which are used in the software.
+
+In the past OAI source code has been re-licensed sometimes, here is the
+history:
+
+1. CSSL v1.0 starting tag 2026.w14
+2. OAI Public License v1.1 starting tag v1.0 till af4b0d53
+3. OAI Public License v1.0: starting tag v.04 till v1.0
+4. GPL 3: starting tag v.0 till v.04 (only initial implementation of 4G)
 
 # Where to Start #
 

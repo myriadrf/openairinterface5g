@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #define _GNU_SOURCE
@@ -72,7 +55,6 @@
 #include <socket/include/socket_pnf.h>
 #endif
 
-#define NUM_P5_PHY 2
 
 #define _GNU_SOURCE
 
@@ -1108,14 +1090,13 @@ void pnf_nr_phy_deallocate_p7_vendor_ext(void *header)
 }
 
 
-int pnf_phy_hi_dci0_req(L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, nfapi_hi_dci0_request_t *req) {
+int pnf_phy_hi_dci0_req(nfapi_pnf_p7_config_t *pnf_p7, nfapi_hi_dci0_request_t *req) {
   if (req->hi_dci0_request_body.number_of_dci == 0 && req->hi_dci0_request_body.number_of_hi == 0)
     LOG_D(PHY,"[PNF] HI_DCI0_REQUEST SFN/SF:%05d dci:%d hi:%d\n", NFAPI_SFNSF2DEC(req->sfn_sf), req->hi_dci0_request_body.number_of_dci, req->hi_dci0_request_body.number_of_hi);
 
   //phy_info* phy = (phy_info*)(pnf_p7->user_data);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
-  if (proc ==NULL) 
-    proc = &eNB->proc.L1_proc;
+  L1_rxtx_proc_t *proc = &eNB->proc.L1_proc;
 
   for (int i=0; i<req->hi_dci0_request_body.number_of_dci + req->hi_dci0_request_body.number_of_hi; i++) {
     //LOG_D(PHY,"[PNF] HI_DCI0_REQ sfn_sf:%d PDU[%d]\n", NFAPI_SFNSF2DEC(req->sfn_sf), i);
@@ -1137,7 +1118,7 @@ int pnf_phy_hi_dci0_req(L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, nfa
 }
 
 
-int pnf_phy_dl_config_req(L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, nfapi_dl_config_request_t *req) {
+int pnf_phy_dl_config_req(nfapi_pnf_p7_config_t *pnf_p7, nfapi_dl_config_request_t *req) {
 
   if (RC.eNB == 0) {
     return -2;
@@ -1155,8 +1136,7 @@ int pnf_phy_dl_config_req(L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, n
   int sfn = NFAPI_SFNSF2SFN(req->sfn_sf);
   int sf = NFAPI_SFNSF2SF(req->sfn_sf);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
-  if (proc==NULL)
-     proc = &eNB->proc.L1_proc;
+  L1_rxtx_proc_t *proc = &eNB->proc.L1_proc;
   nfapi_dl_config_request_pdu_t *dl_config_pdu_list = req->dl_config_request_body.dl_config_pdu_list;
   LTE_eNB_PDCCH *pdcch_vars = &eNB->pdcch_vars[sf&1];
   pdcch_vars->num_pdcch_symbols = req->dl_config_request_body.number_pdcch_ofdm_symbols;
@@ -1254,7 +1234,7 @@ int pnf_phy_tx_req(nfapi_pnf_p7_config_t *pnf_p7, nfapi_tx_request_t *req) {
   return 0;
 }
 
-int pnf_phy_ul_config_req(L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, nfapi_ul_config_request_t *req) {
+int pnf_phy_ul_config_req(nfapi_pnf_p7_config_t *pnf_p7, nfapi_ul_config_request_t *req) {
   if (0)LOG_D(PHY,"[PNF] UL_CONFIG_REQ %s() sfn_sf:%d pdu:%d rach_prach_frequency_resources:%d srs_present:%u\n",
                 __FUNCTION__,
                 NFAPI_SFNSF2DEC(req->sfn_sf),
@@ -1280,8 +1260,7 @@ int pnf_phy_ul_config_req(L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, n
   uint16_t curr_sfn = NFAPI_SFNSF2SFN(req->sfn_sf);
   uint16_t curr_sf = NFAPI_SFNSF2SF(req->sfn_sf);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
-  if (proc==NULL)
-     proc = &eNB->proc.L1_proc;
+  L1_rxtx_proc_t *proc = &eNB->proc.L1_proc;
   nfapi_ul_config_request_pdu_t *ul_config_pdu_list = req->ul_config_request_body.ul_config_pdu_list;
 
   for (int i=0; i<req->ul_config_request_body.number_of_pdus; i++) {
@@ -1801,6 +1780,9 @@ int nr_stop_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, nfa
                                          .header.phy_id = req->header.phy_id};
   nfapi_nr_stop_indication(config, &resp);
   has_sent_stop_ind = true;
+  // Upon sending the STOP.indication mark P7 PNF to terminate, to not send any further messages to the VNF
+  pnf_p7_t *pnf_p7 = (pnf_p7_t *)(p7_config_g);
+  pnf_p7->terminate = 1;
 #ifdef ENABLE_WLS
   wls_pnf_close(pnf_p5_init_and_receive_pthread);
 #endif

@@ -1,17 +1,7 @@
 /*
+ * SPDX-License-Identifier: Apache-2.0
+ *
  * Copyright 2017 Cisco Systems, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 
 
@@ -2630,19 +2620,19 @@ int nfapi_nr_p7_message_pack(void *pMessageBuf, void *pPackedBuf, uint32_t packe
   uint8_t result = 0;
   switch (pMessageHeader->message_id) {
     case NFAPI_NR_PHY_MSG_TYPE_DL_TTI_REQUEST:
-      result = pack_dl_tti_request(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_dl_tti_request(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_UL_TTI_REQUEST:
-      result = pack_ul_tti_request(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_ul_tti_request(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST:
-      result = pack_tx_data_request(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_tx_data_request(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST:
-      result = pack_ul_dci_request(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_ul_dci_request(pMessageHeader, &pWritePackedMessage, end);
       break;
     case NFAPI_UE_RELEASE_REQUEST:
       result = pack_nr_ue_release_request(pMessageHeader, &pWritePackedMessage, end, config);
@@ -2653,27 +2643,27 @@ int nfapi_nr_p7_message_pack(void *pMessageBuf, void *pPackedBuf, uint32_t packe
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
-      result = pack_nr_slot_indication(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_nr_slot_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION:
-      result = pack_nr_rx_data_indication(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_nr_rx_data_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION:
-      result = pack_nr_crc_indication(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_nr_crc_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_UCI_INDICATION:
-      result = pack_nr_uci_indication(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_nr_uci_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_SRS_INDICATION:
-      result = pack_nr_srs_indication(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_nr_srs_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
-      result = pack_nr_rach_indication(pMessageHeader, &pWritePackedMessage, end, config);
+      result = pack_nr_rach_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_DL_NODE_SYNC:
@@ -6268,20 +6258,20 @@ bool nfapi_nr_p7_message_unpack(void *pMessageBuf,
   switch (pMessageHeader->message_id) {
     case NFAPI_NR_PHY_MSG_TYPE_DL_TTI_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_DL_TTI_REQUEST, unpackedBufLen))
-        result = unpack_dl_tti_request(&pReadPackedMessage, end, pMessageHeader, config);
+        result = unpack_dl_tti_request(&pReadPackedMessage, end, pMessageHeader);
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_UL_TTI_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_UL_TTI_REQUEST, unpackedBufLen))
-        result = unpack_ul_tti_request(&pReadPackedMessage, end, pMessageHeader, config);
+        result = unpack_ul_tti_request(&pReadPackedMessage, end, pMessageHeader);
       break;
     case NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST, unpackedBufLen))
-        result = unpack_tx_data_request(&pReadPackedMessage, end, pMessageHeader, config);
+        result = unpack_tx_data_request(&pReadPackedMessage, end, pMessageHeader);
       break;
     case NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST, unpackedBufLen))
-        result = unpack_ul_dci_request(&pReadPackedMessage, end, pMessageHeader, config);
+        result = unpack_ul_dci_request(&pReadPackedMessage, end, pMessageHeader);
       break;
     case NFAPI_UE_RELEASE_REQUEST:
       if (check_unpack_length(NFAPI_UE_RELEASE_REQUEST, unpackedBufLen))
@@ -6290,39 +6280,39 @@ bool nfapi_nr_p7_message_unpack(void *pMessageBuf,
     case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION, unpackedBufLen)) {
         nfapi_nr_slot_indication_scf_t *msg = (nfapi_nr_slot_indication_scf_t *)pMessageHeader;
-        result = unpack_nr_slot_indication(&pReadPackedMessage, end, msg, config);
+        result = unpack_nr_slot_indication(&pReadPackedMessage, end, msg);
       }
       break;
 
     case NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION, unpackedBufLen)) {
-        result = unpack_nr_rx_data_indication(&pReadPackedMessage, end, pMessageHeader, config);
+        result = unpack_nr_rx_data_indication(&pReadPackedMessage, end, pMessageHeader);
       }
-			break;
+      break;
 
     case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION, unpackedBufLen)) {
-        result = unpack_nr_crc_indication(&pReadPackedMessage, end, pMessageHeader, config);
-			}
-			break;
+        result = unpack_nr_crc_indication(&pReadPackedMessage, end, pMessageHeader);
+      }
+      break;
 
     case NFAPI_NR_PHY_MSG_TYPE_UCI_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_UCI_INDICATION, unpackedBufLen)) {
-        result = unpack_nr_uci_indication(&pReadPackedMessage, end, pMessageHeader, config);
-			}
-			break;
+        result = unpack_nr_uci_indication(&pReadPackedMessage, end, pMessageHeader);
+      }
+      break;
 
     case NFAPI_NR_PHY_MSG_TYPE_SRS_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_SRS_INDICATION, unpackedBufLen)) {
-        result = unpack_nr_srs_indication(&pReadPackedMessage,  end, pMessageHeader, config);
-			}
-			break;
+        result = unpack_nr_srs_indication(&pReadPackedMessage,  end, pMessageHeader);
+      }
+      break;
 
     case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION, unpackedBufLen)) {
-        result = unpack_nr_rach_indication(&pReadPackedMessage,  end, pMessageHeader, config);
-			}
-			break;
+        result = unpack_nr_rach_indication(&pReadPackedMessage,  end, pMessageHeader);
+      }
+      break;
 
     case NFAPI_NR_PHY_MSG_TYPE_DL_NODE_SYNC:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_DL_NODE_SYNC, unpackedBufLen))

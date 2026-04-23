@@ -1,13 +1,4 @@
-# OpenAirInterface License #
-
- *  [OAI License Model](http://www.openairinterface.org/?page_id=101)
- *  [OAI License v1.1 on our website](http://www.openairinterface.org/?page_id=698)
-
-It is distributed under **OAI Public License V1.1**.
-
-The license information is distributed under [LICENSE](LICENSE) file in the same directory.
-
-Please see [NOTICE](NOTICE.md) file for third party software that is included in the sources.
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
 
 # Overview
 
@@ -187,9 +178,9 @@ e2_agent = {
   ```bash
   cd <path-to>/build
   # for gNB-mono
-  sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --uicc0.imsi 001010000000001 --rfsimulator.serveraddr 127.0.0.1
+  sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --uicc0.imsi 001010000000001 --rfsimulator.[0].serveraddr 127.0.0.1
   # for CU/DU and CU-CP/CU-UP/DU split
-  sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3450720000 --rfsim --uicc0.imsi 001010000000001 --rfsimulator.serveraddr 127.0.0.1
+  sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3450720000 --rfsim --uicc0.imsi 001010000000001 --rfsimulator.[0].serveraddr 127.0.0.1
   ```
   Note: [multi-UE rfsim deployment tutorial](../../doc/NR_SA_Tutorial_OAI_multi_UE.md?ref_type=heads#run-multiple-ues-in-rfsimulator)
 

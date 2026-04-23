@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Contributing to OpenAirInterface #
 
 We want to make contributing to this project as easy and transparent as possible.
@@ -26,5 +28,13 @@ Please refer to the steps described on our website: [How to contribute to OAI](h
 # License #
 
 By contributing to OpenAirInterface, you agree that your contributions will be
-licensed under the license described in the file [`LICENSE`](./LICENSE) in the
-root directory of this source tree.
+licensed under
+
+1. [CSSL v1.0 license](LICENSES/preferred/CSSL-v1.0.txt): for RAN and UE
+   related source code and test scripts
+2. [CC-BY-4.0](LICENSES/preferred/CC-BY-4.0.txt): All the documentation
+3. [MIT](LICENSES/preferred/MIT.txt): Orchestration (helm-charts, docker
+   compose)
+
+Certain files are using different licenses; you can read about them in
+[NOTICE](NOTICE).

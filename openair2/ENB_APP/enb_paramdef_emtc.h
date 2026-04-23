@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file openair2/ENB_APP/enb_paramdef_emtc.h
+/*!
  * \brief definition of configuration parameters for emtc eNodeB modules 
- * \author Raymond KNOPP
- * \date 2018
- * \version 0.1
- * \company EURECOM France
- * \email: raymond.knopp@eurecom.fr
- * \note
- * \warning
  */
 
 #ifndef __ENB_APP_ENB_PARAMDEF_EMTC__H__
@@ -62,14 +38,9 @@
 #define ENB_CONFIG_STRING_INTERVAL_DL_HOPPING_CONFIG_COMMON_MODE_B_R13_VAL "interval_DLHoppingConfigCommonModeB_r13_val"
 #define ENB_CONFIG_STRING_MPDCCH_PDSCH_HOPPING_OFFSET_R13                  "mpdcch_pdsch_HoppingOffset_r13"
 #define ENB_CONFIG_STRING_PREAMBLE_TRANSMAX_CE_R13                         "preamble_TransMax_ce_r13"
-#define ENB_CONFIG_STRING_PREAMBLE_TRANSMAX_CE_R13_VAL                     "preamble_TransMax_ce_r13_val"
 #define ENB_CONFIG_STRING_PDSCH_MAX_NUM_REPETITION_CE_MODE_A_R13           "pdsch_maxNumRepetitionCEmodeA_r13"
-#define ENB_CONFIG_STRING_PDSCH_MAX_NUM_REPETITION_CE_MODE_B_R13           "pdsch_maxNumRepetitionCEmodeB_r13"
 #define ENB_CONFIG_STRING_PUSCH_MAX_NUM_REPETITION_CE_MODE_A_R13           "pusch_maxNumRepetitionCEmodeA_r13"
-#define ENB_CONFIG_STRING_PUSCH_MAX_NUM_REPETITION_CE_MODE_B_R13           "pusch_maxNumRepetitionCEmodeB_r13"
 #define ENB_CONFIG_STRING_PUSCH_REPETITION_LEVEL_CE_MODE_A_R13			   "pusch_repetitionLevelCEmodeA_r13"
-#define ENB_CONFIG_STRING_PUSCH_HOPPING_OFFSET_V1310                       "pusch_HoppingOffset_v1310"
-#define ENB_CONFIG_STRING_SYSTEM_INFO_VALUE_TAG_LIST                       "system_info_value_tag_SI"
 #define ENB_CONFIG_STRING_FIRST_PREAMBLE_R13                               "firstPreamble_r13"
 #define ENB_CONFIG_STRING_LAST_PREAMBLE_R13                                "lastPreamble_r13"
 #define ENB_CONFIG_STRING_RA_RESPONSE_WINDOW_SIZE_R13                      "ra_ResponseWindowSize_r13"

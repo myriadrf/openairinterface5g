@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # OAI LDPC offload (O-RAN AAL/DPDK BBDEV)
 
 **Table of Contents**
@@ -303,7 +305,6 @@ Example configuration snippet:
 ...
 MACRLCs = (
 {
-  num_cc                      = 1;
   tr_s_preference             = "local_L1";
   tr_n_preference             = "local_RRC";
   pusch_TargetSNRx10          = 180;
@@ -320,7 +321,6 @@ MACRLCs = (
 
 L1s = (
 {
-  num_cc = 1;
   tr_n_preference       = "local_mac";
   prach_dtx_threshold   = 120;
   pucch0_dtx_threshold  = 100;

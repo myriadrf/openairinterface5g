@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # code example of adding a command to the telnet server
 
 The following example is extracted from [the oai `openair1/PHY/CODING/coding_load.c` file](https://gitlab.eurecom.fr/oai/openairinterface5g/blob/develop/openair1/PHY/CODING/coding_load.c).

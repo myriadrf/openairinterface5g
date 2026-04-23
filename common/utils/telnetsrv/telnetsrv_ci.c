@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 /*! \file telnetsrv_ci.c
@@ -64,6 +47,7 @@ static int get_single_ue_rnti_mac(void)
 
 int get_single_rnti(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (buf)
     ERROR_MSG_RET("no parameter allowed\n");
 
@@ -98,6 +82,7 @@ rrc_gNB_ue_context_t *get_single_rrc_ue(void)
 
 int get_reestab_count(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (!RC.nrrrc)
     ERROR_MSG_RET("no RRC present, cannot list counts\n");
   rrc_gNB_ue_context_t *ue = NULL;
@@ -136,6 +121,7 @@ int fetch_rnti(char *buf, telnet_printfunc_t prnt)
 
 int trigger_reestab(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (!RC.nrmac)
     ERROR_MSG_RET("no MAC/RLC present, cannot trigger reestablishment\n");
   int rnti = fetch_rnti(buf, prnt);
@@ -151,17 +137,25 @@ extern nr_rrc_du_container_t *get_du_for_ue(gNB_RRC_INST *rrc, uint32_t ue_id);
 /** @brief Get connected DU by the UE ID */
 int fetch_du_by_ue_id(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (!RC.nrrrc)
     ERROR_MSG_RET("no RRC present, cannot list counts\n");
 
-  ue_id_t ue_id = 1;
+  ue_id_t ue_id;
   if (buf) {
     ue_id = strtol(buf, NULL, 10);
+  } else {
+    // No UE ID provided: find the connected UE first
+    rrc_gNB_ue_context_t *ue = get_single_rrc_ue();
+    if (!ue)
+      ERROR_MSG_RET("no single UE in RRC present\n");
+    ue_id = ue->ue_context.rrc_ue_id;
   }
+
   nr_rrc_du_container_t *du = get_du_for_ue(RC.nrrrc[0], ue_id);
 
   if (du) {
-    prnt("gNB_DU_id %d is connected to ue_id %ld\n", du->setup_req->gNB_DU_id, ue_id);
+    prnt("gNB_DU_id %ld is connected to ue_id %ld\n", du->gNB_DU_id, ue_id);
     return 0;
   } else {
     ERROR_MSG_RET("No DU connected\n");
@@ -179,6 +173,7 @@ extern void nr_HO_F1_trigger_telnet(gNB_RRC_INST *rrc, uint32_t rrc_ue_id);
  */
 int rrc_gNB_trigger_f1_ho(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (!RC.nrrrc)
     ERROR_MSG_RET("no RRC present, cannot list counts\n");
   rrc_gNB_ue_context_t *ue = NULL;
@@ -208,6 +203,7 @@ extern void nr_HO_N2_trigger_telnet(gNB_RRC_INST *rrc, uint32_t neighbour_pci, u
  *  @return 0 on success, -1 on failure */
 int rrc_gNB_trigger_n2_ho(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (!RC.nrrrc)
     ERROR_MSG_RET("no RRC present, cannot list counts\n");
 
@@ -248,6 +244,7 @@ int rrc_gNB_trigger_n2_ho(char *buf, int debug, telnet_printfunc_t prnt)
 
 int force_ul_failure(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (!RC.nrmac)
     ERROR_MSG_RET("no MAC/RLC present, force_ul_failure failed\n");
   int rnti = fetch_rnti(buf, prnt);
@@ -273,6 +270,7 @@ int force_ue_release(char *buf, int debug, telnet_printfunc_t prnt)
 
 static int get_current_bwp(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   int rnti = fetch_rnti(buf, prnt);
   if (rnti < 0)
     ERROR_MSG_RET("could not identify UE (no UE, no such RNTI, or multiple UEs)\n");
@@ -298,6 +296,7 @@ static int get_current_bwp(char *buf, int debug, telnet_printfunc_t prnt)
  * @return 0 on success; negative value on error. */
 static int trigger_ngap_pdu_session_release(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   if (buf == NULL) {
     ERROR_MSG_RET("Missing input. Usage: trigger_pdu_session_release [ue_id=gNB_ue_ngap_id(int,opt)],pdusession_id(int)[,pdusession_id(int)...]\n");
   }
@@ -370,6 +369,7 @@ static int trigger_ngap_pdu_session_release(char *buf, int debug, telnet_printfu
 
 static int trigger_bwp_switch(char *buf, int debug, telnet_printfunc_t prnt)
 {
+  UNUSED(debug);
   char *sbwpId = strtok(buf, " ");
   int bwpId = atoi(sbwpId);
   char *srnti = strtok(NULL, " ");
@@ -386,6 +386,27 @@ static int trigger_bwp_switch(char *buf, int debug, telnet_printfunc_t prnt)
   }
 }
 
+static int set_pusch_target_snr(char *buf, int debug, telnet_printfunc_t prnt)
+{
+  if (!buf)
+    ERROR_MSG_RET("need an SNR to read\n");
+
+  char *end;
+  long new_snr = strtol(buf, &end, 0);
+  if (*end != 0)
+    ERROR_MSG_RET("error: could not parse number in '%s'\n", buf);
+
+  gNB_MAC_INST *nrmac = RC.nrmac[0];
+  NR_SCHED_LOCK(&nrmac->sched_lock);
+  UE_iterator(nrmac->UE_info.connected_ue_list, it) {
+    nr_mac_set_target_snrx10(&it->UE_sched_ctrl.pusch_pc, new_snr * 10);
+  }
+  NR_SCHED_UNLOCK(&nrmac->sched_lock);
+  prnt("set new PUSCH target SNR %d for all UEs\n", new_snr);
+
+  return 0;
+}
+
 static telnetshell_cmddef_t cicmds[] = {
     {"get_single_rnti", "", get_single_rnti},
     {"force_reestab", "[rnti(hex,opt)]", trigger_reestab},
@@ -397,6 +418,7 @@ static telnetshell_cmddef_t cicmds[] = {
     {"get_current_bwp", "[rnti(hex,opt)]", get_current_bwp},
     {"trigger_bwp_switch", "newBWPId [rnti(hex,opt)]", trigger_bwp_switch},
     {"trigger_n2_ho", "[neighbour_pci(uint32_t),ueId(uint32_t)]", rrc_gNB_trigger_n2_ho},
+    {"set_pusch_target_snr", "[somelongSNR(dec)]", set_pusch_target_snr},
     {"pdu_session_release", "[gNB_ue_ngap_id(int,opt)]", trigger_ngap_pdu_session_release},
     {"", "", NULL},
 };

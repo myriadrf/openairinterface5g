@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 check_threshold_variance(physim.5g.nr_dlsim.basic.test1 "DLSCH encoding time" AVG 31 ABS_VAR 7)
 check_threshold_variance(physim.5g.nr_dlsim.basic.test2 "DLSCH encoding time" AVG 36 ABS_VAR 8)
 check_threshold_variance(physim.5g.nr_dlsim.basic.test3 "DLSCH encoding time" AVG 49 ABS_VAR 10)

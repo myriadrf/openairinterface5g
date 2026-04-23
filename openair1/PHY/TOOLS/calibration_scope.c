@@ -1,5 +1,11 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
 #include <stdlib.h>
-#include <openair1/PHY/impl_defs_top.h>
+#include "common/utils/system.h"
+#include "common/utils/utils.h"
+#include "common/utils/LOG/log.h"
 #include "executables/softmodem-common.h"
 #include "executables/nr-softmodem-common.h"
 #include <forms.h>
@@ -18,7 +24,7 @@ typedef struct {
 #define SquaredNorm(VaR) ((VaR).r*(VaR).r+(VaR).i*(VaR).i)
 typedef struct {
   void ** samplesRx;
-  openair0_device *rfdevice;
+  openair0_device_t *rfdevice;
 } calibData_t;
 
 typedef struct OAIgraph {
@@ -384,7 +390,8 @@ static void *scopeThread(void *arg) {
   return NULL;
 }
 
-void CalibrationInitScope(void ** samplesRx,openair0_device *rfdevice) {
+void CalibrationInitScope(void **samplesRx, openair0_device_t *rfdevice)
+{
   pthread_t forms_thread;
   calibData_t *tmp = (calibData_t *)malloc_or_fail(sizeof(*tmp));
   tmp->samplesRx=samplesRx;

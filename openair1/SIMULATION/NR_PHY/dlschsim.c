@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #include <string.h>
@@ -28,7 +11,6 @@
 #include "common/ran_context.h"
 #include "common/config/config_userapi.h"
 #include "common/utils/LOG/log.h"
-#include "common/utils/LOG/vcd_signal_dumper.h"
 #include "common/utils/load_module_shlib.h"
 #include "T.h"
 #include "PHY/defs_gNB.h"
@@ -39,7 +21,6 @@
 #include "PHY/INIT/nr_phy_init.h"
 #include "PHY/MODULATION/modulation_eNB.h"
 #include "PHY/MODULATION/modulation_UE.h"
-#include "PHY/NR_REFSIG/refsig_defs_ue.h"
 #include "PHY/NR_TRANSPORT/nr_dlsch.h"
 #include "PHY/NR_TRANSPORT/nr_transport_proto.h"
 #include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
@@ -58,7 +39,7 @@ PHY_VARS_gNB *gNB;
 PHY_VARS_NR_UE *UE;
 RAN_CONTEXT_t RC;
 UE_nr_rxtx_proc_t proc;
-int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
+int64_t uplink_frequency_offset[MAX_NUM_CCs][4];
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
 
 double cpuf;
@@ -67,7 +48,6 @@ uint8_t const nr_rv_round_map[4] = {0, 2, 3, 1};
 // needed for some functions
 PHY_VARS_NR_UE *PHY_vars_UE_g[1][1] = { { NULL } };
 uint16_t n_rnti = 0x1234;
-openair0_config_t openair0_cfg[MAX_CARDS];
 static softmodem_params_t softmodem_params;
 softmodem_params_t *get_softmodem_params(void) {
   return &softmodem_params;
@@ -144,7 +124,7 @@ int main(int argc, char **argv)
   randominit();
 
   int c;
-  while ((c = getopt(argc, argv, "--:O:df:hpVg:i:j:n:l:m:r:s:S:y:z:M:N:F:R:P:L:X:")) != -1) {
+  while ((c = getopt(argc, argv, "--:O:df:hpg:i:j:n:l:m:r:s:S:y:z:M:N:F:R:P:L:X:")) != -1) {
 
     /* ignore long options starting with '--' and their arguments that are handled by configmodule */
     /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
@@ -215,10 +195,6 @@ int main(int argc, char **argv)
 			printf("Setting SNR0 to %f\n", snr0);
 #endif
 			break;
-
-		case 'V':
-		  ouput_vcd = 1;
-		  break;
 
 		case 'S':
 			snr1 = atof(optarg);
@@ -320,7 +296,6 @@ int main(int argc, char **argv)
 			printf("%s -h(elp) -p(extended_prefix) -N cell_id -f output_filename -F input_filename -g channel_model -n n_frames -t Delayspread -s snr0 -S snr1  -y TXant -z RXant -i Intefrence0 -j Interference1 -A interpolation_file -C(alibration offset dB) -N CellId\n", argv[0]);
 			printf("-h This message\n");
 			printf("-p Use extended prefix mode\n");
-			printf("-V Enable VCD dumb functions\n");
 			//printf("-d Use TDD\n");
 			printf("-n Number of frames to simulate\n");
 			printf("-s Starting SNR, runs from SNR0 to SNR0 + 5 dB.  If n_frames is 1 then just SNR is simulated\n");
@@ -352,9 +327,6 @@ int main(int argc, char **argv)
 	if (snr1set == 0)
 		snr1 = snr0 + 10;
 
-	if (ouput_vcd)
-        vcd_signal_dumper_init("/tmp/openair_dump_nr_dlschsim.vcd");
-
   gNB2UE = new_channel_desc_scm(n_tx,
                                 n_rx,
                                 channel_model,
@@ -384,7 +356,7 @@ int main(int argc, char **argv)
 	frame_parms->nb_antennas_tx = n_tx;
 	frame_parms->nb_antennas_rx = n_rx;
 	frame_parms->N_RB_DL = N_RB_DL;
-	frame_parms->Ncp = extended_prefix_flag ? EXTENDED : NORMAL;
+	frame_parms->Ncp = extended_prefix_flag ? NR_EXTENDED : NR_NORMAL;
 	crcTableInit();
 	nr_phy_config_request_sim(gNB, N_RB_DL, N_RB_DL, mu, Nid_cell,SSB_positions);
     // TDD configuration
@@ -517,7 +489,7 @@ int main(int argc, char **argv)
         unsigned char output[nb_rb * NR_SYMBOLS_PER_SLOT * NR_NB_SC_PER_RB * NR_MAX_NB_LAYERS] __attribute__((aligned(64)));
         bzero(output, sizeof(output));
 	if (input_fd == NULL) {
-	  nr_dlsch_encoding(gNB, 1, dlsch, frame, slot, frame_parms, output, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+	  nr_dlsch_encoding(gNB, 1, dlsch, frame, slot, output, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 	}
 
 	for (SNR = snr0; SNR < snr1 && !stop; SNR += snr_step) {
@@ -563,8 +535,6 @@ int main(int argc, char **argv)
 			exit(-1);
 #endif
 
-			vcd_signal_dumper_dump_function_by_name(VCD_SIGNAL_DUMPER_FUNCTIONS_DLSCH_DECODING0, VCD_FUNCTION_IN);
-
       int a_segments = MAX_NUM_NR_DLSCH_SEGMENTS_PER_LAYER*NR_MAX_NB_LAYERS;  //number of segments to be allocated
       int num_rb = dlsch0_ue->dlsch_config.number_rbs;
       if (num_rb != 273) {
@@ -585,8 +555,6 @@ int main(int argc, char **argv)
                         available_bits_array,
                         1,
                         DLSCH_ids);
-
-      vcd_signal_dumper_dump_function_by_name(VCD_SIGNAL_DUMPER_FUNCTIONS_DLSCH_DECODING0, VCD_FUNCTION_OUT);
 
       if (dlsch0_ue->last_iteration_cnt > dlsch0_ue->max_ldpc_iterations)
 				n_errors++;
@@ -635,7 +603,7 @@ int main(int argc, char **argv)
   free(RC.gNB);
 
   free_nr_ue_dl_harq(UE->dl_harq_processes, 8, nb_rb);
-  term_nr_ue_signal(UE, 1);
+  term_nr_ue_signal(UE);
   free(UE);
 
 	for (i = 0; i < 2; i++) {
@@ -658,8 +626,6 @@ int main(int argc, char **argv)
 	if (input_fd)
 		fclose(input_fd);
 
-	if (ouput_vcd)
-        vcd_signal_dumper_close();
   end_configmodule(uniqCfg);
   loader_reset();
   logTerm();

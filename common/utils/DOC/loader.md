@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # OAI shared library loader
 
 Shared libraries usage is modularization mechanism which provides the following advantages:

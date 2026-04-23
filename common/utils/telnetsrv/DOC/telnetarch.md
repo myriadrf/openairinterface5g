@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # telnet server principles
 
 The oai telnet server is implemented in shared libraries to be loaded by the [oai shared library loader](loader). `libtelnetsrv.so ` contains the code common to all oai softmodem executables, where `libtelnetsrv_<app>.so` contains the code specific to the executable identified by `app`. 

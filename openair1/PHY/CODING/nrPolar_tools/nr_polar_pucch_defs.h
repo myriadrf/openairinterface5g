@@ -1,11 +1,14 @@
 /*
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
+
+/*
  * Defines the constant variables for polar coding of the PUCCH.
  */
 
 #ifndef __NR_POLAR_PUCCH_DEFS__H__
 #define __NR_POLAR_PUCCH_DEFS__H__
 
-#define NR_POLAR_PUCCH_PAYLOAD_BITS 16
 
 // Ref. 38-212 v15.0.1
 #define NR_POLAR_PUCCH_N_MAX 10 // uint8_t <------
@@ -16,7 +19,6 @@
 
 // Ref. 38-212 v15.0.1, Section 7.1.5: Rate Matching
 #define NR_POLAR_PUCCH_I_BIL 0 // uint8_t
-#define NR_POLAR_PUCCH_E 864 // uint16_t
 
 /*
  * TEST CODE

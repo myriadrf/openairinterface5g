@@ -1,31 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file rrc_gNB_nsa.c
+/*!
  * \brief rrc NSA procedures for gNB
- * \author Raymond Knopp
- * \date 2019
- * \version 1.0
- * \company Eurecom
- * \email: raymond.knopp@eurecom.fr
  */
 
 #include <assert.h>
@@ -62,6 +40,7 @@
 #include "openair3/SECU/key_nas_deriver.h"
 #include "openair2/SDAP/nr_sdap/nr_sdap_entity.h"
 #include "rrc_gNB_du.h"
+#include "rrc_cell_management.h"
 #include "rlc.h"
 #include "s1ap_messages_types.h"
 #include "tree.h"
@@ -201,7 +180,7 @@ void rrc_add_nsa_user(gNB_RRC_INST *rrc, x2ap_ENDC_sgnb_addition_req_t *m, sctp_
   byte_array_t cgci = {0};
   if (get_softmodem_params()->phy_test == 1 || get_softmodem_params()->do_ra == 1) {
     DevAssert(m == NULL);
-    UE->rb_config = get_default_rbconfig(10 /* EPS bearer ID */, 1 /* drb ID */, NR_CipheringAlgorithm_nea0, NR_SecurityConfig__keyToUse_master, &rrc->pdcp_config);
+    UE->rb_config = get_default_rbconfig(DEFAULT_NOS1_PDU_ID, 1 /* drb ID */, NR_CipheringAlgorithm_nea0, NR_SecurityConfig__keyToUse_master, &rrc->pdcp_config);
     int len = cg_config_info_from_ue_cap_file(sizeof tmp, tmp);
     DevAssert(len > 0);
     cgci = create_byte_array(len, tmp);
@@ -368,36 +347,50 @@ void rrc_add_nsa_user(gNB_RRC_INST *rrc, x2ap_ENDC_sgnb_addition_req_t *m, sctp_
   *ue_agg_mbr_ul = 1000000000;
   byte_array_t *cg_configinfo = malloc_or_fail(sizeof(*cg_configinfo));
   *cg_configinfo = cgci;
+
+  f1_ue_data_t ue_data = cu_get_f1_ue_data(UE->rrc_ue_id);
+  RETURN_IF_INVALID_ASSOC_ID(ue_data.du_assoc_id);
+  nr_rrc_du_container_t *du = get_du_by_assoc_id(rrc, ue_data.du_assoc_id);
+  if (!du) {
+    LOG_E(NR_RRC, "UE %d: no valid cell for UE context setup (DU assoc_id %d not found)\n", UE->rrc_ue_id, ue_data.du_assoc_id);
+    return;
+  }
+  // Get the first cell from the DU (NSA assumption: 1 cell per DU)
+  if (seq_arr_size(&du->cells) == 0) {
+    LOG_E(NR_RRC, "UE %d: no cells available in DU (assoc_id %d)\n", UE->rrc_ue_id, ue_data.du_assoc_id);
+    return;
+  }
+  nr_rrc_cell_container_t *ue_cell = *(nr_rrc_cell_container_t **)seq_arr_at(&du->cells, 0);
+  // Add the cell as PCell
+  if (rrc_add_ue_serving_cell(UE, ue_cell, RRC_PCELL_INDEX) == NULL) {
+    LOG_E(NR_RRC, "UE %d: failed to add PCell (cell %ld) for UE context setup\n", UE->rrc_ue_id, ue_cell->info.cell_id);
+    return;
+  }
   f1ap_ue_context_setup_req_t req = {
       .gNB_CU_ue_id = UE->rrc_ue_id,
       .plmn.mcc = rrc->configuration.plmn[0].mcc,
       .plmn.mnc = rrc->configuration.plmn[0].mnc,
       .plmn.mnc_digit_length = rrc->configuration.plmn[0].mnc_digit_length,
-      .nr_cellid = rrc->nr_cellid,
-      .servCellIndex = 0,
+      .nr_cellid = ue_cell->info.cell_id,
+      .servCellIndex = RRC_PCELL_INDEX,
       .drbs_len = 1,
       .drbs = drb,
       .cu_to_du_rrc_info.cg_configinfo = cg_configinfo,
       .gnb_du_ue_agg_mbr_ul = ue_agg_mbr_ul,
   };
-  f1_ue_data_t ue_data = cu_get_f1_ue_data(UE->rrc_ue_id);
-  RETURN_IF_INVALID_ASSOC_ID(ue_data.du_assoc_id);
   rrc->mac_rrc.ue_context_setup_request(ue_data.du_assoc_id, &req);
   free_ue_context_setup_req(&req);
 }
 
-static NR_RRCReconfiguration_IEs_t *get_default_reconfig(const NR_CellGroupConfig_t *secondaryCellGroup)
+static NR_RRCReconfiguration_IEs_t *get_default_reconfig(const byte_array_t cgc)
 {
   NR_RRCReconfiguration_IEs_t *reconfig = calloc(1, sizeof(NR_RRCReconfiguration_IEs_t));
   AssertFatal(reconfig != NULL, "out of memory\n");
-  AssertFatal(secondaryCellGroup != NULL, "secondaryCellGroup is null\n");
+  AssertFatal(cgc.buf != NULL, "cgc is null\n");
   reconfig->radioBearerConfig = NULL;
-
-  char scg_buffer[1024];
-  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_CellGroupConfig, NULL, (void *)secondaryCellGroup, scg_buffer, 1024);
-  AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %jd)!\n", enc_rval.failed_type->name, enc_rval.encoded);
-  reconfig->secondaryCellGroup = calloc(1, sizeof(*reconfig->secondaryCellGroup));
-  OCTET_STRING_fromBuf(reconfig->secondaryCellGroup, (const char *)scg_buffer, (enc_rval.encoded + 7) >> 3);
+  // Copy the stored CellGroupConfig to the RRCReconfiguration message
+  reconfig->secondaryCellGroup = calloc_or_fail(1, sizeof(*reconfig->secondaryCellGroup));
+  OCTET_STRING_fromBuf(reconfig->secondaryCellGroup, (const char *)cgc.buf, cgc.len);
   reconfig->measConfig = NULL;
   reconfig->lateNonCriticalExtension = NULL;
   reconfig->nonCriticalExtension = NULL;
@@ -442,7 +435,7 @@ static NR_CG_Config_t *generate_CG_Config(const NR_RRCReconfiguration_t *reconfi
   return cg_Config;
 }
 
-void rrc_add_nsa_user_resp(gNB_RRC_INST *rrc, gNB_RRC_UE_t *UE, const f1ap_ue_context_setup_resp_t *resp)
+void rrc_add_nsa_user_resp(gNB_RRC_UE_t *UE, const f1ap_ue_context_setup_resp_t *resp)
 {
   DevAssert(resp->crnti != NULL);
   /* we did not fill any DU-related ID info in rrc_add_nsa_user() */
@@ -469,7 +462,7 @@ void rrc_add_nsa_user_resp(gNB_RRC_INST *rrc, gNB_RRC_UE_t *UE, const f1ap_ue_co
   NR_RRCReconfiguration_t *reconfig = calloc(1, sizeof(NR_RRCReconfiguration_t));
   reconfig->rrc_TransactionIdentifier = 0;
   reconfig->criticalExtensions.present = NR_RRCReconfiguration__criticalExtensions_PR_rrcReconfiguration;
-  reconfig->criticalExtensions.choice.rrcReconfiguration = get_default_reconfig(UE->masterCellGroup);
+  reconfig->criticalExtensions.choice.rrcReconfiguration = get_default_reconfig(UE->mcg);
 
   NR_CG_Config_t *CG_Config = generate_CG_Config(reconfig, UE->rb_config);
   ASN_STRUCT_FREE(asn_DEF_NR_RRCReconfiguration, reconfig);

@@ -1,31 +1,6 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
-
-/*! \file log.h
-* \brief openair log generator (OLG) for
-* \author Navid Nikaein
-* \date 2009 - 2014
-* \version 0.5
-* @ingroup util
-*/
 
 #ifndef __LOG_H__
 #define __LOG_H__
@@ -162,9 +137,11 @@ static const char *const flag_name[] = {FOREACH_FLAG(FLAG_TEXT) ""};
   COMP_DEF(USIM, log)           \
   COMP_DEF(F1U, )               \
   COMP_DEF(X2AP, )              \
+  COMP_DEF(XNAP, )              \
   COMP_DEF(M2AP, )              \
   COMP_DEF(M3AP, )              \
   COMP_DEF(NGAP, )              \
+  COMP_DEF(NRPPA, )             \
   COMP_DEF(GNB_APP, log)        \
   COMP_DEF(NR_RRC, log)         \
   COMP_DEF(NR_MAC, log)         \
@@ -302,22 +279,6 @@ void close_log_mem(void);
 @param multiVec create new file or append to existing (useful for writing multiple vectors to same file. Just call the function multiple times with same file name and with this parameter set to 1)
 */
 #define MATLAB_RAW (1U<<31)
-#define MATLAB_SHORT 0
-#define MATLAB_CSHORT 1
-#define MATLAB_INT 2
-#define MATLAB_CINT 3
-#define MATLAB_INT8 4
-#define MATLAB_CINT8 5
-#define MATLAB_LLONG 6
-#define MATLAB_DOUBLE 7
-#define MATLAB_CDOUBLE 8
-#define MATLAB_UINT8 9
-#define MATLEB_EREN1 10
-#define MATLEB_EREN2 11
-#define MATLEB_EREN3 12
-#define MATLAB_CSHORT_BRACKET1 13
-#define MATLAB_CSHORT_BRACKET2 14
-#define MATLAB_CSHORT_BRACKET3 15
 
 int32_t write_file_matlab(const char *fname,
                           const char *vname,
@@ -333,7 +294,6 @@ int32_t write_file_matlab(const char *fname,
 
 #define LOG_CONFIG_STRING_GLOBAL_LOG_LEVEL                 "global_log_level"
 #define LOG_CONFIG_STRING_GLOBAL_LOG_ONLINE                "global_log_online"
-#define LOG_CONFIG_STRING_GLOBAL_LOG_INFILE                "global_log_infile"
 #define LOG_CONFIG_STRING_GLOBAL_LOG_OPTIONS               "global_log_options"
 
 #define LOG_CONFIG_LEVEL_FORMAT                            "%s_log_level"

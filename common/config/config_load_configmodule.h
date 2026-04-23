@@ -1,35 +1,12 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file common/config/config_load_configmodule.h
+/*!
  * \brief: configuration module, include file to be used by the source code calling the
  *  configuration module initialization
- * \author Francois TABURET
- * \date 2017
- * \version 0.1
- * \company NOKIA BellLabs France
- * \email: francois.taburet@nokia-bell-labs.com
- * \note
- * \warning
  */
+
 #ifndef INCLUDE_CONFIG_LOADCONFIGMODULE_H
 #define INCLUDE_CONFIG_LOADCONFIGMODULE_H
 
@@ -61,7 +38,7 @@
 struct configmodule_interface;
 typedef int (*configmodule_getfunc_t)(struct configmodule_interface *, paramdef_t *, int numparams, const char *prefix);
 typedef int (
-    *configmodule_getlistfunc_t)(struct configmodule_interface *, paramlist_def_t *, paramdef_t *, int numparams, char *prefix);
+    *configmodule_getlistfunc_t)(struct configmodule_interface *, paramlist_def_t *, paramdef_t *, int numparams, const char *prefix);
 typedef int (*configmodule_setfunc_t)(paramdef_t *cfgoptions, int numoptions, const char *prefix);
 typedef void (*configmodule_endfunc_t)(struct configmodule_interface *cfg);
 

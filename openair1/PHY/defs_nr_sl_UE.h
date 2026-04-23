@@ -1,34 +1,10 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file PHY/defs_nr_sl_UE.h
- \brief Top-level defines and structure definitions
- \author
- \date
- \version
- \company Fraunhofer
- \email:
- \note
- \warning
-*/
+/*!
+ * \brief Top-level defines and structure definitions
+ */
 
 #ifndef _DEFS_NR_SL_UE_H_
 #define _DEFS_NR_SL_UE_H_
@@ -46,7 +22,6 @@
 // 11 RBs for PSBCH in one symbol * 12 REs
 #define SL_NR_NUM_PSBCH_RE_IN_ONE_SYMBOL 132
 // 3 DMRS REs per RB * 11 RBS in one symbol
-#define SL_NR_NUM_PSBCH_DMRS_RE_IN_ONE_SYMBOL 33
 // 9 PSBCH DATA REs * 11 RBS in one symbol
 #define SL_NR_NUM_PSBCH_DATA_RE_IN_ONE_SYMBOL 99
 #define SL_NR_NUM_PSBCH_RBS_IN_ONE_SYMBOL 11
@@ -54,7 +29,6 @@
 // 11 * (12-3 DMRS REs) * 9 symbols for PSBCH
 #define SL_NR_NUM_PSBCH_MODULATED_SYMBOLS 891
 #define SL_NR_NUM_PSBCH_DATA_RE_IN_ONE_RB 9
-#define SL_NR_NUM_PSBCH_DMRS_RE_IN_ONE_RB 3
 // 11 * (12-3 DMRS REs) * 9 symbols for PSBCH
 #define SL_NR_NUM_PSBCH_DATA_RE_IN_ALL_SYMBOLS 891
 
@@ -63,7 +37,6 @@
 #define SL_NR_NUM_PSS_SYMBOLS 2
 #define SL_NR_NUM_SSS_SYMBOLS 2
 #define SL_NR_PSS_START_SYMBOL 1
-#define SL_NR_SSS_START_SYMBOL 3
 #define SL_NR_NUM_PSS_OR_SSS_SYMBOLS 2
 #define SL_NR_PSS_SEQUENCE_LENGTH 127
 #define SL_NR_SSS_SEQUENCE_LENGTH 127

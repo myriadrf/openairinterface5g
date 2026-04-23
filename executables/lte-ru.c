@@ -1,33 +1,9 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
-/*! \file lte-ru.c
+/*!
  * \brief Top-level threads for RU entity
- * \author R. Knopp, F. Kaltenberger, Navid Nikaein
- * \date 2019
- * \version 0.1
- * \company Eurecom
- * \email: {knopp, florian.kaltenberger, navid.nikaein}@eurecom.fr
- * \note
- * \warning
  */
 
 #define _GNU_SOURCE
@@ -52,7 +28,7 @@
 #include "PHY/phy_extern.h"
 #include "PHY/LTE_ESTIMATION/lte_estimation.h"
 #include "PHY/LTE_REFSIG/lte_refsig.h"
-#include "PHY/LTE_TRANSPORT/if4_tools.h"
+#include "PHY/if4_tools.h"
 #include "PHY/LTE_TRANSPORT/transport_proto.h"
 #include "SCHED/sched_common.h"
 #include "common/utils/LOG/log.h"
@@ -390,7 +366,7 @@ void fh_if5_north_asynch_in(RU_t *ru,
   LTE_DL_FRAME_PARMS *fp = ru->frame_parms;
   RU_proc_t *proc        = &ru->proc;
   int tti_tx,frame_tx;
-  openair0_timestamp timestamp_tx=0;
+  openair0_timestamp_t timestamp_tx = 0;
   //recv_IF5(ru, &timestamp_tx, *subframe, IF5_RRH_GW_DL);
   //      LOG_I(PHY,"Received subframe %d (TS %llu) from RCC\n",tti_tx,timestamp_tx);
   tti_tx = (timestamp_tx/fp->samples_per_tti)%10;
@@ -540,7 +516,7 @@ void rx_rf(RU_t *ru,
   unsigned int rxs;
   int i;
   int resynch=0;
-  openair0_timestamp ts=0,old_ts=0;
+  openair0_timestamp_t ts = 0, old_ts = 0;
 
   for (i=0; i<ru->nb_rx; i++)
     rxp[i] = (void *)&ru->common.rxdata[i][*subframe*fp->samples_per_tti];
@@ -802,7 +778,7 @@ static void *ru_thread_asynch_rxtx( void *param ) {
   RU_t *ru         = (RU_t *)param;
   RU_proc_t *proc  = &ru->proc;
   int subframe=0, frame=0;
-  thread_top_init("ru_thread_asynch_rxtx",1,870000,1000000,1000000);
+  thread_top_init("ru_thread_asynch_rxtx");
   // wait for top-level synchronization and do one acquisition to get timestamp for setting frame/subframe
   wait_sync("ru_thread_asynch_rxtx");
   // wait for top-level synchronization and do one acquisition to get timestamp for setting frame/subframe
@@ -893,7 +869,7 @@ void *ru_thread_prach( void *param ) {
   RU_proc_t *proc = (RU_proc_t *)&ru->proc;
   // set default return value
   ru_thread_prach_status = 0;
-  thread_top_init("ru_thread_prach",1,500000,1000000,20000000);
+  thread_top_init("ru_thread_prach");
   //wait_sync("ru_thread_prach");
 
   while (*ru->ru_mask>0 && ru->function!=eNodeB_3GPP) {
@@ -943,7 +919,7 @@ void *ru_thread_prach_br( void *param ) {
   RU_proc_t *proc = (RU_proc_t *)&ru->proc;
   // set default return value
   ru_thread_prach_status = 0;
-  thread_top_init("ru_thread_prach_br",1,500000,1000000,20000000);
+  thread_top_init("ru_thread_prach_br");
   //wait_sync("ru_thread_prach_br");
 
   while (!oai_exit) {
@@ -1251,45 +1227,37 @@ void fill_rf_config(RU_t *ru,
     if(ru->numerology == 0) {
       if (fp->threequarter_fs) {
         cfg->sample_rate=23.04e6;
-        cfg->samples_per_frame = 230400;
         cfg->tx_bw = 20e6;
         cfg->rx_bw = 20e6;
       } else {
         cfg->sample_rate=30.72e6;
-        cfg->samples_per_frame = 307200;
         cfg->tx_bw = 20e6;
         cfg->rx_bw = 20e6;
       }
     } else if(ru->numerology == 1) {
       cfg->sample_rate=61.44e6;
-      cfg->samples_per_frame = 307200;
       cfg->tx_bw = 20e6;
       cfg->rx_bw = 20e6;
     } else if(ru->numerology == 2) {
       cfg->sample_rate=122.88e6;
-      cfg->samples_per_frame = 307200;
       cfg->tx_bw = 40e6;
       cfg->rx_bw = 40e6;
     } else {
       LOG_I(PHY,"Wrong input for numerology %d\n setting to 20MHz normal CP configuration",numerology);
       cfg->sample_rate=30.72e6;
-      cfg->samples_per_frame = 307200;
       cfg->tx_bw = 10e6;
       cfg->rx_bw = 10e6;
     }
   } else if(fp->N_RB_DL == 50) {
     cfg->sample_rate=15.36e6;
-    cfg->samples_per_frame = 153600;
     cfg->tx_bw = 10e6;
     cfg->rx_bw = 10e6;
   } else if (fp->N_RB_DL == 25) {
     cfg->sample_rate=7.68e6;
-    cfg->samples_per_frame = 76800;
     cfg->tx_bw = 5e6;
     cfg->rx_bw = 5e6;
   } else if (fp->N_RB_DL == 6) {
     cfg->sample_rate=1.92e6;
-    cfg->samples_per_frame = 19200;
     cfg->tx_bw = 1.5e6;
     cfg->rx_bw = 1.5e6;
   } else AssertFatal(1==0,"Unknown N_RB_DL %d\n",fp->N_RB_DL);
@@ -1299,7 +1267,6 @@ void fill_rf_config(RU_t *ru,
   else //FDD
     cfg->duplex_mode = duplex_mode_FDD;
 
-  cfg->Mod_id = 0;
   cfg->num_rb_dl=fp->N_RB_DL;
   cfg->tx_num_channels=ru->nb_tx;
   cfg->rx_num_channels=ru->nb_rx;
@@ -1444,7 +1411,7 @@ static void *ru_thread_tx( void *param ) {
   L1_rxtx_proc_t *L1_proc;
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
-  thread_top_init("ru_thread_tx",1,400000,500000,500000);
+  thread_top_init("ru_thread_tx");
   //CPU_SET(5, &cpuset);
   //pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
   //wait_sync("ru_thread_tx");
@@ -1551,7 +1518,7 @@ static void *ru_thread( void *param ) {
   dlsch_ue_select_tbl_in_use = 1;
 #endif
   // set default return value
-  thread_top_init("ru_thread",1,400000,500000,500000);
+  thread_top_init("ru_thread");
   //CPU_SET(1, &cpuset);
   //pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
   pthread_setname_np( pthread_self(),"ru thread");
@@ -1832,7 +1799,7 @@ static void *ru_thread_synch(void *arg) {
   int64_t peak_val, avg;
   static int ru_thread_synch_status = 0;
   int cnt=0;
-  thread_top_init("ru_thread_synch",0,5000000,10000000,10000000);
+  thread_top_init("ru_thread_synch");
   wait_sync("ru_thread_synch");
   // initialize variables for PSS detection
   ru_sync_time_init(ru); //lte_sync_time_init(ru->frame_parms);
@@ -1906,7 +1873,7 @@ void *pre_scd_thread( void *param ) {
 
   frame = 0;
   subframe = 4;
-  thread_top_init("pre_scd_thread",0,870000,1000000,1000000);
+  thread_top_init("pre_scd_thread");
 
   while (!oai_exit) {
     if(oai_exit) {
@@ -1966,7 +1933,7 @@ static void *eNB_thread_phy_tx( void *param ) {
   // set default return value
   eNB_thread_phy_tx_status = 0;
   int ret;
-  thread_top_init("eNB_thread_phy_tx",1,500000L,1000000L,20000000L);
+  thread_top_init("eNB_thread_phy_tx");
 
   while (!oai_exit) {
     if (oai_exit) break;
@@ -2021,7 +1988,7 @@ static void *rf_tx( void *param ) {
   RU_proc_t *proc = &ru->proc;
   // set default return value
   rf_tx_status = 0;
-  thread_top_init("rf_tx",1,500000L,1000000L,20000000L);
+  thread_top_init("rf_tx");
 
   while (!oai_exit) {
     if (oai_exit) break;

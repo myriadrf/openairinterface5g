@@ -1,22 +1,5 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.1  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 
@@ -72,7 +55,6 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "gnb_paramdef.h"
 #include "intertask_interface.h"
 #include "nfapi/oai_integration/vendor_ext.h"
-#include "nfapi_interface.h"
 #include "nfapi_nr_interface_scf.h"
 #include "ngap_gNB.h"
 #include "nr-softmodem-common.h"
@@ -101,7 +83,7 @@ int oai_exit = 0;
 unsigned int mmapped_dma=0;
 
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
-int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
+int64_t uplink_frequency_offset[MAX_NUM_CCs][4];
 char *uecap_file;
 
 runmode_t mode = normal_txrx;
@@ -114,9 +96,6 @@ double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0},{20,0,0,0}};
 double rx_gain[MAX_NUM_CCs][4] = {{110,0,0,0},{20,0,0,0}};
 #endif
 
-double rx_gain_off = 0.0;
-
-static int tx_max_power[MAX_NUM_CCs]; /* =  {0,0}*/;
 int chain_offset = 0;
 int numerology = 0;
 double cpuf;
@@ -517,7 +496,7 @@ int main( int argc, char **argv ) {
   start_background_system();
 
   ///static configuration for NR at the moment
-  if ((uniqCfg = load_configmodule(argc, argv, CONFIG_ENABLECMDLINEONLY)) == NULL) {
+  if ((uniqCfg = load_configmodule(argc, argv, CONFIG_ENABLECMDLINEONLY)) == NULL || CONFIG_ISFLAGSET(CONFIG_ABORT)) {
     exit_fun("[SOFTMODEM] Error, configuration module init failed\n");
   }
 
@@ -527,15 +506,9 @@ int main( int argc, char **argv ) {
   setvbuf(stderr, NULL, _IONBF, 0);
 #endif
   mode = normal_txrx;
-  memset(tx_max_power,0,sizeof(int)*MAX_NUM_CCs);
   logInit();
   lock_memory_to_ram();
   get_options(uniqCfg);
-
-  if (CONFIG_ISFLAGSET(CONFIG_ABORT) ) {
-    fprintf(stderr,"Getting configuration failed\n");
-    exit(-1);
-  }
 
   if (!has_cap_sys_nice())
     LOG_W(UTIL,
@@ -621,7 +594,6 @@ int main( int argc, char **argv ) {
                          : TIME_SOURCE_REALTIME);
 
   // start the main threads
-  number_of_cards = 1;
 
   wait_gNBs();
   int sl_ahead = NFAPI_MODE == NFAPI_MODE_AERIAL ? 0 : 6;
@@ -679,11 +651,28 @@ int main( int argc, char **argv ) {
     wait_nfapi_init("main?");
   }
 
+  if (IS_SOFTMODEM_IMSCOPE_ENABLED || IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED) {
+    sleep(1);
+    scopeParms_t p;
+    p.argc = &argc;
+    p.argv = argv;
+    p.gNB = RC.gNB[0];
+    p.ru = RC.ru[0];
+    if (IS_SOFTMODEM_IMSCOPE_ENABLED) {
+      load_softscope("im", &p);
+    }
+    AssertFatal(!(IS_SOFTMODEM_IMSCOPE_ENABLED && IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED),
+                "Data recoding and ImScope cannot be enabled at the same time\n");
+    if (IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED) {
+      load_module_shlib("imscope_record", NULL, 0, &p);
+    }
+  }
+
   if (RC.nb_nr_L1_inst > 0) {
     wait_RUs();
     // once all RUs are ready initialize the rest of the gNBs ((dependence on final RU parameters after configuration)
 
-    if (IS_SOFTMODEM_DOSCOPE || IS_SOFTMODEM_IMSCOPE_ENABLED || IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED) {
+    if (IS_SOFTMODEM_DOSCOPE) {
       sleep(1);
       scopeParms_t p;
       p.argc = &argc;
@@ -692,14 +681,6 @@ int main( int argc, char **argv ) {
       p.ru = RC.ru[0];
       if (IS_SOFTMODEM_DOSCOPE) {
         load_softscope("nr", &p);
-      }
-      if (IS_SOFTMODEM_IMSCOPE_ENABLED) {
-        load_softscope("im", &p);
-      }
-      AssertFatal(!(IS_SOFTMODEM_IMSCOPE_ENABLED && IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED),
-                  "Data recoding and ImScope cannot be enabled at the same time\n");
-      if (IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED) {
-        load_module_shlib("imscope_record", NULL, 0, &p);
       }
     }
 

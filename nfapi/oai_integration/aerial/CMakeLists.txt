@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-CSSL-1.0
+
 if (OAI_AERIAL)
     message(STATUS "Building with support for Aerial")
     add_library(aerial_lib

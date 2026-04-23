@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 services:
     cassandra:
         image: cassandra:2.1
@@ -164,7 +166,7 @@ services:
             retries: 5
 
     trf_gen:
-        image: oaisoftwarealliance/trf-gen-cn5g:focal
+        image: oaisoftwarealliance/trf-gen-cn5g:latest
         privileged: true
         container_name: rfsim4g-trf-gen
         networks:
@@ -208,9 +210,10 @@ services:
         environment:
             TZ: Europe/Paris
             ASAN_OPTIONS: detect_leaks=0
-            USE_ADDITIONAL_OPTIONS: --rfsim -C 2680000000 -r 100 --ue-rxgain 140 --ue-txgain 120 --rfsimulator.serveraddr 192.168.61.20 --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim -C 2680000000 -r 100 --ue-rxgain 140 --ue-txgain 120 --rfsimulator.[0].serveraddr 192.168.61.20 --log_config.global_log_options level,nocolor,time
         volumes:
             - ../../conf_files/lteue.usim-ci.conf:/opt/oai-lte-ue/etc/ue_usim.conf
+            - ../../conf_files/lteue.rfsim.conf:/opt/oai-lte-ue/etc/ue.conf
         healthcheck:
             test: /bin/bash -c "pgrep lte-uesoftmodem"
             interval: 10s

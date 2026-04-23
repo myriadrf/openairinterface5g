@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 This document describes the driver for the xran driver, implementing O-RAN FHI
 7.2 interface. This is for developers; for user documentation, consider the
 [O-RAN 7.2 tutorial instead](../../doc/ORAN_FHI7.2_Tutorial.md). 

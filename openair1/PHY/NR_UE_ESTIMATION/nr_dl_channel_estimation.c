@@ -1,29 +1,11 @@
 /*
- * Licensed to the OpenAirInterface (OAI) Software Alliance under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The OpenAirInterface Software Alliance licenses this file to You under
- * the OAI Public License, Version 1.0  (the "License"); you may not use this file
- * except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.openairinterface.org/?page_id=698
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *-------------------------------------------------------------------------------
- * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      contact@openairinterface.org
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
 
 #include "nr_common.h"
 #include <string.h>
 #include "SCHED_NR_UE/defs.h"
 #include "nr_estimation.h"
-#include "PHY/NR_REFSIG/refsig_defs_ue.h"
 #include "PHY/NR_REFSIG/nr_refsig.h"
 #include "PHY/NR_REFSIG/dmrs_nr.h"
 #include "PHY/NR_REFSIG/ptrs_nr.h"
@@ -45,6 +27,8 @@
 
 #define CH_INTERP 0
 #define NO_INTERP 1
+
+extern openair0_config_t openair0_cfg[MAX_CARDS];
 
 /* Generic function to find the peak of channel estimation buffer */
 void peak_estimator(c16_t *buffer, int32_t buf_len, int32_t *peak_idx, int32_t *peak_val, int32_t mean_val)
@@ -461,12 +445,13 @@ int nr_prs_channel_estimation(uint8_t gNB_id,
 
     // adjusting the rx_gains for channel peak power
     ch_pwr_dbm = 10 * log10(ch_pwr) + 30 - SQ15_SQUARED_NORM_FACTOR_DB
-                 - ((int)ue->openair0_cfg[0].rx_gain[0] - (int)ue->openair0_cfg[0].rx_gain_offset[0])
+                 - ((int)openair0_cfg[ue->rf_map.card].rx_gain[0] - (int)openair0_cfg[ue->rf_map.card].rx_gain_offset[0])
                  - dB_fixed(frame_params->ofdm_symbol_size);
 
-    prs_meas[rxAnt]->rsrp_dBm = 10 * log10(prs_meas[rxAnt]->rsrp) + 30 - SQ15_SQUARED_NORM_FACTOR_DB
-                                - ((int)ue->openair0_cfg[0].rx_gain[0] - (int)ue->openair0_cfg[0].rx_gain_offset[0])
-                                - dB_fixed(ue->frame_parms.ofdm_symbol_size);
+    prs_meas[rxAnt]->rsrp_dBm =
+        10 * log10(prs_meas[rxAnt]->rsrp) + 30 - SQ15_SQUARED_NORM_FACTOR_DB
+        - ((int)openair0_cfg[ue->rf_map.card].rx_gain[0] - (int)openair0_cfg[ue->rf_map.card].rx_gain_offset[0])
+        - dB_fixed(ue->frame_parms.ofdm_symbol_size);
 
     // prs measurements
     prs_meas[rxAnt]->gNB_id     = gNB_id;
@@ -532,7 +517,6 @@ int nr_prs_channel_estimation(uint8_t gNB_id,
 }
 
 c32_t nr_pbch_dmrs_correlation(const NR_DL_FRAME_PARMS *fp,
-                               const UE_nr_rxtx_proc_t *proc,
                                const int symbol,
                                const int dmrss,
                                const int Nid_cell,
@@ -550,8 +534,7 @@ c32_t nr_pbch_dmrs_correlation(const NR_DL_FRAME_PARMS *fp,
 
   unsigned int k = Nid_cell % 4;
 
-  DEBUG_PBCH("PBCH DMRS Correlation : gNB_id %d , OFDM size %d, Ncp=%d, k=%u symbol %d\n",
-             proc->gNB_id,
+  DEBUG_PBCH("PBCH DMRS Correlation : OFDM size %d, Ncp=%d, k=%u symbol %d\n",
              fp->ofdm_symbol_size,
              fp->Ncp,
              k,
@@ -1293,7 +1276,7 @@ void nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
   float beta_dmrs_pdsch = get_beta_dmrs(dlsch->n_dmrs_cdm_groups, config_type == NFAPI_NR_DMRS_TYPE2);
   int16_t dmrs_scaling = (int16_t)((1 / beta_dmrs_pdsch) * (1 << 14));
   const uint32_t *gold = nr_gold_pdsch(fp->N_RB_DL, fp->symbols_per_slot, dlsch->dlDmrsScramblingId, dlsch->nscid, slot, symbol);
-  nr_pdsch_dmrs_rx(ue, slot, gold, pilot, 1000 + p, 0, nb_rb_pdsch + rb_offset, config_type, dmrs_scaling);
+  nr_pdsch_dmrs_rx(fp->Ncp, gold, pilot, 1000 + p, 0, nb_rb_pdsch + rb_offset, config_type, dmrs_scaling);
 
   delay_t delay = {0};
 
@@ -1378,16 +1361,15 @@ void nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
  *  2) Interpolate PTRS estimated value in TD after all PTRS symbols
  *  3) Compensate signal with PTRS estimation for slot
  *********************************************************************/
-void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
-                              int nbRx,
+void nr_pdsch_ptrs_processing(int nbRx,
                               c16_t ptrs_phase_per_slot[][14],
                               int32_t ptrs_re_per_slot[][14],
                               uint32_t rx_size_symbol,
-                              int32_t rxdataF_comp[][nbRx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
+                              int nl,
+                              c16_t rxdataF_comp[][nl][nbRx][rx_size_symbol],
                               NR_DL_FRAME_PARMS *frame_parms,
                               NR_DL_UE_HARQ_t *dlsch0_harq,
                               NR_DL_UE_HARQ_t *dlsch1_harq,
-                              uint8_t gNB_id,
                               uint8_t nr_slot_rx,
                               unsigned char symbol,
                               uint16_t rnti,
@@ -1409,7 +1391,7 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
   uint16_t *nb_rb           = NULL;
   int nscid = 0;
 
-  if(dlsch0_harq->status == ACTIVE) {
+  if(dlsch0_harq->status == NR_ACTIVE) {
     symbInSlot      = dlsch[0].dlsch_config.start_symbol + dlsch[0].dlsch_config.number_symbols;
     startSymbIndex  = &dlsch[0].dlsch_config.start_symbol;
     nbSymb          = &dlsch[0].dlsch_config.number_symbols;
@@ -1453,7 +1435,7 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
       phase_per_symbol[symbol].r = 0; // Real
     }
 
-    if(dlsch0_harq->status == ACTIVE) {
+    if(dlsch0_harq->status == NR_ACTIVE) {
       if(symbol == *startSymbIndex) {
         *ptrsSymbPos = 0;
         set_ptrs_symb_idx(ptrsSymbPos,
@@ -1476,10 +1458,8 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
                                *ptrsReOffset,
                                *nb_rb,
                                rnti,
-                               nr_slot_rx,
-                               symbol,
                                frame_parms->ofdm_symbol_size,
-                               (int16_t *)(rxdataF_comp[0][aarx] + symbol * rx_size_symbol),
+                               rxdataF_comp[symbol][0][aarx],
                                gold,
                                (int16_t *)&phase_per_symbol[symbol],
                                &ptrs_re_symbol[symbol]);
@@ -1512,9 +1492,9 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
 #ifdef DEBUG_DL_PTRS
           printf("[PHY][DL][PTRS]: Rotate Symbol %2d with  %d + j* %d\n", i, phase_per_symbol[i].r,phase_per_symbol[i].i);
 #endif
-          rotate_cpx_vector((c16_t *)&rxdataF_comp[0][aarx][i * rx_size_symbol],
+          rotate_cpx_vector(rxdataF_comp[i][0][aarx],
                             &phase_per_symbol[i],
-                            (c16_t *)&rxdataF_comp[0][aarx][i * rx_size_symbol],
+                            rxdataF_comp[i][0][aarx],
                             ((*nb_rb) * NR_NB_SC_PER_RB),
                             15);
         }// if not DMRS Symbol

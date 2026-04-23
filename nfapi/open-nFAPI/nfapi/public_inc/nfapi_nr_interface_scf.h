@@ -1,16 +1,13 @@
 /*
-                                nfapi_nr_interface.h
-                             -------------------
-  AUTHOR  : Chenyu Zhang, Florian Kaltenberger
-  COMPANY : BUPT, EURECOM
-  EMAIL   : octopus@bupt.edu.cn, florian.kaltenberger@eurecom.fr
-*/
+ * SPDX-License-Identifier: LicenseRef-CSSL-1.0
+ */
 
 #ifndef _NFAPI_NR_INTERFACE_SCF_H_
 #define _NFAPI_NR_INTERFACE_SCF_H_
 
 #include "stddef.h"
 #include "common/platform_types.h"
+#include "common/utils/nr/nr_common.h"
 #include "nfapi_interface.h"
 #include "nfapi_nr_interface.h"
 
@@ -329,8 +326,14 @@ typedef struct
 
 #define NFAPI_NR_CONFIG_RSSI_MEASUREMENT_TAG 0x1028
 #define NFAPI_NR_CONFIG_TDD_TABLE 0x1035
-#define NFAPI_NR_CONFIG_BEAMFORMING_TABLE_TAG 0x1043 // This tag was added in version 5 of the SCF222 standard ( Table 3-50 of SCF222.10.05 )
 #define NFAPI_NR_CONFIG_PRECODING_TABLE_V6_TAG 0x104B // This tag was added in version 6 of the SCF222 standard ( Table 3-52 of SCF222.10.06 )
+#ifdef ENABLE_AERIAL
+  #define NFAPI_NR_CONFIG_NUM_TX_PORT_TAG 0xA016
+  #define NFAPI_NR_CONFIG_NUM_RX_PORT_TAG 0xA017
+  #define NFAPI_NR_CONFIG_BEAMFORMING_TABLE_TAG 0xA010 
+#else
+  #define NFAPI_NR_CONFIG_BEAMFORMING_TABLE_TAG 0x1043 // This tag was added in version 5 of the SCF222 standard ( Table 3-50 of SCF222.10.05 )
+#endif
 
 //table 3-21
 typedef struct 
@@ -346,6 +349,8 @@ typedef struct
   nfapi_uint16_tlv_t ul_grid_size[5];//Grid size 𝑁𝑔𝑟𝑖𝑑 𝑠𝑖𝑧𝑒,𝜇 for each of the numerologies [38.211, sec 4.4.2]. Value: 0->275 0 = this numerology not used
   nfapi_uint16_tlv_t num_rx_ant;//
   nfapi_uint8_tlv_t  frequency_shift_7p5khz;//Indicates presence of 7.5KHz frequency shift. Value: 0 = false 1 = true
+  nfapi_uint16_tlv_t num_tx_port; //used by Aerial L1 when BF mode is enabled to signal the number of logical antenna ports
+  nfapi_uint16_tlv_t num_rx_port; //used by Aerial L1 when BF mode is enabled to signal the number of logical antenna ports
 
 } nfapi_nr_carrier_config_t; 
 
@@ -412,15 +417,15 @@ typedef struct
 typedef struct 
 {
   nfapi_uint16_tlv_t ssb_offset_point_a;//Offset of lowest subcarrier of lowest resource block used for SS/PBCH block. Given in PRB [38.211, section 4.4.4.2] Value: 0->2199
-  nfapi_uint8_tlv_t  beta_pss;//PSS EPRE to SSS EPRE in a SS/PBCH block [38.213, sec 4.1] Values: 0 = 0dB
-  nfapi_uint8_tlv_t  ssb_period;//SSB periodicity in msec Value: 0: ms5 1: ms10 2: ms20 3: ms40 4: ms80 5: ms160
-  nfapi_uint8_tlv_t  ssb_subcarrier_offset;//ssbSubcarrierOffset or 𝑘𝑆𝑆𝐵 (38.211, section 7.4.3.1) Value: 0->31
+  nfapi_uint8_tlv_t beta_pss;//PSS EPRE to SSS EPRE in a SS/PBCH block [38.213, sec 4.1] Values: 0 = 0dB
+  nfapi_uint8_tlv_t ssb_period;//SSB periodicity in msec Value: 0: ms5 1: ms10 2: ms20 3: ms40 4: ms80 5: ms160
+  nfapi_uint8_tlv_t ssb_subcarrier_offset;//ssbSubcarrierOffset or 𝑘𝑆𝑆𝐵 (38.211, section 7.4.3.1) Value: 0->31
   nfapi_uint32_tlv_t MIB;//MIB payload, where the 24 MSB are used and represent the MIB in [38.331 MIB IE] and represent 0 1 2 3 1 , , , ,..., A− a a a a a [38.212, sec 7.1.1]
   nfapi_nr_ssb_mask_list_t ssb_mask_list[2];
   nfapi_nr_ssb_beam_id_list_t ssb_beam_id_list[64];
-  nfapi_uint8_tlv_t  ss_pbch_multiple_carriers_in_a_band;//0 = disabled 1 = enabled
-  nfapi_uint8_tlv_t  multiple_cells_ss_pbch_in_a_carrier;//Indicates that multiple cells will be supported in a single carrier 0 = disabled 1 = enabled
-
+  nfapi_uint8_tlv_t ss_pbch_multiple_carriers_in_a_band;//0 = disabled 1 = enabled
+  nfapi_uint8_tlv_t multiple_cells_ss_pbch_in_a_carrier;//Indicates that multiple cells will be supported in a single carrier 0 = disabled 1 = enabled
+  nfapi_uint8_tlv_t case_v3;
 } nfapi_nr_ssb_table_t;
 
 //table 3-26
@@ -495,7 +500,7 @@ typedef struct {
   uint16_t pm_idx;
   uint16_t numLayers;
   uint16_t num_ant_ports;
-  nfapi_nr_pm_weights_t weights[4][4]; // TODO temporary hardcoding
+  nfapi_nr_pm_weights_t weights[NR_MAX_NB_LAYERS][NR_MAX_CSI_PORTS];
 } nfapi_nr_pm_pdu_t;
 
 
@@ -716,7 +721,13 @@ typedef enum {
   X(NFAPI_NR_PHY_API_MSG_TX_ERR, 0X8)
 
 #ifdef ENABLE_AERIAL
+// Error codes obtained from Aerial L1 file
+// cuPHY-CP/scfl2adapter/lib/scf_5g_fapi/scf_5g_fapi.h
 #define AERIAL_ERROR_LIST                                \
+  X(SCF_ERROR_CODE_MSG_INVALID_PHY_ID, 0x9)              \
+  X(SCF_ERROR_CODE_MSG_UNINSTANTIATED_PHY, 0xA)          \
+  X(SCF_ERROR_CODE_MSG_INVALID_DFE_Profile, 0xB)         \
+  X(SCF_ERROR_CODE_MSG_PHY_PROFILE_SELECTION, 0xC)       \
   X(AERIAL_ERROR_CODE_FAPI_END, 0x32)                    \
   X(AERIAL_ERROR_CODE_L1_PROC_OBJ_UNAVAILABLE_ERR, 0x33) \
   X(AERIAL_ERROR_CODE_MSG_LATE_SLOT_ERR, 0x34)           \
@@ -729,7 +740,26 @@ typedef enum {
   X(AERIAL_ERROR_CODE_L1_P1_EXIT_ERROR, 0x3B)            \
   X(AERIAL_ERROR_CODE_L1_P2_EXIT_ERROR, 0x3C)            \
   X(AERIAL_ERROR_CODE_L1_DL_CH_ERROR, 0x3D)              \
-  X(AERIAL_ERROR_CODE_L1_UL_CH_ERROR, 0x3E)
+  X(AERIAL_ERROR_CODE_L1_UL_CH_ERROR, 0x3E)              \
+  X(SCF_ERROR_CODE_EARLY_HARQ_TIMING_ERROR, 0x3F)        \
+  X(SCF_ERROR_CODE_SRS_CHEST_BUFF_BAD_STATE, 0x40)       \
+  X(SCF_ERROR_CODE_BEAM_ID_OUT_OF_RANGE, 0x41)           \
+  X(SCF_ERROR_CODE_PTP_SVC_ERROR, 0x42)                  \
+  X(SCF_ERROR_CODE_PTP_SYNCED, 0x43)                     \
+  X(SCF_ERROR_CODE_L1_MISSING_UL_IQ, 0x44)               \
+  X(SCF_ERROR_CODE_MSG_CAPACITY_EXCEEDED, 0x45)          \
+  X(SCF_ERROR_CODE_RHOCP_PTP_EVENTS_ERROR, 0x46)         \
+  X(SCF_ERROR_CODE_RHOCP_PTP_EVENTS_SYNCED, 0x47)        \
+  X(SCF_FAPI_SSB_PBCH_L1_LIMIT_EXCEEDED, 0x81)           \
+  X(SCF_FAPI_PDCCH_L1_LIMIT_EXCEEDED, 0x82)              \
+  X(SCF_FAPI_PDSCH_L1_LIMIT_EXCEEDED, 0x84)              \
+  X(SCF_FAPI_CSIRS_L1_LIMIT_EXCEEDED, 0x88)              \
+  X(SCF_FAPI_PUSCH_L1_LIMIT_EXCEEDED, 0xC1)              \
+  X(SCF_FAPI_PUCCH_L1_LIMIT_EXCEEDED, 0xC2)              \
+  X(SCF_FAPI_SRS_L1_LIMIT_EXCEEDED, 0xC4)                \
+  X(SCF_FAPI_PRACH_L1_LIMIT_EXCEEDED, 0xC8)              \
+  X(SCF_ERROR_CODE_RELEASED_HARQ_BUFFER_INFO, 0xD0)
+
 #else
 #define AERIAL_ERROR_LIST
 #endif

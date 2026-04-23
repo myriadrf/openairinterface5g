@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 The OpenAirInterface software can be obtained from our gitLab server. You will
 need a git client to get the sources. The repository is used for main
 developments.
