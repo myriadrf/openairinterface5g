@@ -682,7 +682,7 @@ void decode_srs_carrier_list(nrppa_srs_carrier_list_t *out_list, const NRPPA_SRS
   }
 }
 
-void free_measurement_request(nrppa_measurement_req_t *msg)
+void free_nrppa_measurement_request(nrppa_measurement_req_t *msg)
 {
   free(msg->trp_measurement_request_list.trp_measurement_request_item);
   if (msg->measurement_quantities.measurement_quantities_item) {
@@ -692,7 +692,7 @@ void free_measurement_request(nrppa_measurement_req_t *msg)
   /* SRS Configuration (O) */
   if (msg->srs_configuration) {
     nrppa_srs_carrier_list_t *srs_carrier_list = &msg->srs_configuration->srs_carrier_list;
-    free_srs_carrier_list(srs_carrier_list);
+    free_nrppa_srs_carrier_list(srs_carrier_list);
     free(msg->srs_configuration);
   }
 }
@@ -846,7 +846,7 @@ NRPPA_TRP_MeasurementResponseList_t encode_trp_measurement_reponse_list(nrppa_me
   return out_list;
 }
 
-void free_measurement_resp(nrppa_measurement_resp_t *msg)
+void free_nrppa_measurement_resp(nrppa_measurement_resp_t *msg)
 {
   if (msg->measurement_response_list) {
     nrppa_measurement_response_list_t *list = msg->measurement_response_list;
@@ -1038,7 +1038,7 @@ int nrppa_gNB_measurement_response(instance_t instance, MessageDef *msg_p)
 
   if (ue_info->gNB_ue_ngap_id != 0 && ue_info->amf_ue_ngap_id != 0) {
     LOG_E(NRPPA, "Illegal gNB_ue_ngap_id %d and amf_ue_ngap_id %ld\n", ue_info->gNB_ue_ngap_id, ue_info->amf_ue_ngap_id);
-    free_measurement_resp(resp);
+    free_nrppa_measurement_resp(resp);
     nrppa_free_ue_context(ue_info);
     return -1;
   }
@@ -1091,7 +1091,7 @@ int nrppa_gNB_measurement_response(instance_t instance, MessageDef *msg_p)
     }
   }
 
-  free_measurement_resp(resp);
+  free_nrppa_measurement_resp(resp);
 
   LOG_I(NRPPA, "Calling encoder for Measurement Response \n");
 

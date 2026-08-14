@@ -3,6 +3,7 @@
  */
 #include "nr_fapi.h"
 #include "nr_fapi_p7.h"
+#include "nr_fapi_p7_utils.h"
 #include "nr_nfapi_p7.h"
 #include "debug.h"
 
@@ -41,6 +42,9 @@ uint8_t fapi_nr_p7_message_body_pack(nfapi_nr_p7_message_header_t *header,
     case NFAPI_NR_PHY_MSG_TYPE_SRS_INDICATION:
       result = pack_nr_srs_indication(header, ppWritePackedMsg, end);
     break;
+    case NFAPI_NR_PHY_MSG_TYPE_SRS_TOA_VENDOR_EXTENSION_INDICATION:
+      result = pack_nr_srs_toa_vendor_ext_indication(header, ppWritePackedMsg, end);
+      break;
     case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
       result = pack_nr_rach_indication(header, ppWritePackedMsg, end);
     break;
@@ -190,6 +194,11 @@ bool fapi_nr_p7_message_unpack(void *pMessageBuf,
         result = unpack_nr_srs_indication(&pReadPackedMessage, end, pMessageHeader);
       }
     break;
+    case NFAPI_NR_PHY_MSG_TYPE_SRS_TOA_VENDOR_EXTENSION_INDICATION:
+      if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_SRS_TOA_VENDOR_EXTENSION_INDICATION, unpackedBufLen)) {
+        result = unpack_nr_srs_toa_vendor_ext_indication(&pReadPackedMessage, end, pMessageHeader);
+      }
+      break;
     case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION, unpackedBufLen)) {
         result = unpack_nr_rach_indication(&pReadPackedMessage, end, pMessageHeader);
@@ -267,6 +276,17 @@ static uint8_t pack_dl_tti_csi_rs_pdu_rel15_value(void *tlv, uint8_t **ppWritePa
   if(!pack_nr_tx_beamforming_pdu(&value->precodingAndBeamforming,ppWritePackedMsg, end)) {
     return 0;
   }
+#ifndef ENABLE_AERIAL
+  if (!push8(value->param_v4.numSpatialStreamIndices, ppWritePackedMsg, end))
+    return 0;
+
+  if (!pusharray8(value->param_v4.spatialStreamIndices,
+                  MAX_NUM_SPATIAL_STREAMS,
+                  value->param_v4.numSpatialStreamIndices,
+                  ppWritePackedMsg,
+                  end))
+    return 0;
+#endif
   return 1;
 }
 
@@ -306,6 +326,31 @@ static uint8_t pack_dl_tti_pdcch_pdu_rel15_value(void *tlv, uint8_t **ppWritePac
       return 0;
     }
   }
+
+#ifndef ENABLE_AERIAL
+  // Spatial steam indices for MU-MIMO
+  const nfapi_v4_pdcch_pdu_parameters_t *p = &value->param_v4;
+  if (!push16(p->numSpatialStreams, ppWritePackedMsg, end))
+    return 0;
+
+  for (uint_fast16_t i = 0; i < p->numSpatialStreams; i++)
+    if (!(push16(p->dci_spatialStreamIndices[i].dci_index, ppWritePackedMsg, end)
+          && push16(p->dci_spatialStreamIndices[i].spatial_stream_index, ppWritePackedMsg, end)))
+      return 0;
+#endif
+  return 1;
+}
+
+static inline uint8_t pack_spatial_stream_indices(const nfapi_nr_spatial_stream_index_t *ss,
+                                                  uint8_t **ppWritePackedMsg,
+                                                  uint8_t *end)
+{
+  if (!push8(ss->numSpatialStreamIndices, ppWritePackedMsg, end))
+    return 0;
+
+  if (!pusharray16(ss->spatialStreamIndices, MAX_NUM_SPATIAL_STREAMS, ss->numSpatialStreamIndices, ppWritePackedMsg, end))
+    return 0;
+
   return 1;
 }
 
@@ -368,6 +413,14 @@ static uint8_t pack_dl_tti_pdsch_pdu_rel15_value(void *tlv, uint8_t **ppWritePac
   if (!push8(value->maintenance_parms_v3.ldpcBaseGraph, ppWritePackedMsg, end)
       || !push32(value->maintenance_parms_v3.tbSizeLbrmBytes, ppWritePackedMsg, end))
     return 0;
+
+  // PDSCH parameter in FAPI v4 for MU-MIMO spatial stream indexing
+  if (!push8(value->param_v4.numberCodewords, ppWritePackedMsg, end))
+    return 0;
+
+  for (uint_fast8_t c = 0; c < value->param_v4.numberCodewords; c++)
+    if (!pack_spatial_stream_indices(value->param_v4.spatialStreamsCw + c, ppWritePackedMsg, end))
+      return 0;
 #endif
   return 1;
 }
@@ -389,6 +442,11 @@ static uint8_t pack_dl_tti_ssb_pdu_rel15_value(void *tlv, uint8_t **ppWritePacke
   if(!pack_nr_tx_beamforming_pdu(&value->precoding_and_beamforming,ppWritePackedMsg, end)) {
     return 0;
   }
+#ifndef ENABLE_AERIAL
+  if (!(push8(value->param_v4.spatialStreamIndexPresent, ppWritePackedMsg, end)
+        && push16(value->param_v4.spatialStreamIndex, ppWritePackedMsg, end)))
+    return 0;
+#endif
   return 1;
 }
 
@@ -516,6 +574,30 @@ static uint8_t unpack_dl_tti_pdcch_pdu_rel15_value(void *tlv, uint8_t **ppReadPa
       return 0;
     }
   }
+
+#ifndef ENABLE_AERIAL
+  // Spatial steam indices for MU-MIMO
+  nfapi_v4_pdcch_pdu_parameters_t *p = &value->param_v4;
+  if (!pull16(ppReadPackedMsg, &p->numSpatialStreams, end))
+    return 0;
+
+  for (uint_fast16_t i = 0; i < p->numSpatialStreams; i++) {
+    if (!(pull16(ppReadPackedMsg, &p->dci_spatialStreamIndices[i].dci_index, end)
+          && pull16(ppReadPackedMsg, &p->dci_spatialStreamIndices[i].spatial_stream_index, end)))
+      return 0;
+  }
+#endif
+  return 1;
+}
+
+static inline uint8_t unpack_spatial_stream_indices(nfapi_nr_spatial_stream_index_t *ss, uint8_t **ppReadPackedMsg, uint8_t *end)
+{
+  if (!pull8(ppReadPackedMsg, &ss->numSpatialStreamIndices, end))
+    return 0;
+
+  if (!pullarray16(ppReadPackedMsg, ss->spatialStreamIndices, MAX_NUM_SPATIAL_STREAMS, ss->numSpatialStreamIndices, end))
+    return 0;
+
   return 1;
 }
 
@@ -578,6 +660,14 @@ static uint8_t unpack_dl_tti_pdsch_pdu_rel15_value(void *tlv, uint8_t **ppReadPa
   if (!pull8(ppReadPackedMsg, &value->maintenance_parms_v3.ldpcBaseGraph, end)
       || !pull32(ppReadPackedMsg, &value->maintenance_parms_v3.tbSizeLbrmBytes, end))
     return 0;
+
+  // PDSCH parameter in FAPI v4 for MU-MIMO spatial stream indexing
+  if (!pull8(ppReadPackedMsg, &value->param_v4.numberCodewords, end))
+    return 0;
+
+  for (uint_fast8_t c = 0; c < value->param_v4.numberCodewords; c++)
+    if (!unpack_spatial_stream_indices(value->param_v4.spatialStreamsCw + c, ppReadPackedMsg, end))
+      return 0;
 #endif
   return 1;
 }
@@ -601,6 +691,17 @@ static uint8_t unpack_dl_tti_csi_rs_pdu_rel15_value(void *tlv, uint8_t **ppReadP
   if(!unpack_nr_tx_beamforming_pdu(&value->precodingAndBeamforming, ppReadPackedMsg, end)) {
     return 0;
   }
+#ifndef ENABLE_AERIAL
+  if (!pull8(ppReadPackedMsg, &value->param_v4.numSpatialStreamIndices, end))
+    return 0;
+
+  if (!pullarray8(ppReadPackedMsg,
+                  value->param_v4.spatialStreamIndices,
+                  MAX_NUM_SPATIAL_STREAMS,
+                  value->param_v4.numSpatialStreamIndices,
+                  end))
+    return 0;
+#endif
 
   return 1;
 }
@@ -625,6 +726,11 @@ static uint8_t unpack_dl_tti_ssb_pdu_rel15_value(void *tlv, uint8_t **ppReadPack
   if(!unpack_nr_tx_beamforming_pdu(&value->precoding_and_beamforming, ppReadPackedMsg, end)) {
     return 0;
   }
+#ifndef ENABLE_AERIAL
+  if (!(pull8(ppReadPackedMsg, &value->param_v4.spatialStreamIndexPresent, end)
+        && pull16(ppReadPackedMsg, &value->param_v4.spatialStreamIndex, end)))
+    return 0;
+#endif
   return 1;
 }
 
@@ -724,7 +830,14 @@ static uint8_t pack_ul_tti_request_prach_pdu(const nfapi_nr_prach_pdu_t *prach_p
     return 0;
   }
 
-  return pack_nr_rx_beamforming_pdu(&prach_pdu->beamforming, ppWritePackedMsg, end);
+  if (!pack_nr_rx_beamforming_pdu(&prach_pdu->beamforming, ppWritePackedMsg, end))
+    return 0;
+
+  const nfapi_nr_spatial_stream_index_t *p = &prach_pdu->param_v4;
+  if (!pack_spatial_stream_indices(p, ppWritePackedMsg, end))
+    return 0;
+
+  return 1;
 }
 
 static uint8_t pack_ul_tti_request_pusch_pdu(nfapi_nr_pusch_pdu_t *pusch_pdu, uint8_t **ppWritePackedMsg, uint8_t *end)
@@ -816,7 +929,8 @@ static uint8_t pack_ul_tti_request_pusch_pdu(nfapi_nr_pusch_pdu_t *pusch_pdu, ui
   }
 #ifndef ENABLE_AERIAL
   if (!(push8(pusch_pdu->maintenance_parms_v3.ldpcBaseGraph, ppWritePackedMsg, end)
-        && push32(pusch_pdu->maintenance_parms_v3.tbSizeLbrmBytes, ppWritePackedMsg, end)))
+        && push32(pusch_pdu->maintenance_parms_v3.tbSizeLbrmBytes, ppWritePackedMsg, end)
+        && pack_spatial_stream_indices(&pusch_pdu->param_v4, ppWritePackedMsg, end)))
     return 0;
 #endif
   return 1;
@@ -844,7 +958,15 @@ static uint8_t pack_ul_tti_request_pucch_pdu(const nfapi_nr_pucch_pdu_t *pucch_p
     return 0;
   }
 
-  return pack_nr_rx_beamforming_pdu(&pucch_pdu->beamforming, ppWritePackedMsg, end);
+  if (!pack_nr_rx_beamforming_pdu(&pucch_pdu->beamforming, ppWritePackedMsg, end))
+    return 0;
+
+#ifndef ENABLE_AERIAL
+  if (!pack_spatial_stream_indices(&pucch_pdu->param_v4, ppWritePackedMsg, end))
+    return 0;
+#endif
+
+  return 1;
 }
 
 static uint8_t pack_ul_tti_request_srs_parameters_v4(nfapi_v4_srs_parameters_t *srsParameters,
@@ -1049,7 +1171,14 @@ static uint8_t unpack_ul_tti_request_prach_pdu(nfapi_nr_prach_pdu_t *prach_pdu, 
     return 0;
   }
 
-  return unpack_nr_rx_beamforming_pdu(&prach_pdu->beamforming, ppReadPackedMsg, end);
+  if (!unpack_nr_rx_beamforming_pdu(&prach_pdu->beamforming, ppReadPackedMsg, end))
+    return 0;
+#ifndef ENABLE_AERIAL
+  if (!unpack_spatial_stream_indices(&prach_pdu->param_v4, ppReadPackedMsg, end))
+    return 0;
+#endif
+
+  return 1;
 }
 
 static uint8_t unpack_ul_tti_request_pusch_pdu(nfapi_nr_pusch_pdu_t *pusch_pdu, uint8_t **ppReadPackedMsg, uint8_t *end)
@@ -1138,7 +1267,8 @@ static uint8_t unpack_ul_tti_request_pusch_pdu(nfapi_nr_pusch_pdu_t *pusch_pdu, 
   }
 #ifndef ENABLE_AERIAL
   if (!(pull8(ppReadPackedMsg, &pusch_pdu->maintenance_parms_v3.ldpcBaseGraph, end)
-        && pull32(ppReadPackedMsg, &pusch_pdu->maintenance_parms_v3.tbSizeLbrmBytes, end)))
+        && pull32(ppReadPackedMsg, &pusch_pdu->maintenance_parms_v3.tbSizeLbrmBytes, end)
+        && unpack_spatial_stream_indices(&pusch_pdu->param_v4, ppReadPackedMsg, end)))
     return 0;
 #endif
   return 1;
@@ -1165,7 +1295,14 @@ static uint8_t unpack_ul_tti_request_pucch_pdu(nfapi_nr_pucch_pdu_t *pucch_pdu, 
         && pull16(ppReadPackedMsg, &pucch_pdu->bit_len_csi_part2, end))) {
     return 0;
   }
-  return unpack_nr_rx_beamforming_pdu(&pucch_pdu->beamforming, ppReadPackedMsg, end);
+  if (!unpack_nr_rx_beamforming_pdu(&pucch_pdu->beamforming, ppReadPackedMsg, end))
+    return 0;
+
+#ifndef ENABLE_AERIAL
+  if (!unpack_spatial_stream_indices(&pucch_pdu->param_v4, ppReadPackedMsg, end))
+    return 0;
+#endif
+  return 1;
 }
 
 static uint8_t unpack_ul_tti_request_srs_parameters_v4(nfapi_v4_srs_parameters_t *srsParameters,
@@ -1506,7 +1643,9 @@ static uint8_t pack_tx_data_pdu_list_value(void *tlv, uint8_t **ppWritePackedMsg
     return 0;
 
   for (int i = 0; i < value->num_TLV; ++i) {
-    if (!push16(value->TLVs[i].tag, ppWritePackedMsg, end))
+    uint16_t tag = value->TLVs[i].tag == 2 ? 2 : 0;
+    // preserve tag == 2 for nvidia, for direct/ptr, convert to pointer
+    if (!push16(tag, ppWritePackedMsg, end))
       return 0;
 #ifdef ENABLE_AERIAL
     if (!push16(value->TLVs[i].length, ppWritePackedMsg, end))
@@ -1588,22 +1727,18 @@ static uint8_t unpack_tx_data_pdu_list_value(uint8_t **ppReadPackedMsg, uint8_t 
       return 0;
     const uint32_t byte_len = (pNfapiMsg->TLVs[i].length + 3) / 4;
     if (pNfapiMsg->TLVs[i].tag == 1) {
-      pNfapiMsg->TLVs[i].value.ptr = calloc(byte_len, sizeof(uint32_t));
+      pNfapiMsg->TLVs[i].tag = 0;
     }
     switch (pNfapiMsg->TLVs[i].tag) {
-      case 0: {
+      case 0:
+      case 1: {
+        // always pull into direct, which simply avoids one (possibly big)
+        // malloc
         if (!pullarray32(ppReadPackedMsg,
                          pNfapiMsg->TLVs[i].value.direct,
                          sizeof(pNfapiMsg->TLVs[i].value.direct) / sizeof(uint32_t),
                          byte_len,
                          end))
-          return 0;
-
-        break;
-      }
-
-      case 1: {
-        if (!pullarray32(ppReadPackedMsg, pNfapiMsg->TLVs[i].value.ptr, byte_len, byte_len, end))
           return 0;
 
         break;
@@ -1805,7 +1940,7 @@ static uint8_t pack_nr_uci_pusch(void *tlv, uint8_t **ppWritePackedMsg, uint8_t 
       return 0;
     if (!push16(value->harq.harq_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t harq_len = (value->harq.harq_bit_len / 8) + 1;
+    const uint16_t harq_len = nr_bits_to_bytes(value->harq.harq_bit_len);
     if (!pusharray8(value->harq.harq_payload, harq_len, harq_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -1815,7 +1950,7 @@ static uint8_t pack_nr_uci_pusch(void *tlv, uint8_t **ppWritePackedMsg, uint8_t 
       return 0;
     if (!push16(value->csi_part1.csi_part1_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t csi_len = value->csi_part1.csi_part1_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part1.csi_part1_bit_len);
     if (!pusharray8(value->csi_part1.csi_part1_payload, csi_len, csi_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -1825,7 +1960,7 @@ static uint8_t pack_nr_uci_pusch(void *tlv, uint8_t **ppWritePackedMsg, uint8_t 
       return 0;
     if (!push16(value->csi_part2.csi_part2_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t csi_len = value->csi_part2.csi_part2_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part2.csi_part2_bit_len);
     if (!pusharray8(value->csi_part2.csi_part2_payload, csi_len, csi_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -1894,7 +2029,7 @@ static uint8_t pack_nr_uci_pucch_2_3_4(void *tlv, uint8_t **ppWritePackedMsg, ui
   if (value->pduBitmap & 0x01) { // SR
     if (!push16(value->sr.sr_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t sr_len = value->sr.sr_bit_len / 8 + 1;
+    const uint16_t sr_len = nr_bits_to_bytes(value->sr.sr_bit_len);
     if (!pusharray8(value->sr.sr_payload, sr_len, sr_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -1904,7 +2039,7 @@ static uint8_t pack_nr_uci_pucch_2_3_4(void *tlv, uint8_t **ppWritePackedMsg, ui
       return 0;
     if (!push16(value->harq.harq_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t harq_len = value->harq.harq_bit_len / 8 + 1;
+    const uint16_t harq_len = nr_bits_to_bytes(value->harq.harq_bit_len);
     if (!pusharray8(value->harq.harq_payload, harq_len, harq_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -1914,7 +2049,7 @@ static uint8_t pack_nr_uci_pucch_2_3_4(void *tlv, uint8_t **ppWritePackedMsg, ui
       return 0;
     if (!push16(value->csi_part1.csi_part1_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t csi_len = value->csi_part1.csi_part1_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part1.csi_part1_bit_len);
     if (!pusharray8(value->csi_part1.csi_part1_payload, csi_len, csi_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -1924,7 +2059,7 @@ static uint8_t pack_nr_uci_pucch_2_3_4(void *tlv, uint8_t **ppWritePackedMsg, ui
       return 0;
     if (!push16(value->csi_part2.csi_part2_bit_len, ppWritePackedMsg, end))
       return 0;
-    const uint16_t csi_len = value->csi_part2.csi_part2_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part2.csi_part2_bit_len);
     if (!pusharray8(value->csi_part2.csi_part2_payload, csi_len, csi_len, ppWritePackedMsg, end))
       return 0;
   }
@@ -2005,7 +2140,7 @@ static uint8_t unpack_nr_uci_pusch(nfapi_nr_uci_pusch_pdu_t *value, uint8_t **pp
       return 0;
     if (!pull16(ppReadPackedMsg, &value->harq.harq_bit_len, end))
       return 0;
-    const uint16_t harq_len = value->harq.harq_bit_len / 8 + 1;
+    const uint16_t harq_len = nr_bits_to_bytes(value->harq.harq_bit_len);
     value->harq.harq_payload = calloc(harq_len, sizeof(*value->harq.harq_payload));
 
     if (value->harq.harq_payload == NULL) {
@@ -2022,7 +2157,7 @@ static uint8_t unpack_nr_uci_pusch(nfapi_nr_uci_pusch_pdu_t *value, uint8_t **pp
       return 0;
     if (!pull16(ppReadPackedMsg, &value->csi_part1.csi_part1_bit_len, end))
       return 0;
-    const uint16_t csi_len = value->csi_part1.csi_part1_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part1.csi_part1_bit_len);
     value->csi_part1.csi_part1_payload = calloc(csi_len, sizeof(*value->csi_part1.csi_part1_payload));
 
     if (value->csi_part1.csi_part1_payload == NULL) {
@@ -2039,7 +2174,7 @@ static uint8_t unpack_nr_uci_pusch(nfapi_nr_uci_pusch_pdu_t *value, uint8_t **pp
       return 0;
     if (!pull16(ppReadPackedMsg, &value->csi_part2.csi_part2_bit_len, end))
       return 0;
-    const uint16_t csi_len = value->csi_part2.csi_part2_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part2.csi_part2_bit_len);
     value->csi_part2.csi_part2_payload = calloc(csi_len, sizeof(*value->csi_part2.csi_part2_payload));
 
     if (value->csi_part2.csi_part2_payload == NULL) {
@@ -2061,13 +2196,13 @@ static uint8_t unpack_nr_uci_pucch_0_1(nfapi_nr_uci_pucch_pdu_format_0_1_t *valu
         && pull8(ppReadPackedMsg, &value->ul_cqi, end) && pull16(ppReadPackedMsg, &value->timing_advance, end)
         && pull16(ppReadPackedMsg, &value->rssi, end)))
     return 0;
+
   if (value->pduBitmap & 0x01) { // SR
     if (!(pull8(ppReadPackedMsg, &value->sr.sr_indication, end) && pull8(ppReadPackedMsg, &value->sr.sr_confidence_level, end)))
       return 0;
   }
 
   if (((value->pduBitmap >> 1) & 0x01)) { // HARQ
-
     if (!(pull8(ppReadPackedMsg, &value->harq.num_harq, end) && pull8(ppReadPackedMsg, &value->harq.harq_confidence_level, end)))
       return 0;
     if (value->harq.num_harq > 0) {
@@ -2102,7 +2237,7 @@ static uint8_t unpack_nr_uci_pucch_2_3_4(nfapi_nr_uci_pucch_pdu_format_2_3_4_t *
   if (value->pduBitmap & 0x01) { // SR
     if (!pull16(ppReadPackedMsg, &value->sr.sr_bit_len, end))
       return 0;
-    const uint16_t sr_len = value->sr.sr_bit_len / 8 + 1;
+    const uint16_t sr_len = nr_bits_to_bytes(value->sr.sr_bit_len);
     value->sr.sr_payload = calloc(sr_len, sizeof(*value->sr.sr_payload));
 
     if (value->sr.sr_payload == NULL) {
@@ -2119,7 +2254,7 @@ static uint8_t unpack_nr_uci_pucch_2_3_4(nfapi_nr_uci_pucch_pdu_format_2_3_4_t *
       return 0;
     if (!pull16(ppReadPackedMsg, &value->harq.harq_bit_len, end))
       return 0;
-    const uint16_t harq_len = value->harq.harq_bit_len / 8 + 1;
+    const uint16_t harq_len = nr_bits_to_bytes(value->harq.harq_bit_len);
     value->harq.harq_payload = calloc(harq_len, sizeof(*value->harq.harq_payload));
 
     if (value->harq.harq_payload == NULL) {
@@ -2136,7 +2271,7 @@ static uint8_t unpack_nr_uci_pucch_2_3_4(nfapi_nr_uci_pucch_pdu_format_2_3_4_t *
       return 0;
     if (!pull16(ppReadPackedMsg, &value->csi_part1.csi_part1_bit_len, end))
       return 0;
-    const uint16_t csi_len = value->csi_part1.csi_part1_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part1.csi_part1_bit_len);
     value->csi_part1.csi_part1_payload = calloc(csi_len, sizeof(*value->csi_part1.csi_part1_payload));
 
     if (value->csi_part1.csi_part1_payload == NULL) {
@@ -2153,7 +2288,7 @@ static uint8_t unpack_nr_uci_pucch_2_3_4(nfapi_nr_uci_pucch_pdu_format_2_3_4_t *
       return 0;
     if (!pull16(ppReadPackedMsg, &value->csi_part2.csi_part2_bit_len, end))
       return 0;
-    const uint16_t csi_len = value->csi_part2.csi_part2_bit_len / 8 + 1;
+    const uint16_t csi_len = nr_bits_to_bytes(value->csi_part2.csi_part2_bit_len);
     value->csi_part2.csi_part2_payload = calloc(csi_len, sizeof(*value->csi_part2.csi_part2_payload));
 
     if (value->csi_part2.csi_part2_payload == NULL) {
@@ -2274,8 +2409,39 @@ uint8_t pack_nr_srs_indication(void *msg, uint8_t **ppWritePackedMsg, uint8_t *e
   return 1;
 }
 
+uint8_t pack_nr_srs_toa_vendor_ext_indication(void *msg, uint8_t **ppWritePackedMsg, uint8_t *end)
+{
+  nfapi_nr_srs_toa_vendor_ext_indication_t *pNfapiMsg = (nfapi_nr_srs_toa_vendor_ext_indication_t *)msg;
+
+  if (!(push16(pNfapiMsg->sfn, ppWritePackedMsg, end) && push16(pNfapiMsg->slot, ppWritePackedMsg, end)
+        && push16(pNfapiMsg->rnti, ppWritePackedMsg, end) && push8(pNfapiMsg->num_ta, ppWritePackedMsg, end))) {
+    return 0;
+  }
+
+  AssertFatal(pNfapiMsg->num_ta <= NFAPI_NR_MAX_NUM_TA_NSEC,
+              "pNfapiMsg->num_ta %d cannot be greater than %d\n",
+              pNfapiMsg->num_ta,
+              NFAPI_NR_MAX_NUM_TA_NSEC);
+
+  for (int i = 0; i < pNfapiMsg->num_ta; i++) {
+    if (!pushs16(pNfapiMsg->ta_offset_nsec[i], ppWritePackedMsg, end)) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
 uint8_t unpack_nr_srs_report_tlv_value(nfapi_srs_report_tlv_t *report_tlv, uint8_t **ppReadPackedMsg, uint8_t *end)
 {
+  if ((report_tlv->length + 3) / 4 > sizeof(report_tlv->value) / sizeof(report_tlv->value[0])) {
+    NFAPI_TRACE(NFAPI_TRACE_ERROR,
+                "%s: SRS report TLV too large to unpack (length %u bytes, max %zu), dropping report\n",
+                __FUNCTION__,
+                report_tlv->length,
+                sizeof(report_tlv->value));
+    return 0;
+  }
 #ifndef ENABLE_AERIAL
   for (int i = 0; i < (report_tlv->length + 3) / 4; i++) {
     if (!pull32(ppReadPackedMsg, &report_tlv->value[i], end)) {
@@ -2283,7 +2449,7 @@ uint8_t unpack_nr_srs_report_tlv_value(nfapi_srs_report_tlv_t *report_tlv, uint8
     }
   }
 #else
-  const int16_t last_idx = ((report_tlv->length + 3) / 4) - 1;
+  const int32_t last_idx = ((report_tlv->length + 3) / 4) - 1;
   for (int i = 0; i < last_idx; i++) {
     if (!pull32(ppReadPackedMsg, &report_tlv->value[i], end)) {
       return 0;
@@ -2338,6 +2504,28 @@ uint8_t unpack_nr_srs_indication(uint8_t **ppReadPackedMsg, uint8_t *end, void *
   pNfapiMsg->pdu_list = calloc(pNfapiMsg->number_of_pdus, sizeof(*pNfapiMsg->pdu_list));
   for (int i = 0; i < pNfapiMsg->number_of_pdus; i++) {
     if (!unpack_nr_srs_indication_body(&pNfapiMsg->pdu_list[i], ppReadPackedMsg, end)) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+uint8_t unpack_nr_srs_toa_vendor_ext_indication(uint8_t **ppReadPackedMsg, uint8_t *end, void *msg)
+{
+  nfapi_nr_srs_toa_vendor_ext_indication_t *pNfapiMsg = (nfapi_nr_srs_toa_vendor_ext_indication_t *)msg;
+  if (!(pull16(ppReadPackedMsg, &pNfapiMsg->sfn, end) && pull16(ppReadPackedMsg, &pNfapiMsg->slot, end)
+        && pull16(ppReadPackedMsg, &pNfapiMsg->rnti, end) && pull8(ppReadPackedMsg, &pNfapiMsg->num_ta, end))) {
+    return 0;
+  }
+
+  AssertFatal(pNfapiMsg->num_ta <= NFAPI_NR_MAX_NUM_TA_NSEC,
+              "pNfapiMsg->num_ta %d cannot be greater than %d\n",
+              pNfapiMsg->num_ta,
+              NFAPI_NR_MAX_NUM_TA_NSEC);
+
+  for (int i = 0; i < pNfapiMsg->num_ta; i++) {
+    if (!pulls16(ppReadPackedMsg, &pNfapiMsg->ta_offset_nsec[i], end)) {
       return 0;
     }
   }

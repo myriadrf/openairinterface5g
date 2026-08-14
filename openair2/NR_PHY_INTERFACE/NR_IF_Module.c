@@ -216,6 +216,34 @@ static void handle_nr_srs(NR_UL_IND_t *UL_info)
   UL_info->srs_ind.number_of_pdus = 0;
 }
 
+static void handle_nr_srs_toa_vendor_ext(NR_UL_IND_t *UL_info)
+{
+  // Custom vendor extension to encode and send SRS measurements for positioning in NFAPI mode
+  if (NFAPI_MODE == NFAPI_MODE_PNF) {
+    if (UL_info->srs_toa_vendor_ext_ind.num_ta > 0) {
+      LOG_D(NR_PHY,
+            "PNF Sending UL_info->srs_toa_vendor_ext_ind.num_ta: %d, SFN/SF:%d.%d \n",
+            UL_info->srs_toa_vendor_ext_ind.num_ta,
+            UL_info->frame,
+            UL_info->slot);
+      oai_nfapi_nr_srs_toa_vendor_ext_indication(&UL_info->srs_toa_vendor_ext_ind);
+    }
+    return;
+  }
+
+  const module_id_t module_id = UL_info->module_id;
+  const frame_t frame = UL_info->srs_toa_vendor_ext_ind.sfn;
+  const slot_t slot = UL_info->srs_toa_vendor_ext_ind.slot;
+  const uint8_t num_ta = UL_info->srs_toa_vendor_ext_ind.num_ta;
+  const int16_t *ta_offset_nsec = UL_info->srs_toa_vendor_ext_ind.ta_offset_nsec;
+  const uint16_t rnti = UL_info->srs_toa_vendor_ext_ind.rnti;
+
+  if (num_ta > 0) {
+    LOG_D(NR_PHY, "(%d.%d) UL_info->srs_toa_vendor_ext_ind.rnti: 0x%04x\n", frame, slot, rnti);
+    handle_nr_srs_toa_vendor_ext_measurements(module_id, frame, slot, num_ta, ta_offset_nsec, rnti);
+  }
+}
+
 static void free_unqueued_nfapi_indications(nfapi_nr_rach_indication_t *rach_ind,
                                             nfapi_nr_uci_indication_t *uci_ind,
                                             nfapi_nr_rx_data_indication_t *rx_ind,
@@ -354,7 +382,6 @@ static void match_crc_rx_pdu(nfapi_nr_rx_data_indication_t *rx_ind, nfapi_nr_crc
   }
 }
 
-extern void handle_nr_slot_ind(uint16_t sfn, uint16_t slot, NR_Sched_Rsp_t *sched_response);
 static void pnf_send_slot_ind(const nfapi_nr_slot_indication_scf_t *ind, NR_Sched_Rsp_t *rsp)
 {
   module_id_t module_id = 0;
@@ -431,6 +458,7 @@ static void NR_UL_indication(NR_UL_IND_t *UL_info)
   handle_nr_uci(UL_info);
   handle_nr_ulsch(UL_info);
   handle_nr_srs(UL_info);
+  handle_nr_srs_toa_vendor_ext(UL_info);
 
   if (NFAPI_MODE == NFAPI_MODE_VNF || NFAPI_MODE == NFAPI_MODE_AERIAL) {
     free_unqueued_nfapi_indications(rach_ind, uci_ind, rx_ind, crc_ind);
@@ -487,6 +515,7 @@ void reset_sched_response(NR_Sched_Rsp_t *sched_response, int frame, int slot, i
   UL_tti_req->SFN = frame;
   UL_tti_req->Slot = slot;
   UL_tti_req->n_pdus = 0;
+  UL_tti_req->n_group = 0;
 
   nfapi_nr_tx_data_request_t *TX_req = &sched_response->TX_req;
   TX_req->SFN = frame;

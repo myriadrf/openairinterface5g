@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "common/platform_constants.h"
 #include "common/platform_types.h"
 #include "common/utils/threadPool/notified_fifo.h"
 
@@ -130,6 +131,7 @@
   UE_STATE(UE_NOT_SYNC_RECONF) \
   UE_STATE(UE_BARRED) \
   UE_STATE(UE_RECEIVING_SIB) \
+  UE_STATE(UE_IDLE) \
   UE_STATE(UE_PERFORMING_RA) \
   UE_STATE(UE_CONNECTED) \
   UE_STATE(UE_DETACHING)
@@ -175,8 +177,8 @@ typedef struct {
 
 typedef enum {
   GO_TO_IDLE,
+  GO_TO_IDLE_KEEP_CAMPED,
   DETACH,
-  T300_EXPIRY,
   RE_ESTABLISHMENT,
   RRC_SETUP_REESTAB_RESUME,
   UL_SYNC_LOST_T430_EXPIRED,
@@ -286,6 +288,7 @@ typedef struct {
 typedef struct {
   NR_PUCCH_Resource_t *pucch_resource;
   uint32_t ack_payload;
+  int harq_ack_pucch_res_ind;
   uint8_t sr_payload;
   nfapi_nr_ue_csi_payload_t csi_payload;
   int n_sr;
@@ -299,7 +302,7 @@ typedef struct {
 typedef struct {
   int sched_frame;
   int sched_slot;
-  PUCCH_sched_t pucch_sched;
+  fapi_nr_ul_config_pucch_pdu pucch_pdu;
 } RA_PUCCH_SCHED_t;
 
 typedef struct {
@@ -514,6 +517,26 @@ typedef struct {
   A_SEQUENCE_OF(si_schedinfo_config_t) si_SchedInfo_list;
 } si_schedInfo_t;
 
+typedef struct {
+  // Paging Cycle in Radio Frames
+  uint16_t T;
+  // Number of Paging Frames per Paging Cycle
+  uint16_t N;
+  // Number of Paging Occasions per Paging Frame
+  uint8_t Ns;
+  // Offset of the first Paging Frame in the Paging Cycle
+  uint8_t PF_offset;
+  // Number of PDCCH Monitoring Occasions per SSB in the Paging Occasion
+  uint8_t X;
+  // Number of entries in firstPDCCH-MonitoringOccasionOfPO
+  uint8_t first_mo_of_po_count;
+  // First PDCCH MO index of (i_s+1)-th PO within the PF (TS 38.331 PCCH-Config,
+  // firstPDCCH-MonitoringOccasionOfPO list)
+  uint16_t first_mo_of_po[NR_PCCH_MAX_PO];
+  // UE_ID for paging PF/PO (TS 38.304 §7.1)
+  uint16_t ue_id;
+} nr_ue_paging_cfg_t;
+
 /*!\brief Top level UE MAC structure */
 typedef struct NR_UE_MAC_INST_s {
   module_id_t ue_id;
@@ -525,6 +548,7 @@ typedef struct NR_UE_MAC_INST_s {
   NR_MIB_t *mib;
 
   si_schedInfo_t si_SchedInfo;
+  nr_ue_paging_cfg_t paging_cfg;
   ssb_list_info_t ssb_list;
 
   NR_UE_ServingCell_Info_t sc_info;
@@ -594,16 +618,13 @@ typedef struct NR_UE_MAC_INST_s {
   dci_pdu_rel15_t def_dci_pdu_rel15[NR_MAX_SLOTS_PER_FRAME][8];
 
   // Defined for abstracted mode
-  nr_downlink_indication_t dl_info;
-  NR_UE_DL_HARQ_STATUS_t dl_harq_info[NR_MAX_HARQ_PROCESSES];
+  NR_UE_DL_HARQ_STATUS_t dl_harq_info[NR_MAX_HARQ_PROCESSES][2]; // one harq process for each codeword
   NR_UE_UL_HARQ_INFO_t ul_harq_info[NR_MAX_HARQ_PROCESSES];
 
   NR_TAG_Id_t tag_Id;
   A_SEQUENCE_OF(NR_TAG_t) TAG_list;
   NR_TimeAlignmentTimer_t timeAlignmentTimerCommon;
   NR_timer_t time_alignment_timer;
-
-  pthread_mutex_t mutex_dl_info;
 
   //SIDELINK MAC PARAMETERS
   sl_nr_ue_mac_params_t *SL_MAC_PARAMS;
@@ -614,6 +635,7 @@ typedef struct NR_UE_MAC_INST_s {
   bool pusch_power_control_initialized;
   int delta_msg2;
   bool msg3_C_RNTI;
+  bool sr_fallback_ra_triggered; // SR-fallback RA triggered; block re-trigger until PUCCH SR resource is restored
   pthread_mutex_t if_mutex;
   ue_mac_stats_t stats;
   notifiedFIFO_t input_nf;

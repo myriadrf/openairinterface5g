@@ -8,7 +8,7 @@ This page describes how to build OAI.
 
 ## Overview
 
-The [OAI EPC](https://github.com/OPENAIRINTERFACE/openair-epc-fed/blob/master/docs/DEPLOY_HOME_MAGMA_MME.md) and [OAI 5GC](https://gitlab.eurecom.fr/oai/cn5g/oai-cn5g-fed/-/blob/master/docs/DEPLOY_HOME.md) are developed in distinct projects with their own documentation and are not further described here.
+The [OAI EPC](https://github.com/OPENAIRINTERFACE/openair-epc-fed/blob/master/docs/DEPLOY_HOME_MAGMA_MME.md) and [OAI 5GC](https://github.com/openairinterface/oai-cn5g-fed/blob/develop/docs/DEPLOY_HOME.md) are developed in distinct projects with their own documentation and are not further described here.
 
 OAI softmodem sources, which aim to implement 3GPP compliant UEs, eNodeB and gNodeB can be downloaded from the Eurecom [gitlab repository](./GET_SOURCES.md).
 
@@ -192,7 +192,7 @@ Now, when installing the pre-requisites, especially the `UHD` driver, you can no
 
 ```bash
 export BUILD_UHD_FROM_SOURCE=True
-export UHD_VERSION=3.15.0.0
+export UHD_VERSION=4.10.0.0
 ./build_oai -I -w USRP
 ```
 
@@ -206,6 +206,7 @@ See:
 
 * `cmake_targets/tools/uhd-3.15-tdd-patch.diff`
 * `cmake_targets/tools/uhd-4.x-tdd-patch.diff`
+* `cmake_targets/tools/uhd-4.5plus-tdd-patch.diff`
 * `cmake_targets/tools/build_helper` --> function `install_usrp_uhd_driver_from_source`
 
 ### Building PHY Simulators

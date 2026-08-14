@@ -73,6 +73,7 @@ int nr_symbol_fep_ul(const NR_DL_FRAME_PARMS *fp,
 \param d Pointer to input in time domain
 \param Msc_PUSCH number of allocated data subcarriers
 */
+
 void nr_dft(c16_t *z, c16_t *d, uint32_t Msc_PUSCH);
 
 void nr_beam_precoding(c16_t **txdataF,
@@ -101,14 +102,19 @@ void nr_ofdm_demod_and_rx_rotation(c16_t **rxdata,
                                    int slot_offsetF,
                                    enum nr_Link linktype,
                                    bool was_symbol_used[NR_SYMBOLS_PER_SLOT]);
-
-void perform_symbol_rotation(NR_DL_FRAME_PARMS *fp, double f0, c16_t *symbol_rotation);
+void perform_symbol_rotation(const int nsymb, const int numerology_index, double f0, c16_t *symbol_rotation);
 
 void init_symbol_rotation(NR_DL_FRAME_PARMS *fp);
 
-void init_timeshift_rotation(NR_DL_FRAME_PARMS *fp);
+void init_timeshift_rotation(const int ofdm_symbol_size,
+                             const int nb_prefix_samples,
+                             const uint ofdm_offset_divisor,
+                             c16_t *timeshift_symbol_rotation);
 
-void apply_nr_rotation_symbol_RX(const NR_DL_FRAME_PARMS *frame_parms,
+void apply_nr_rotation_symbol_RX(const int symbols_per_slot,
+                                 const int slots_per_subframe,
+                                 const c16_t *timeshift_symbol_rotation,
+                                 const int first_carrier_offset,
                                  c16_t *rxdataF,
                                  const c16_t *rot,
                                  int nb_rb,

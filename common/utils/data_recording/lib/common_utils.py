@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: LicenseRef-CSSL-1.0
 
 # ---------------------------------------------------------------------
-# brief Data Recording common utilities
+# brief Common utilities of Data Recording App
 
 import os
 import json
-
 
 def real_to_complex(real_vector):
     # Ensure the length of the real vector is even
@@ -34,7 +33,7 @@ def write_config_data_recording_app_json(config_meta_data):
         # Specify the file name
         output_file = (
             config_meta_data["data_recording_config"]["data_storage_path"]
-            + "config_data_recording_app.json"
+            + "config_data_recording_app_extended.json"
         )
         # Ensure the directory exists
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -43,6 +42,6 @@ def write_config_data_recording_app_json(config_meta_data):
         with open(output_file, "w") as file:
             try:
                 json.dump(config_meta_data, file, indent=4)
-                print(f"JSON file created successfully at {output_file}")
+                print(f"  [Config] JSON file saved: {output_file}")
             except Exception as e:
-                print(f"Failed to create JSON file: {e}")
+                print(f"  [Config] Failed to create JSON file: {e}")   

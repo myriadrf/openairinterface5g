@@ -3,7 +3,7 @@
  */
 
 #include "PHY/CODING/nrPolar_tools/nr_polar_defs.h"
-#include "reverse_bits.h"
+#include "bits.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>

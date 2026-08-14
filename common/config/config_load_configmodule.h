@@ -10,6 +10,9 @@
 #ifndef INCLUDE_CONFIG_LOADCONFIGMODULE_H
 #define INCLUDE_CONFIG_LOADCONFIGMODULE_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include <string.h>
 #include <stdlib.h>
@@ -45,8 +48,6 @@ typedef void (*configmodule_endfunc_t)(struct configmodule_interface *cfg);
 typedef int (*configmodule_initfunc_t)(struct configmodule_interface *cfg);
 
 typedef struct configmodule_status {
-  int num_paramgroups;
-  char **paramgroups_names;
   int num_err_nullvalue;
   int emptyla;
   int num_err_read;
@@ -117,5 +118,8 @@ void write_parsedcfg(configmodule_interface_t *cfg);
 extern void free_configmodule(void);
 #define CONFIG_PRINTF_ERROR(f, x... ) if (isLogInitDone ()) { LOG_E(ENB_APP,f,x);} else {printf(f,x);}; if ( !CONFIG_ISFLAGSET(CONFIG_NOABORTONCHKF) ) exit_fun("exit because configuration failed\n");
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif  /* INCLUDE_CONFIG_LOADCONFIGMODULE_H */

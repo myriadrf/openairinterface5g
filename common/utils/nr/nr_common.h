@@ -71,7 +71,9 @@ static inline const char *rnti_types(nr_rnti_type_t rr)
 #define MAX_GSCN_BAND 620 // n78 has the highest GSCN range of 619
 #define NR_SYMBOLS_PER_SLOT 14
 #define NR_SYMBOLS_PER_SLOT_EXTENDED_CP 12
-#define NR_MAX_NB_LAYERS 4 // 8
+#define NR_MAX_NB_LAYERS 4
+#define MAX_NUM_NR_DLSCH_SEGMENTS (MAX_NUM_NR_DLSCH_SEGMENTS_PER_LAYER * NR_MAX_NB_LAYERS)
+#define MAX_NUM_NR_ULSCH_SEGMENTS (MAX_NUM_NR_ULSCH_SEGMENTS_PER_LAYER * NR_MAX_NB_LAYERS)
 #define NR_MAX_CSI_PORTS 12
 
 // Since the IQ samples are represented by SQ15 R+I (see https://en.wikipedia.org/wiki/Q_(number_format)) we need to compensate when
@@ -171,6 +173,8 @@ typedef struct frame_structure_s {
 typedef struct {
   /// Time shift in number of samples estimated based on DMRS-PDSCH/PUSCH
   int est_delay;
+  /// True when est_delay is based on a clear enough channel impulse response peak
+  bool valid;
   /// Max position in OFDM symbol related to time shift estimation based on DMRS-PDSCH/PUSCH
   int delay_max_pos;
   /// Max value related to time shift estimation based on DMRS-PDSCH/PUSCH
@@ -195,6 +199,29 @@ typedef struct meas_s {
   val_init_t ss_rsrp_dBm;
   val_init_t csi_rsrp_dBm;
 } meas_t;
+
+// Configuration parameters required for 5G Positioning
+// TRP Cartesian Coordinate information
+typedef struct trp_s {
+  // TRP id
+  uint32_t id;
+  // TRP x-axis value
+  int32_t x_axis;
+  // TRP y-axis value
+  int32_t y_axis;
+  // TRP z-axis value
+  int32_t z_axis;
+  // 0 = mm, 1 = cm, 2 = dm
+  uint8_t unit;
+} trp_t;
+
+#define MAX_NUM_TRPs 8
+typedef struct {
+  trp_t trps[MAX_NUM_TRPs];
+  uint8_t num_trp;
+  // Serving gNB indicator
+  bool is_serving_gNB;
+} positioning_config_t;
 
 /** @brief Returns NR RSRP index per 3GPP TS 38.133 Table 10.1.6.1-1 */
 uint8_t get_rsrp_index(int rsrp_dBm);
@@ -255,35 +282,12 @@ uint32_t nr_timer_remaining_time(const NR_timer_t *timer);
 
 int set_default_nta_offset(frequency_range_t freq_range, uint32_t samples_per_subframe);
 
-static inline int get_num_dmrs(uint16_t dmrs_mask )
+static inline int get_num_dmrs(uint16_t dmrs_mask)
 {
-  int num_dmrs=0;
-  for (int i=0;i<16;i++) num_dmrs+=((dmrs_mask>>i)&1);
-  return(num_dmrs);
-}
-
-static inline int count_bits(uint8_t *arr, int sz)
-{
-  AssertFatal(sz % sizeof(int) == 0, "to implement if needed\n");
-  int ret = 0;
-  for (uint *ptr = (uint *)arr; (uint8_t *)ptr < arr + sz; ptr++)
-    ret += __builtin_popcount(*ptr);
-  return ret;
-}
-
-static __attribute__((always_inline)) inline int count_bits64(uint64_t v)
-{
-  return __builtin_popcountll(v);
-}
-
-static __attribute__((always_inline)) inline int count_bits64_with_mask(uint64_t v, int start, int num)
-{
-  uint64_t mask = ((1LL << num) - 1) << start;
-  return count_bits64(v & mask);
+  return __builtin_popcount(dmrs_mask);
 }
 
 void warn_higher_threequarter_fs(const int n_rb, const int mu);
-
 uint64_t from_nrarfcn(int nr_bandP, uint8_t scs_index, uint32_t dl_nrarfcn);
 uint32_t to_nrarfcn(uint64_t dl_CarrierFreq);
 uint8_t set_ssb_case(int scs, int nr_band);

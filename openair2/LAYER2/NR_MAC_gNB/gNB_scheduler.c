@@ -115,6 +115,20 @@ static void copy_ul_tti_req(nfapi_nr_ul_tti_request_t *to, nfapi_nr_ul_tti_reque
     to->groups_list[i] = from->groups_list[i];
 }
 
+static void nr_fill_pusch_fapi_groups(nfapi_nr_ul_tti_request_t *UL_tti_req)
+{
+  // Single User MIMO
+  UL_tti_req->n_group = 0;
+  for (int i = 0; i < UL_tti_req->n_pdus; i++) {
+    if (UL_tti_req->pdus_list[i].pdu_type != NFAPI_NR_UL_CONFIG_PUSCH_PDU_TYPE)
+      continue;
+    nfapi_nr_ul_tti_request_number_of_groups_t *group = &UL_tti_req->groups_list[UL_tti_req->n_group];
+    group->n_ue = 0;
+    group->ue_list[group->n_ue++].pdu_idx = i;
+    UL_tti_req->n_group++;
+  }
+}
+
 void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, frame_t frame, slot_t slot, NR_Sched_Rsp_t *sched_info)
 {
   protocol_ctxt_t ctxt = {0};
@@ -180,6 +194,7 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, frame_t frame, slot_t slo
     if (IS_SA_MODE(get_softmodem_params())) {
       schedule_nr_sib1(module_idP, frame, slot, &sched_info->DL_req, &sched_info->TX_req);
       schedule_nr_other_sib(module_idP, frame, slot, &sched_info->DL_req, &sched_info->TX_req);
+      schedule_nr_pcch(gNB, frame, slot, &sched_info->DL_req, &sched_info->TX_req);
     }
   }
 
@@ -203,7 +218,7 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, frame_t frame, slot_t slo
   // Schedule CSI measurement reporting
   nr_csi_meas_reporting(module_idP, frame, slot);
 
-  nr_schedule_srs(module_idP, frame, slot);
+  nr_schedule_periodic_srs(module_idP, frame, slot);
 
   // This schedule RA procedure if not in phy_test mode
   // Otherwise consider 5G already connected
@@ -231,6 +246,8 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, frame_t frame, slot_t slo
   AssertFatal(MAX_NUM_CCs == 1, "only 1 CC supported\n");
   const int current_index = ul_buffer_index(frame, slot, slots_frame, gNB->UL_tti_req_ahead_size);
   copy_ul_tti_req(&sched_info->UL_tti_req, &gNB->UL_tti_req_ahead[0][current_index]);
+
+  nr_fill_pusch_fapi_groups(&sched_info->UL_tti_req);
 
   stop_meas(&gNB->gNB_scheduler);
   NR_SCHED_UNLOCK(&gNB->sched_lock);

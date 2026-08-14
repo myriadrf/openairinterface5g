@@ -10,7 +10,7 @@
 #include "PHY/NR_TRANSPORT/nr_transport_proto.h"
 #include "PHY/sse_intrin.h"
 #include "executables/softmodem-common.h"
-#include "reverse_bits.h"
+#include "bits.h"
 #include "openair1/PHY/NR_REFSIG/nr_refsig.h"
 #include "openair1/PHY/NR_REFSIG/nr_mod_table.h"
 #include "openair1/PHY/TOOLS/tools_defs.h"

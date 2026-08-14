@@ -67,7 +67,7 @@ int nr_get_ssb_start_symbol(const NR_DL_FRAME_PARMS *fp, uint8_t i_ssb)
   return symbol;
 }
 
-static void set_scs_parameters(NR_DL_FRAME_PARMS *fp, int mu, int N_RB_DL, int ssb_case)
+void set_scs_parameters(NR_DL_FRAME_PARMS *fp, int mu, int N_RB_DL, int ssb_case)
 {
   switch(mu) {
     case NR_MU_0: //15kHz scs
@@ -568,9 +568,11 @@ int nr_init_frame_parms_ue_sl(NR_DL_FRAME_PARMS *fp,
 
   // ssb_offset_pointa points to the first RE where Sidelink-PSBCH starts
   fp->ssb_start_subcarrier = config->sl_bwp_config.sl_ssb_offset_point_a;
-
-  perform_symbol_rotation(fp, fp->sl_CarrierFreq, fp->symbol_rotation[link_type_sl]);
-  init_timeshift_rotation(fp);
+  perform_symbol_rotation(fp->symbols_per_slot * fp->slots_per_frame / 10,
+                          fp->numerology_index,
+                          fp->sl_CarrierFreq,
+                          fp->symbol_rotation[link_type_sl]);
+  init_timeshift_rotation(fp->ofdm_symbol_size, fp->nb_prefix_samples, fp->ofdm_offset_divisor, fp->timeshift_symbol_rotation);
 
   // Not used for Sidelink
   fp->Lmax = 0;

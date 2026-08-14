@@ -27,7 +27,7 @@
 // structure holding allocated memory for ports (multiple DUs) and sectors
 // (multiple CCs)
 static oran_port_instance_t gPortInst[XRAN_PORTS_NUM][XRAN_MAX_SECTOR_NR];
-void *gxran_handle;
+void *gxran_handle[XRAN_PORTS_NUM];
 
 static struct xran_fh_init g_fh_init = {0};
 static struct xran_fh_config g_fh_config[XRAN_PORTS_NUM] = {0};
@@ -81,10 +81,35 @@ static struct xran_prb_map get_xran_prb_map(const struct xran_fh_config *f, cons
   e->nStartSymb = start_sym;
   e->numSymb = num_sym;
   e->nRBStart = 0;
-  e->nRBSize = (dir == XRAN_DIR_DL) ? f->nDLRBs : f->nULRBs;
+  uint8_t mu_number = f->mu_number[0];
+  e->nRBSize = (dir == XRAN_DIR_DL) ? f->perMu[mu_number].nDLRBs : f->perMu[mu_number].nULRBs;
   e->nBeamIndex = 0;
   e->compMethod = f->ru_conf.compMeth;
   e->iqWidth = f->ru_conf.iqWidth;
+  memset(&prbmap.sFrontHaulRxPacketCtrl, 0, XRAN_NUM_OF_SYMBOL_PER_SLOT * sizeof(struct xran_rx_packet_ctl));
+  return prbmap;
+}
+
+static struct xran_prb_map get_xran_prb_map_prach(const struct xran_fh_config *f)
+{
+  struct xran_prb_map prbmap = {
+      .dir = XRAN_DIR_UL,
+      .xran_port = 0,
+      .band_id = 0,
+      .cc_id = 0,
+      .ru_port_id = 0,
+      .tti_id = 0,
+      .nPrbElm = 1,
+  };
+  struct xran_prb_elm *e = &prbmap.prbMap[0];
+  e->nStartSymb = 0;
+  e->numSymb = 14;
+  e->nRBStart = 0;
+  e->nRBSize = 12;
+  e->nBeamIndex = 0;
+  e->compMethod = f->ru_conf.compMeth;
+  e->iqWidth = f->ru_conf.iqWidth;
+  memset(&prbmap.sFrontHaulRxPacketCtrl, 0, XRAN_NUM_OF_SYMBOL_PER_SLOT * sizeof(struct xran_rx_packet_ctl));
   return prbmap;
 }
 
@@ -182,10 +207,8 @@ static void oran_allocate_cplane_buffers(void *instHandle,
                                          struct xran_flat_buffer buf[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN],
                                          uint32_t ant,
                                          uint32_t sect,
-                                       #if defined F_RELEASE
                                          uint32_t mtu,
                                          const struct xran_fh_config *fh_config,
-                                       #endif
                                          uint32_t size_of_prb_map,
                                          oran_cplane_prb_config *prb_conf)
 {
@@ -219,31 +242,22 @@ static void oran_allocate_cplane_buffers(void *instHandle,
       // get mixed slot map if in TDD and in mixed slot
       if (prb_conf->nTddPeriod != 0 && (j % prb_conf->nTddPeriod) == prb_conf->mixed_slot_index)
         src = &prb_conf->mixedSlotMap;
-#if defined F_RELEASE
       if (fh_config->RunSlotPrbMapBySymbolEnable) {
-        xran_init_PrbMap_by_symbol_from_cfg(src, ptr, mtu, fh_config->nDLRBs);
+        uint8_t mu_number = fh_config->mu_number[0];
+        xran_init_PrbMap_by_symbol_from_cfg(src, ptr, mtu, fh_config->perMu[mu_number].nDLRBs);
       } else {
         xran_init_PrbMap_from_cfg(src, ptr, mtu);
       }
-#endif
     }
   }
   printf("xran_bm_allocate_buffer() hInstance %p poolIdx %u count %u\n", instHandle, poolPrb, count1);
-}
-
-/* callback not actively used */
-static void oai_xran_fh_rx_prach_callback(void *pCallbackTag, xran_status_t status)
-{
-  rte_pause();
 }
 
 static void oran_allocate_buffers(void *handle,
                                   int xran_inst,
                                   int num_sectors,
                                   oran_port_instance_t *portInstances,
-                                #if defined F_RELEASE
                                   uint32_t mtu,
-                                #endif
                                   const struct xran_fh_config *fh_config)
 {
   AssertFatal(num_sectors == 1, "only support one sector at the moment\n");
@@ -272,6 +286,7 @@ static void oran_allocate_buffers(void *handle,
   // DL/UL PRB mapping depending on the duplex mode
   struct xran_prb_map dlPm = get_xran_prb_map(fh_config, XRAN_DIR_DL, 0, 14);
   struct xran_prb_map ulPm = get_xran_prb_map(fh_config, XRAN_DIR_UL, 0, 14);
+  struct xran_prb_map prachPm = get_xran_prb_map_prach(fh_config);
   struct xran_prb_map dlPmMixed = {0};
   struct xran_prb_map ulPmMixed = {0};
   uint32_t idx = 0;
@@ -297,92 +312,104 @@ static void oran_allocate_buffers(void *handle,
       .mixedSlotMap = ulPmMixed,
   };
 
-#if defined F_RELEASE
   uint32_t numPrbElm = (fh_config->RunSlotPrbMapBySymbolEnable) ? XRAN_NUM_OF_SYMBOL_PER_SLOT : xran_get_num_prb_elm(&dlPm, mtu);
   uint32_t size_of_prb_map = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (numPrbElm);
-#endif
+  oran_cplane_prb_config prachConf = {
+      .nTddPeriod = fh_config->frame_conf.nTddPeriod,
+      .mixed_slot_index = idx,
+      .slotMap = prachPm,
+      .mixedSlotMap = prachPm,
+  };
+
+  uint32_t numPrbElmPrach = (fh_config->RunSlotPrbMapBySymbolEnable) ? XRAN_NUM_OF_SYMBOL_PER_SLOT : xran_get_num_prb_elm(&prachPm, mtu);
+  uint32_t size_of_prb_map_prach  = sizeof(struct xran_prb_map) + sizeof(struct xran_prb_elm) * (numPrbElmPrach);
 
   // PDSCH
-  const uint32_t txBufSize = get_nSW_ToFpga_FTH_TxBufferLen(fh_config->frame_conf.nNumerology, fh_config->max_sections_per_slot);
+  const uint32_t txBufSize = get_nSW_ToFpga_FTH_TxBufferLen(fh_config->nNumerology[0], fh_config->max_sections_per_slot);
   oran_allocate_uplane_buffers(pi->instanceHandle, bl->src, bl->bufs.tx, xran_max_antenna_nr, txBufSize);
   oran_allocate_cplane_buffers(pi->instanceHandle,
                                bl->srccp,
                                bl->bufs.tx_prbmap,
                                xran_max_antenna_nr,
                                xran_max_sections_per_slot,
-                             #if defined F_RELEASE
                                mtu,
                                fh_config,
-                             #endif
                                size_of_prb_map,
                                &dlConf);
 
   // PUSCH
-  const uint32_t rxBufSize = get_nFpgaToSW_FTH_RxBufferLen(fh_config->frame_conf.nNumerology);
+  const uint32_t rxBufSize = get_nFpgaToSW_FTH_RxBufferLen(fh_config->nNumerology[0]);
   oran_allocate_uplane_buffers(pi->instanceHandle, bl->dst, bl->bufs.rx, xran_max_antenna_nr, rxBufSize);
   oran_allocate_cplane_buffers(pi->instanceHandle,
                                bl->dstcp,
                                bl->bufs.rx_prbmap,
                                xran_max_antenna_nr,
                                xran_max_sections_per_slot,
-                             #if defined F_RELEASE
                                mtu,
                                fh_config,
-                             #endif
                                size_of_prb_map,
                                &ulConf);
 
   // PRACH
   const uint32_t prachBufSize = PRACH_PLAYBACK_BUFFER_BYTES;
   oran_allocate_uplane_buffers(pi->instanceHandle, bl->prachdst, bl->bufs.prach, xran_max_antenna_nr, prachBufSize);
-  // PRACH decomp buffer does not have separate DPDK-allocated memory pool
-  // bufs, it points to the same pool as the prach buffer. Unclear to me why
-  for (uint32_t a = 0; a < xran_max_antenna_nr; ++a) {
-    for (uint32_t j = 0; j < XRAN_N_FE_BUF_LEN; ++j) {
-      bl->prachdstdecomp[a][j].pBuffers = &bl->bufs.prachdecomp[a][j][0];
-      for (uint32_t k = 0; k < XRAN_NUM_OF_SYMBOL_PER_SLOT; ++k) {
-        struct xran_flat_buffer *fb = &bl->prachdstdecomp[a][j].pBuffers[k];
-        fb->pData = bl->prachdst[a][j].pBuffers[k].pData;
-      }
-    }
-  }
+  oran_allocate_cplane_buffers(pi->instanceHandle,
+                               bl->prachdstdecomp,
+                               bl->bufs.prachdecomp,
+                               xran_max_antenna_nr,
+                               xran_max_sections_per_slot,
+                               mtu,
+                               fh_config,
+                               size_of_prb_map_prach,
+                               &prachConf);
 
   struct xran_buffer_list *src[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
   struct xran_buffer_list *srccp[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
   struct xran_buffer_list *dst[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
   struct xran_buffer_list *dstcp[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
-  struct xran_buffer_list *prach[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
-  struct xran_buffer_list *prachdecomp[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
+  struct xran_buffer_list *prachdst[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
+  struct xran_buffer_list *prachdstdecomp[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
   for (uint32_t a = 0; a < XRAN_MAX_ANTENNA_NR; ++a) {
     for (uint32_t j = 0; j < XRAN_N_FE_BUF_LEN; ++j) {
       src[a][j] = &bl->src[a][j];
       srccp[a][j] = &bl->srccp[a][j];
       dst[a][j] = &bl->dst[a][j];
       dstcp[a][j] = &bl->dstcp[a][j];
-      prach[a][j] = &bl->prachdst[a][j];
-      prachdecomp[a][j] = &bl->prachdstdecomp[a][j];
+      prachdst[a][j] = &bl->prachdst[a][j];
+      prachdstdecomp[a][j] = &bl->prachdstdecomp[a][j];
     }
   }
 
-  xran_5g_fronthault_config(pi->instanceHandle, src, srccp, dst, dstcp, oai_xran_fh_rx_callback, &portInstances->pusch_tag);
-  xran_5g_prach_req(pi->instanceHandle, prach, prachdecomp, oai_xran_fh_rx_prach_callback, &portInstances->prach_tag);
+  xran_5g_fronthault_config(pi->instanceHandle, src, srccp, dst, dstcp, oai_xran_fh_rx_callback, &portInstances->pusch_tag, fh_config->nNumerology[0]);
+  xran_5g_prach_req(pi->instanceHandle, prachdst, prachdstdecomp, oai_xran_fh_rx_prach_callback, &portInstances->prach_tag, fh_config->nNumerology[0]);
 }
 
-int *oai_oran_initialize(struct xran_fh_init *xran_fh_init, struct xran_fh_config *xran_fh_config)
+void *oai_oran_initialize(struct xran_fh_init *xran_fh_init, struct xran_fh_config *xran_fh_config)
 {
   int32_t xret = 0;
 
+  xran_mem_mgr_leak_detector_init();
+
   print_fh_init(xran_fh_init);
-  xret = xran_init(0, NULL, xran_fh_init, NULL, &gxran_handle);
+  xret = xran_init(0, NULL, xran_fh_init, NULL, gxran_handle);
   if (xret != XRAN_STATUS_SUCCESS) {
     printf("xran_init failed %d\n", xret);
     exit(-1);
   }
 
+  for (int32_t o_xu_id = 0; o_xu_id < xran_fh_init->xran_ports; o_xu_id++) {
+    if (gxran_handle[o_xu_id] == NULL) {
+      printf("xran_init for RU%d failed\n", o_xu_id);
+      exit(-1);
+    } else {
+      printf("RU%d handle = %p\n", o_xu_id, gxran_handle[o_xu_id]);
+    }
+  }
+
   /** process all the O-RU|O-DU for use case */
   for (int32_t o_xu_id = 0; o_xu_id < xran_fh_init->xran_ports; o_xu_id++) {
     print_fh_config(&xran_fh_config[o_xu_id]);
-    xret = xran_open(gxran_handle, &xran_fh_config[o_xu_id]);
+    xret = xran_open(gxran_handle[o_xu_id], &xran_fh_config[o_xu_id]);
     if (xret != XRAN_STATUS_SUCCESS) {
       printf("xran_open failed %d\n", xret);
       exit(-1);
@@ -394,21 +421,18 @@ int *oai_oran_initialize(struct xran_fh_init *xran_fh_init, struct xran_fh_confi
     struct xran_cb_tag tag = {.cellId = sector, .oXuId = o_xu_id};
     pi->prach_tag = tag;
     pi->pusch_tag = tag;
-#if defined F_RELEASE
-    oran_allocate_buffers(gxran_handle, o_xu_id, 1, pi, xran_fh_init->mtu, &xran_fh_config[o_xu_id]);
-#endif
 
-    if ((xret = xran_reg_physide_cb(gxran_handle, oai_physide_dl_tti_call_back, NULL, 10, XRAN_CB_TTI)) != XRAN_STATUS_SUCCESS) {
-      printf("xran_reg_physide_cb failed %d\n", xret);
+    oran_allocate_buffers(gxran_handle[0], o_xu_id, 1, pi, xran_fh_init->mtu, &xran_fh_config[o_xu_id]);
+    if ((xret = xran_timingsource_reg_tticb(NULL, oai_physide_dl_tti_call_back, NULL, 10, XRAN_CB_TTI)) != XRAN_STATUS_SUCCESS) {
+      printf("xran_timingsource_reg_tticb failed %d\n", xret);
       exit(-1);
     }
 
     // retrieve and store prach duration
-    uint8_t idx = xran_fh_config[o_xu_id].prach_conf.nPrachConfIdx;
+    uint8_t mu = xran_fh_config[o_xu_id].nNumerology[0];
+    uint8_t idx = xran_fh_config[o_xu_id].perMu[mu].prach_conf.nPrachConfIdx;
     const struct xran_frame_config *fc = &xran_fh_config[o_xu_id].frame_conf;
-    g_prach_info[o_xu_id] = get_nr_prach_occasion_info_from_index(idx,
-                                                                  fc->nNumerology > 2 ? FR2 : FR1,
-                                                                  fc->nFrameDuplexType == XRAN_FDD ? duplex_mode_FDD : duplex_mode_TDD);
+    g_prach_info[o_xu_id] = get_nr_prach_occasion_info_from_index(idx, mu > 2 ? FR2 : FR1, fc->nFrameDuplexType == XRAN_FDD ? duplex_mode_FDD : duplex_mode_TDD);
   }
 
   // store config after xran initialization -- xran makes modifications to
@@ -416,7 +440,7 @@ int *oai_oran_initialize(struct xran_fh_init *xran_fh_init, struct xran_fh_confi
   memcpy(&g_fh_init, xran_fh_init, sizeof(*xran_fh_init));
   memcpy(&g_fh_config, xran_fh_config, sizeof(*xran_fh_config) * xran_fh_init->xran_ports);
 
-  return (void *)gxran_handle;
+  return gxran_handle;
 }
 
 oran_buf_list_t *get_xran_buffers(uint32_t port_id)

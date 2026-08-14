@@ -10,6 +10,8 @@
 #define __LAYER2_NR_MAC_PROTO_H__
 
 #include "LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
+#include "LAYER2/NR_MAC_gNB/gNB_scheduler_dlsch_default_policies.h"
+#include "LAYER2/NR_MAC_gNB/gNB_scheduler_ulsch_default_policies.h"
 #include "NR_TAG-Id.h"
 #include "common/ngran_types.h"
 #include "openair2/LAYER2/nr_pdcp/nr_pdcp_configuration.h"
@@ -34,7 +36,7 @@ void mac_top_init_gNB(ngran_node_t node_type,
                       const nr_rlc_configuration_t *default_rlc_config);
 void mac_top_destroy_gNB(gNB_MAC_INST *mac);
 void nr_mac_send_f1_setup_req(void);
-int get_ssbidx_from_beam(gNB_MAC_INST *mac, int beam_idx);
+int get_ssbidx_from_beam(const gNB_MAC_INST *mac, int beam_idx);
 void nr_mac_config_scc(gNB_MAC_INST *nrmac, NR_ServingCellConfigCommon_t *scc, const nr_mac_config_t *mac_config);
 void nr_mac_configure_sib1(gNB_MAC_INST *nrmac, const plmn_id_t *plmn, uint64_t cellID, int tac);
 bool nr_mac_configure_other_sib(gNB_MAC_INST *nrmac, int num_cu_sib, const f1ap_sib_msg_t cu_sib[num_cu_sib]);
@@ -60,8 +62,8 @@ void nr_schedule_ue_spec(module_id_t module_id,
                          nfapi_nr_dl_tti_request_t *DL_req,
                          nfapi_nr_tx_data_request_t *TX_req);
 
-/* \brief default DL preprocessor init routine, returns preprocessor to call */
-nr_pp_impl_dl nr_init_dlsch_preprocessor();
+/* \brief default DL preprocessor */
+void nr_dlsch_preprocessor(gNB_MAC_INST *mac, post_process_pdsch_t *pp_pdsch);
 
 void schedule_nr_sib1(module_id_t module_idP,
                       frame_t frameP,
@@ -74,7 +76,7 @@ void schedule_nr_other_sib(module_id_t module_idP,
                            slot_t slot,
                            nfapi_nr_dl_tti_request_t *DL_req,
                            nfapi_nr_tx_data_request_t *TX_req);
-                    
+
 struct NR_SchedulingInfo2_r17* find_sib19_sched_info(const struct NR_SI_SchedulingInfo_v1700*);
 
 void schedule_nr_mib(module_id_t module_idP, frame_t frameP, slot_t slotP, nfapi_nr_dl_tti_request_t *DL_req);
@@ -84,10 +86,21 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, slot_t slotP, nfapi
  * messages, statistics, HARQ handling, ... */
 void nr_schedule_ulsch(module_id_t module_id, frame_t frame, slot_t slot, nfapi_nr_ul_dci_request_t *ul_dci_req);
 
-/* \brief default UL preprocessor init routine, returns preprocessor to call */
-nr_pp_impl_ul nr_init_ulsch_preprocessor();
+/* \brief default UL preprocessor */
+void nr_ulsch_preprocessor(gNB_MAC_INST *nr_mac, post_process_pusch_t *pp_pusch);
 
-/////// Random Access MAC-PHY interface functions and primitives ///////
+int check_sc_fdma_rbsize(long transform_precoding, uint16_t rb);
+
+void nr_mac_pcch_queue_init(NR_COMMON_channels_t *cc);
+void nr_mac_pcch_queue_free(NR_COMMON_channels_t *cc);
+void nr_mac_pcch_enqueue(module_id_t module_id, uint64_t fiveg_s_tmsi, uint16_t ue_id);
+void schedule_nr_pcch(gNB_MAC_INST *gNB_mac,
+                      frame_t frameP,
+                      slot_t slotP,
+                      nfapi_nr_dl_tti_request_t *DL_req,
+                      nfapi_nr_tx_data_request_t *TX_req);
+
+////// Random Access MAC-PHY interface functions and primitives ///////
 
 void nr_schedule_RA(module_id_t module_idP,
                     frame_t frameP,
@@ -155,6 +168,7 @@ nfapi_nr_dl_dci_pdu_t *prepare_dci_pdu(nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_
                                        const NR_ServingCellConfigCommon_t *scc,
                                        const NR_SearchSpace_t *ss,
                                        const NR_ControlResourceSet_t *coreset,
+                                       const uint16_t *spatial_stream_idx,
                                        int aggregation_level,
                                        int cce_index,
                                        int beam_index,
@@ -168,8 +182,8 @@ void nr_srs_ri_computation(const nfapi_nr_srs_normalized_channel_iq_matrix_t *nr
 
 int get_pucch_resourceid(NR_PUCCH_Config_t *pucch_Config, int O_uci, int pucch_resource);
 
-void nr_schedule_srs(int module_id, frame_t frame, int slot);
-
+void nr_schedule_periodic_srs(int module_id, frame_t frame, int slot);
+bool nr_schedule_aperiodic_srs(gNB_MAC_INST *nrmac, NR_UE_info_t *UE, int sched_frame, int sched_slot, int k2, int sched_srs);
 void nr_csirs_scheduling(int Mod_idP, frame_t frame, slot_t slot, nfapi_nr_dl_tti_request_t *DL_req);
 
 void nr_csi_meas_reporting(int Mod_idP, frame_t frameP, slot_t slotP);
@@ -187,7 +201,7 @@ int nr_acknack_scheduling(gNB_MAC_INST *mac,
 int get_pdsch_to_harq_feedback(NR_PUCCH_Config_t *pucch_Config,
                                nr_dci_format_t dci_format,
                                uint8_t *pdsch_to_harq_feedback);
-  
+
 int nr_get_pucch_resource(NR_ControlResourceSet_t *coreset,
                           NR_PUCCH_Config_t *pucch_Config,
                           int CCEIndex);
@@ -200,7 +214,10 @@ void nr_configure_pucch(nfapi_nr_pucch_pdu_t *pucch_pdu,
                         uint16_t O_ack,
                         uint8_t O_sr,
                         int r_pucch,
-                        nr_beam_mode_t mode);
+                        nr_beam_mode_t mode,
+                        uint16_t ant_port_idx,
+                        uint16_t *ssi,
+                        uint16_t num_ant);
 
 void find_search_space(int ss_type,
                        NR_BWP_Downlink_t *bwp,
@@ -214,6 +231,8 @@ NR_sched_pdcch_t set_pdcch_structure(gNB_MAC_INST *gNB_mac,
                                      NR_ServingCellConfigCommon_t *scc,
                                      NR_BWP_t *bwp,
                                      NR_Type0_PDCCH_CSS_config_t *type0_PDCCH_CSS_config);
+
+bool is_type0_occasion(NR_ServingCellConfigCommon_t *scc, const NR_Type0_PDCCH_CSS_config_t *type0, int frame, uint32_t slot);
 
 int find_pdcch_candidate(const gNB_MAC_INST *mac,
                          int cc_id,
@@ -230,6 +249,7 @@ void fill_pdcch_vrb_map(gNB_MAC_INST *mac,
                         int first_cce,
                         int aggregation,
                         int beam);
+bool update_rb_mcs_tbs(NR_sched_pdsch_t *pdsch, uint32_t num_total_bytes, uint16_t *vrb_map);
 
 void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
                         const NR_UE_DL_BWP_t *current_DL_BWP,
@@ -238,6 +258,7 @@ void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
                         dci_pdu_rel15_t *dci_pdu_rel15,
                         int dci_format,
                         int rnti_type,
+                        int srs_request,
                         NR_SearchSpace_t *ss,
                         NR_ControlResourceSet_t *coreset,
                         long pdsch_HARQ_ACK_Codebook,
@@ -262,7 +283,9 @@ const NR_DMRS_UplinkConfig_t *get_DMRS_UplinkConfig(const NR_PUSCH_Config_t *pus
 NR_pusch_dmrs_t get_ul_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
                                    const NR_UE_UL_BWP_t *ul_bwp,
                                    const NR_tda_info_t *tda_info,
-                                   const int Layers);
+                                   const int Layers,
+                                   const uint16_t dmrs_ports,
+                                   const uint8_t cdm_groups);
 
 int get_spf(nfapi_nr_config_request_scf_t *cfg);
 
@@ -357,6 +380,13 @@ void handle_nr_srs_measurements(const module_id_t module_id,
                                 const slot_t slot,
                                 nfapi_nr_srs_indication_pdu_t *srs_ind);
 
+void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
+                                               const frame_t frame,
+                                               const slot_t slot,
+                                               const uint8_t num_ta,
+                                               const int16_t *ta_offset_nsec,
+                                               const rnti_t rnti);
+
 void find_SSB_and_RO_available(gNB_MAC_INST *nrmac);
 
 NR_pdsch_dmrs_t get_dl_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
@@ -374,7 +404,6 @@ int get_mcs_from_SINRx10(int mcs_table, int SINRx10, int Nl);
 uint8_t get_mcs_from_cqi(int mcs_table, int cqi_table, int cqi_idx);
 
 uint8_t get_dl_nrOfLayers(const NR_UE_sched_ctrl_t *sched_ctrl, const nr_dci_format_t dci_format);
-int get_ul_nrOfLayers(const NR_UE_sched_ctrl_t *sched_ctrl, const nr_dci_format_t dci_format);
 
 void free_sched_pucch_list(NR_UE_sched_ctrl_t *sched_ctrl);
 bool add_UE_to_list(int list_size, NR_UE_info_t *list[list_size], NR_UE_info_t *UE);
@@ -425,6 +454,8 @@ bool nr_find_nb_rb(uint16_t Qm,
  * \param rbSize_ptr Pointer returning the size of the found free block of RBs
  * \return Indicates if a free block of RBs of the required size could be found and *rbStart_ptr and *rbSize_ptr are set accordingly
  */
+int find_largest_free_block(const uint16_t *vrb_map, uint16_t slbitmap, int bwp_start, int bwp_size, int *out_start);
+
 bool get_rb_alloc(int rbSize_min,
                   int rbSize_max,
                   int bwpStart,
@@ -434,11 +465,45 @@ bool get_rb_alloc(int rbSize_min,
                   int *rbStart_ptr,
                   int *rbSize_ptr);
 
-int get_mcs_from_bler(const NR_bler_options_t *bler_options,
-                      const NR_mac_dir_stats_t *stats,
-                      NR_bler_stats_t *bler_stats,
-                      int max_mcs,
-                      frame_t frame);
+/* Scalar core of the BLER -> MCS adaptation rule. Single source of truth
+ * for the activity-guard threshold and the lower/upper hysteresis. */
+int nr_adapt_mcs_from_bler(int current_mcs,
+                           int min_mcs,
+                           int max_mcs,
+                           float bler,
+                           float bler_lower,
+                           float bler_upper,
+                           int num_sched);
+
+bool update_bler_stats(const NR_bler_options_t *bler_options,
+                       const NR_mac_dir_stats_t *stats,
+                       NR_bler_stats_t *bler_stats,
+                       frame_t frame);
+
+float dl_pf_weight(int mcs, int mcs_table, int nrOfLayers, float avg_throughput);
+uint16_t check_dl_retx_feasibility(const nr_dl_candidate_t *cand,
+                                   int tda,
+                                   const NR_tda_info_t *tda_info,
+                                   const NR_ServingCellConfigCommon_t *scc,
+                                   uint16_t max_rbSize);
+bool nr_dl_validate_cce_pucch(const nr_dl_sched_params_t *params, nr_dl_candidate_t *cand);
+bool commit_alloc(const nr_dl_sched_params_t *params, nr_dl_candidate_t *cand);
+
+// Use inside the policy loops: sets RB/MCS on candidate, validates CCE/PUCCH,
+// marks scheduled; continues on failure, returns on max_num_ue.
+#define COMMIT_ALLOC(params, cand, rb_start_, rb_size_, mcs_, n_sched) \
+  do {                                                                 \
+    (cand)->sched_pdsch.alloc_type = PDSCH_TYPE1;                      \
+    (cand)->sched_pdsch.rbStart = (rb_start_);                         \
+    (cand)->sched_pdsch.rbSize = (rb_size_);                           \
+    (cand)->sched_pdsch.mcs = (mcs_);                                  \
+    if (!commit_alloc(params, cand))                                   \
+      continue;                                                        \
+    (cand)->scheduled = true;                                          \
+    (n_sched)++;                                                       \
+    if ((n_sched) >= (params)->max_num_ue)                             \
+      return (n_sched);                                                \
+  } while (0)
 
 int ul_buffer_index(int frame, int slot, int slots_per_frame, int size);
 void UL_tti_req_ahead_initialization(gNB_MAC_INST *gNB, int n, int CCid, frame_t frameP, int slotP);
@@ -479,7 +544,7 @@ void nr_mac_trigger_ul_failure(NR_UE_sched_ctrl_t *sched_ctrl, NR_SubcarrierSpac
 void nr_mac_reset_ul_failure(NR_UE_sched_ctrl_t *sched_ctrl);
 bool nr_mac_check_ul_failure(gNB_MAC_INST *nrmac, int rnti, NR_UE_sched_ctrl_t *sched_ctrl);
 
-void nr_mac_trigger_reconfiguration(const gNB_MAC_INST *nrmac, NR_UE_info_t *UE, int new_bwp_id, bool new_beam);
+void nr_mac_trigger_reconfiguration(const gNB_MAC_INST *nrmac, NR_UE_info_t *UE, int new_bwp_id, int new_beam);
 
 bool nr_mac_add_lcid(NR_UE_sched_ctrl_t *sched_ctrl, const nr_lc_config_t *c);
 nr_lc_config_t *nr_mac_get_lc_config(NR_UE_sched_ctrl_t* sched_ctrl, int lcid);
@@ -495,10 +560,19 @@ void prepare_du_configuration_update(gNB_MAC_INST *mac,
 
 void nr_mac_clean_cellgroup(NR_CellGroupConfig_t *cell_group);
 
-void post_process_dlsch(gNB_MAC_INST *nr_mac, post_process_pdsch_t *pdsch, NR_UE_info_t *UE, NR_sched_pdsch_t *sched_pdsch);
-void post_process_ulsch(gNB_MAC_INST *nr_mac, post_process_pusch_t *pusch, NR_UE_info_t *UE, NR_sched_pusch_t *sched_pusch);
+void post_process_dlsch(gNB_MAC_INST *nr_mac,
+                        post_process_pdsch_t *pdsch,
+                        NR_UE_info_t *UE,
+                        NR_sched_pdsch_t *sched_pdsch,
+                        const nr_dl_candidate_t *candidate);
+void post_process_ulsch(gNB_MAC_INST *nr_mac,
+                        post_process_pusch_t *pusch,
+                        NR_UE_info_t *UE,
+                        NR_sched_pusch_t *sched_pusch,
+                        int sched_srs);
 
 float nr_mac_get_snr(const nr_power_control_t *pc);
+float nr_mac_get_rssi(const nr_power_control_t *pc);
 void nr_mac_pc_snr(nr_power_control_t *pc, int snrx10, int rssi);
 void nr_mac_pc_reset_snr(nr_power_control_t *pc, int snrx10, int rssi);
 void nr_mac_set_target_snrx10(nr_power_control_t *pc, int target_snrx10);
@@ -506,4 +580,35 @@ void nr_mac_set_rssi_threshold(nr_power_control_t *pc, int rssi_threshold);
 void nr_mac_signal_dtx(nr_power_control_t *pc);
 int nr_mac_get_tpc(nr_power_control_t *pc);
 
+/* UL scheduler helpers (shared between default policies and custom plugins) */
+float ul_pf_weight(int mcs, int mcs_table, int nrOfLayers, float avg_throughput);
+void update_ul_ue_R_Qm(int mcs, int mcs_table, const NR_PUSCH_Config_t *pusch_Config, uint16_t *R, uint8_t *Qm);
+uint16_t check_ul_retx_feasibility(const nr_ul_candidate_t *cand,
+                                   int tda,
+                                   const NR_tda_info_t *tda_info,
+                                   const NR_ServingCellConfigCommon_t *scc,
+                                   uint16_t max_rbSize);
+bool nr_ul_validate_cce(const nr_ul_sched_params_t *params, nr_ul_candidate_t *cand);
+bool commit_ul_alloc(const nr_ul_sched_params_t *params, nr_ul_candidate_t *cand);
+
+/* Use inside policy loops: writes alloc fields, validates CCE,
+   marks scheduled; continues on failure, returns n_sched on max_num_ue. */
+#define COMMIT_UL_ALLOC(params, cand, rb_start_, rb_size_, mcs_, n_sched) \
+  do {                                                                    \
+    (cand)->sched_pusch.rbStart = (rb_start_);                            \
+    (cand)->sched_pusch.rbSize = (rb_size_);                              \
+    (cand)->sched_pusch.mcs = (mcs_);                                     \
+    if (!commit_ul_alloc(params, cand))                                   \
+      continue;                                                           \
+    (cand)->scheduled = true;                                             \
+    (n_sched)++;                                                          \
+    if ((n_sched) >= (params)->max_num_ue)                                \
+      return (n_sched);                                                   \
+  } while (0)
+
+bool nr_ul_check_phr(const nr_ul_sched_params_t *params,
+                     const nr_ul_candidate_t *cand,
+                     uint16_t rbSize,
+                     uint8_t mcs,
+                     nr_ul_phr_advice_t *advice);
 #endif /*__LAYER2_NR_MAC_PROTO_H__*/

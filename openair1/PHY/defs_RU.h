@@ -101,7 +101,7 @@ typedef struct {
   /// \brief Anaglogue beam ID for each OFDM symbol (used when beamforming not done in RU)
   /// - first index: concurrent beam
   /// - second index: beam_id [0.. symbols_per_frame[
-  int **beam_id;
+  uint16_t **beam_id;
 } RU_COMMON;
 
 
@@ -397,8 +397,6 @@ typedef struct RU_t_s {
   node_timing_t if_timing;
   /// function
   node_function_t function;
-  /// Ethernet parameters for fronthaul interface
-  eth_params_t eth_params;
   /// numerology index
   int numerology;
   /// flag to indicate the RU is in sync with a master reference
@@ -435,10 +433,6 @@ typedef struct RU_t_s {
   int nb_rx;
   /// number of TX paths on device
   int nb_tx;
-  /// number of concurrent analog beams in period
-  int num_beams_period;
-  /// number of logical antennas at TX beamformer input
-  int nb_log_antennas;
   /// maximum PDSCH RS EPRE
   int max_pdschReferenceSignalPower;
   /// maximum RX gain
@@ -453,8 +447,6 @@ typedef struct RU_t_s {
   int sf_ahead;
   /// TX processing advance in slots (for NR)
   int sl_ahead;
-  /// flag to indicate TX FH is embedded in TX FEP
-  int txfh_in_fep;
   /// flag to indicate half-slot parallelization
   int half_slot_parallelization;
   /// FAPI confiuration
@@ -491,8 +483,6 @@ typedef struct RU_t_s {
   /// function pointer to synchronous TX fronthaul function
   void (*fh_south_out)(struct RU_t_s *ru, int frame_tx, int tti_tx, uint64_t timestamp_tx);
   /// function pointer to synchronous RX fronthaul function (RRU)
-  void (*fh_north_in)(struct RU_t_s *ru, int *frame, int *subframe);
-  /// function pointer to synchronous RX fronthaul function (RRU)
   void (*fh_north_out)(struct RU_t_s *ru);
   /// function pointer to asynchronous fronthaul interface
   void (*fh_north_asynch_in)(struct RU_t_s *ru, int *frame, int *subframe);
@@ -504,7 +494,7 @@ typedef struct RU_t_s {
   int (*stop_rf)(struct RU_t_s *ru);
   /// function pointer to initialization function for radio interface
   int (*start_if)(struct RU_t_s *ru, struct PHY_VARS_eNB_s *eNB);
-  int (*nr_start_if)(struct RU_t_s *ru, struct PHY_VARS_gNB_s *gNB);
+  int (*nr_start_if)(struct RU_t_s *ru);
   /// function pointer to RX front-end processing routine (DFTs/prefix removal or NULL)
   void (*feprx)(struct RU_t_s *ru, int subframe);
   /// function pointer to TX front-end processing routine (IDFTs and prefix removal or NULL)

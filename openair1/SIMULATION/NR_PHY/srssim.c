@@ -40,7 +40,7 @@ THREAD_STRUCT thread_struct;
 
 // needed for some functions
 uint16_t n_rnti = 0x1234;
-openair0_config_t openair0_cfg[MAX_CARDS];
+openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
 nrUE_params_t nrUE_params;
 
 nrUE_params_t *get_nrUE_params(void)
@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
   gNB = calloc_or_fail(1, sizeof(PHY_VARS_gNB));
   gNB->ofdm_offset_divisor = UINT_MAX;
   gNB->RU_list[0] = calloc_or_fail(1, sizeof(**gNB->RU_list));
-  gNB->RU_list[0]->rfdevice.openair0_cfg = openair0_cfg;
+  gNB->RU_list[0]->rfdevice.openair0_cfg = openair0_cfg_g;
 
   NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
   fp->N_RB_DL = N_RB_DL;
@@ -337,7 +337,7 @@ int main(int argc, char *argv[])
   /* RU handles rxdataF, and gNB just has a pointer. Here, we don't have an RU,
    * so we need to allocate that memory as well. First index in rxdataF[0] index refers to beams*/
   for (i = 0; i < n_rx; i++)
-    gNB->common_vars.rxdataF[0][i] = malloc16_clear(fp->samples_per_frame_wCP * sizeof(int32_t));
+    gNB->common_vars.rxdataF[i] = malloc16_clear(fp->samples_per_frame_wCP * sizeof(int32_t));
 
   /* no RU: need to have rxdata */
   c16_t **rxdata;
@@ -412,7 +412,7 @@ int main(int argc, char *argv[])
                                                              : 0,
                                 .num_symbols = nb_symb_srs,
                                 .num_repetitions = 0, // Value: 0 = 1, 1 = 2, 2 = 4
-                                .time_start_position = fp->symbols_per_slot - 1 - srs_start_symbol,
+                                .time_start_position = srs_start_symbol,
                                 .bandwidth_index = 0,
                                 .config_index = rrc_get_max_nr_csrs(srs_pdu.bwp_size, srs_pdu.bandwidth_index),
                                 .sequence_id = 40,
@@ -432,6 +432,7 @@ int main(int argc, char *argv[])
                                 .srs_parameters_v4.iq_representation = 1,
                                 .srs_parameters_v4.prg_size = 1,
                                 .srs_parameters_v4.num_total_ue_antennas = 1 << srs_pdu.num_ant_ports,
+                                .srs_parameters_v4.num_ul_spatial_streams_ports = n_rx,
                                 .beamforming.num_prgs = m_SRS[srs_pdu.config_index],
                                 .beamforming.prg_size = 1};
 
@@ -543,14 +544,7 @@ int main(int argc, char *argv[])
                 n_rx);
 
       //----------- OFDM Demodulation and RX rotation--------------------------
-      nr_ofdm_demod_and_rx_rotation(rxdata,
-                                    gNB->common_vars.rxdataF[0],
-                                    fp,
-                                    n_rx,
-                                    slot,
-                                    slot_offsetF,
-                                    link_type_ul,
-                                    was_symbol_used);
+      nr_ofdm_demod_and_rx_rotation(rxdata, gNB->common_vars.rxdataF, fp, n_rx, slot, slot_offsetF, link_type_ul, was_symbol_used);
 
       //----------- UE RX SRS procedures ---------------------
 
@@ -646,7 +640,7 @@ int main(int argc, char *argv[])
     free(r_re[i]);
     free(r_im[i]);
     free(rxdata[i]);
-    free(gNB->common_vars.rxdataF[0][i]);
+    free(gNB->common_vars.rxdataF[i]);
   }
 
   free(r_re);

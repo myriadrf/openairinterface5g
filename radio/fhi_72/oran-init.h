@@ -15,7 +15,7 @@ typedef struct oran_bufs {
   struct xran_flat_buffer rx_prbmap[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
 
   struct xran_flat_buffer prach[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN][XRAN_NUM_OF_SYMBOL_PER_SLOT];
-  struct xran_flat_buffer prachdecomp[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN][XRAN_NUM_OF_SYMBOL_PER_SLOT];
+  struct xran_flat_buffer prachdecomp[XRAN_MAX_ANTENNA_NR][XRAN_N_FE_BUF_LEN];
 } oran_bufs_t;
 
 typedef struct oran_buf_list {
@@ -41,9 +41,9 @@ typedef struct oran_port_instance_t {
 } oran_port_instance_t;
 
 extern struct xran_fh_config gxran_fh_config[XRAN_PORTS_NUM];
-extern void *gxran_handle;
+extern void *gxran_handle[XRAN_PORTS_NUM];
 
-int *oai_oran_initialize(struct xran_fh_init *fh_init, struct xran_fh_config *fh_config);
+void *oai_oran_initialize(struct xran_fh_init *fh_init, struct xran_fh_config *fh_config);
 
 oran_buf_list_t *get_xran_buffers(uint32_t port_id);
 struct xran_fh_init *get_xran_fh_init(void);

@@ -42,10 +42,11 @@ reboot
 ### 2.2 OAI CN5G configuration files
 Download and copy configuration files:
 ```bash
-wget -O ~/oai-cn5g.zip https://gitlab.eurecom.fr/oai/openairinterface5g/-/archive/develop/openairinterface5g-develop.zip?path=doc/tutorial_resources/oai-cn5g
-unzip ~/oai-cn5g.zip
-mv ~/openairinterface5g-develop-doc-tutorial_resources-oai-cn5g/doc/tutorial_resources/oai-cn5g ~/oai-cn5g
-rm -r ~/openairinterface5g-develop-doc-tutorial_resources-oai-cn5g ~/oai-cn5g.zip
+git clone --depth 1 --filter=blob:none --sparse https://github.com/duranta-project/openairinterface5g.git /tmp/openairinterface5g -b develop
+cd /tmp/openairinterface5g
+git sparse-checkout set doc/tutorial_resources/oai-cn5g
+mv doc/tutorial_resources/oai-cn5g ~/oai-cn5g
+cd && rm -rf /tmp/openairinterface5g
 ```
 
 ### 2.3 Pull OAI CN5G docker images

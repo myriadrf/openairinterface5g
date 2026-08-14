@@ -89,8 +89,12 @@ static void dump_pusch_pdu(int instance, int frame, int slot, nfapi_nr_pusch_pdu
         pusch_pdu->pusch_data.num_cb);
 }
 
-
-void nr_fill_ulsch(PHY_VARS_gNB *gNB, int frame, int slot, nfapi_nr_pusch_pdu_t *ulsch_pdu)
+void nr_fill_ulsch(PHY_VARS_gNB *gNB,
+                   int frame,
+                   int slot,
+                   nfapi_nr_pusch_pdu_t *ulsch_pdu,
+                   int16_t mu_group_idx,
+                   uint8_t mu_group_size)
 {
   dump_pusch_pdu(gNB->Mod_id, frame, slot, ulsch_pdu);
   LOG_D(NR_PHY,
@@ -101,16 +105,25 @@ void nr_fill_ulsch(PHY_VARS_gNB *gNB, int frame, int slot, nfapi_nr_pusch_pdu_t 
         ulsch_pdu->pusch_data.harq_process_id,
         ulsch_pdu->pusch_data.new_data_indicator);
 
-  NR_gNB_PUSCH_job_t pusch = {.frame = frame, .slot = slot, .pusch_pdu = *ulsch_pdu};
+  NR_gNB_PUSCH_job_t pusch = {.frame = frame,
+                              .slot = slot,
+                              .pusch_pdu = *ulsch_pdu,
+                              .mu_group_idx = mu_group_idx,
+                              .mu_group_size = mu_group_size};
   if (gNB->common_vars.beam_id) {
     int fapi_beam_idx = ulsch_pdu->beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx;
     int bitmap = SL_to_bitmap(ulsch_pdu->start_symbol_index, ulsch_pdu->nr_of_symbols);
-    pusch.beam_nb = beam_index_allocation(gNB->enable_analog_das,
-                                           fapi_beam_idx,
-                                           &gNB->common_vars,
-                                           slot,
-                                           gNB->frame_parms.symbols_per_slot,
-                                           bitmap);
+    const nfapi_nr_spatial_stream_index_t *p = &ulsch_pdu->param_v4;
+    // We assume the ports are ordered continuously. Hence only the start port idx is enough.
+    uint16_t ant_port_start = p->numSpatialStreamIndices > 0 ? p->spatialStreamIndices[0] : 0;
+    beam_index_allocation(fapi_beam_idx,
+                          ant_port_start,
+                          p->numSpatialStreamIndices,
+                          NR_SYMBOLS_PER_SLOT,
+                          slot,
+                          bitmap,
+                          gNB->frame_parms.nb_antennas_rx,
+                          gNB->common_vars.beam_id);
   }
   bool done = spsc_q_put(&gNB->pusch_queue, &pusch, sizeof(pusch));
   if (!done)
@@ -135,34 +148,6 @@ void reset_active_ulsch(PHY_VARS_gNB *gNB, int frame)
             ulsch->frame,
             ulsch->slot);
     }
-  }
-}
-
-void nr_ulsch_unscrambling(int16_t* llr, uint32_t size, uint32_t Nid, uint32_t n_RNTI)
-{
-  nr_codeword_unscrambling(llr, size, 0, Nid, n_RNTI);
-}
-
-void nr_ulsch_layer_demapping(int16_t *llr_cw, uint8_t Nl, uint8_t mod_order, uint32_t length, int16_t **llr_layers)
-{
-
-  switch (Nl) {
-    case 1:
-      memcpy((void*)llr_cw, (void*)llr_layers[0], (length)*sizeof(int16_t));
-      break;
-    case 2:
-    case 3:
-    case 4:
-      for (int i=0; i<(length/Nl/mod_order); i++) {
-        for (int l=0; l<Nl; l++) {
-          for (int m=0; m<mod_order; m++) {
-            llr_cw[i*Nl*mod_order+l*mod_order+m] = llr_layers[l][i*mod_order+m];
-          }
-        }
-      }
-      break;
-  default:
-    AssertFatal(0, "Not supported number of layers %d\n", Nl);
   }
 }
 

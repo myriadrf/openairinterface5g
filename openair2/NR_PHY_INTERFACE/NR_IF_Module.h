@@ -46,6 +46,9 @@ typedef struct {
   /// SRS indication list
   nfapi_nr_srs_indication_t srs_ind;
 
+  /// SRS ToA vendor extension list
+  nfapi_nr_srs_toa_vendor_ext_indication_t srs_toa_vendor_ext_ind;
+
   /// UCI indication
   nfapi_nr_uci_indication_t uci_ind;
   nfapi_nr_crc_t crc_pdu_list[MAX_UL_PDUS_PER_SLOT];

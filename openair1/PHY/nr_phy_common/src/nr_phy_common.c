@@ -3,7 +3,10 @@
  */
 
 #include "nr_phy_common.h"
+#include "bits.h"
 #include <complex.h>
+#include "PHY/sse_intrin.h"
+#include "PHY/impl_defs_top.h"
 #ifdef __aarch64__
 #define USE_128BIT
 #endif
@@ -367,7 +370,8 @@ void nr_est_delay(int ofdm_symbol_size, const c16_t *ls_est, c16_t *ch_estimates
   // estimated delay, and causing the delay compensation to worsen the result instead of improving it. After analyzing several
   // peaks, and doing many tests, a PEAK_DETECT_THRESHOLD = 15 is an adequate value, to apply delay compensation only when there is
   // clearly a peak
-  delay->est_delay = mean_val > 0 && max_val / mean_val > PEAK_DETECT_THRESHOLD ? max_pos - sync_pos : 0;
+  delay->valid = mean_val > 0 && max_val / mean_val > PEAK_DETECT_THRESHOLD;
+  delay->est_delay = delay->valid ? max_pos - sync_pos : 0;
 }
 
 unsigned int nr_get_tx_amp(int power_dBm, int power_max_dBm, int total_nb_rb, int nb_rb)
@@ -447,7 +451,7 @@ void nr_fo_compensation(double fo_Hz, int samples_per_ms, int sample_offset, con
   const c16_t rot_vec = get_sin_cos(CHUNK * phase_inc);
   while (size > CHUNK) {
     mult_complex_vectors(rxdata_in, rot, rxdata_out, CHUNK, 14);
-    rotate_cpx_vector(rot, &rot_vec, rot, CHUNK, 14);
+    rotate_cpx_vector(rot, rot_vec, rot, CHUNK, 14);
     rxdata_in += CHUNK;
     rxdata_out += CHUNK;
     size -= CHUNK;
@@ -485,5 +489,4 @@ int nr_get_ssb_start_sc(int scs, int ssb_offset_point_a, int ssb_sco, frequency_
                         prb_offset, ssb_sco, scs, freq_range, ssb_start_subcarrier);
 
   return ssb_start_subcarrier;
-
 }

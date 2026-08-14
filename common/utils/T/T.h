@@ -115,7 +115,7 @@ extern int T_stdout;
 
 /* type used to send arbitrary buffer data */
 typedef struct {
-  void *addr;
+  const void *addr;
   int length;
 } T_buffer;
 

@@ -12,15 +12,6 @@
 #include "nfapi/open-nFAPI/nfapi/public_inc/fapi_nr_ue_interface.h"
 #include "../NR_TRANSPORT/nr_transport_common_proto.h"
 
-#define MAX_FA_BLOCKS 10
-typedef struct {
-  int start[MAX_FA_BLOCKS];
-  int end[MAX_FA_BLOCKS];
-  int num_rbs;
-  int num_blocks;
-  uint8_t bitmap[36];
-} freq_alloc_bitmap_t;
-
 typedef struct {
   /// Index of current HARQ round for this ULSCH
   uint8_t round;
@@ -69,6 +60,7 @@ typedef struct {
   int     Nid_cell;
   /// bit mask of PT-RS ofdm symbol indicies
   uint16_t ptrs_symbols;
+  int n_ptrs;
 } NR_UE_ULSCH_t;
 
 typedef struct {
@@ -76,13 +68,11 @@ typedef struct {
   uint8_t first_rx;
   /// DLSCH status flag indicating
   NR_SCH_status_t status;
-  /// Pointer to the payload (38.212 V15.4.0 section 5.1)
-  uint8_t *b;
-  /// Pointers to transport block segments
-  uint8_t **c;
+  /// Pointer to transport block segments
+  uint8_t *c;
   /// soft bits for each received segment ("d"-sequence)(for definition see 36-212 V8.6 2009-03, p.15)
   /// Accumulates the soft bits for each round to increase decoding success (HARQ)
-  int16_t **d;
+  int16_t *d;
   /// Index of current HARQ round for this DLSCH
   uint8_t DLround;
   /// Number of code segments 
@@ -106,16 +96,13 @@ typedef struct {
 } NR_DL_UE_HARQ_t;
 
 typedef struct {
+  fapi_nr_dl_cw_info_t cw_info;
   /// RNTI
   uint16_t rnti;
   /// RNTI type
   uint8_t rnti_type;
   /// Active flag for DLSCH demodulation
   bool active;
-  /// Structure to hold dlsch config from MAC
-  fapi_nr_dl_config_dlsch_pdu_rel15_t dlsch_config;
-  /// Number of MIMO layers (streams) 
-  uint8_t Nl;
   /// Maximum number of LDPC iterations
   uint8_t max_ldpc_iterations;
   /// number of iterations used in last turbo decoding
@@ -128,14 +115,14 @@ typedef struct {
 
 typedef struct {
   uint16_t Q_dash_ACK; // number of coded HARQ-ACK symbols
-  uint16_t E_uci_ACK; // number of coded HARQ-ACK bits
-  uint16_t Q_dash_ACK_rvd; // number of coded HARQ-ACK symbols reserved
-  uint16_t E_uci_ACK_rvd; // number of coded HARQ-ACK bits reserved
+  uint16_t E_uci_ACK; // number of coded HARQ-ACK bits (including reserved ones)
+  uint16_t E_uci_ACK_actual; // actual number of coded HARQ-ACK bits
   uint16_t Q_dash_CSI1; // number of coded CSI part 1 symbols
   uint16_t E_uci_CSI1; // number of coded CSI part 1 bits
   uint16_t Q_dash_CSI2; // number of coded CSI part 2 symbols
   uint16_t E_uci_CSI2; // number of coded CSI part 2 bits
   uint32_t G_ulsch; // bit capacity of ULSCH
+  int O_ack;
 } rate_match_info_uci_t;
 
 #endif

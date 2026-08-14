@@ -31,6 +31,7 @@
 #include "openair2/LAYER2/NR_MAC_COMMON/nr_mac_common.h"
 #include "executables/nr-uesoftmodem.h"
 #include "nfapi/oai_integration/vendor_ext.h"
+#include "bits.h"
 
 //#define DEBUG_NR_ULSCHSIM
 

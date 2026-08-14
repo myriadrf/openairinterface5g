@@ -15,86 +15,6 @@ if(PHYSIM_CHECK_FILES)
   endforeach()
 endif()
 
-define_property(TEST PROPERTY TEST_DESCRIPTION
-                BRIEF_DOCS "A human-readable description of this test"
-                FULL_DOCS "A human-readable description of this test")
-
-define_property(TEST PROPERTY CHECK_COUNT
-                BRIEF_DOCS "helper property to enumerate checks in environment"
-                FULL_DOCS "the property counts the number of threshold checks, used to enumerate environment variables given to analyze-timing.sh")
-
-function(add_physim_test test_name test_description test_exec)
-  # catch all the arguments past the last expected arqument and store them in the options_list
-  if (NOT TARGET ${test_exec})
-    message(FATAL_ERROR "test executable ${test_exec} is not an executable")
-  endif()
-  set(test_invocation $<TARGET_FILE:${test_exec}> ${ARGN})
-  add_test(
-    NAME ${test_name}
-    COMMAND ${CMAKE_COMMAND} "-DTEST_CMD=${test_invocation}" "-DCHECK_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/analyze-timing.sh" -P ${CMAKE_CURRENT_SOURCE_DIR}/RunTimedTest.cmake
-  )
-  set_tests_properties(${test_name} PROPERTIES
-    LABELS "${test_exec}"
-    TEST_DESCRIPTION "${test_description}"
-    # pass test description also through environment variable: for cmake < 3.30,
-    # in JSON export, we cannot recover the description otherwise
-    # see also https://gitlab.kitware.com/cmake/cmake/-/issues/21490
-    ENVIRONMENT "LD_LIBRARY_PATH=.;TEST_DESCRIPTION=${test_description}"
-  )
-  set_tests_properties(${test_name} PROPERTIES CHECK_COUNT 0)
-  add_dependencies(tests ${test_exec})
-endfunction()
-
-function(check_threshold testname threshold condition)
-  # check that threshold and condition don't have a colon (;), because that
-  # would interfere with cmake's list management
-  string(FIND "${threshold}" ";" pos)
-  if (pos GREATER -1)
-    message(FATAL_ERROR "colon not allowed in threshold, but have \"${threshold}\"")
-  endif()
-  string(FIND "${condition}" ";" pos)
-  if (pos GREATER -1)
-    message(FATAL_ERROR "colon not allowed in condition, but have \"${condition}\"")
-  endif()
-  set(THRCOND "${threshold}\;${condition}")
-
-  get_test_property(${testname} CHECK_COUNT count)
-  #message(STATUS "add check ${count} ${THRCOND}")
-  if (${count} GREATER 10)
-    message(FATAL_ERROR "only maximum of 10 checks per test allowed")
-  endif()
-
-  # add a new environment variable CHECK_X with this threshold+condition, then
-  # increase test property regarding check count
-  set_property(TEST ${testname} APPEND PROPERTY ENVIRONMENT "CHECK_${count}=${THRCOND}")
-  MATH(EXPR count "${count}+1")
-  set_tests_properties(${testname} PROPERTIES CHECK_COUNT ${count})
-endfunction()
-
-function(check_threshold_range testname threshold)
-  cmake_parse_arguments(RANGE "" "LOWER;UPPER" "" ${ARGN})
-  if (NOT RANGE_LOWER AND NOT RANGE_UPPER)
-    message(FATAL_ERROR "need at least one LOWER or one UPPER threshold")
-  endif()
-  if (RANGE_LOWER)
-    check_threshold(${testname} ${threshold} "> ${RANGE_LOWER}")
-  endif()
-  if (RANGE_UPPER)
-    check_threshold(${testname} ${threshold} "< ${RANGE_UPPER}")
-  endif()
-endfunction()
-
-function(check_threshold_variance testname threshold)
-  cmake_parse_arguments(VARIANCE "" "AVG;ABS_VAR" "" ${ARGN})
-  if (NOT VARIANCE_AVG AND NOT VARIANCE_ABS_VAR)
-    message(FATAL_ERROR "need both AVG and ABS_VAR")
-  endif()
-  MATH(EXPR upper "${VARIANCE_AVG}+${VARIANCE_ABS_VAR}")
-  MATH(EXPR lower "${VARIANCE_AVG}-${VARIANCE_ABS_VAR}")
-  check_threshold_range(${testname} ${threshold} LOWER ${lower} UPPER ${upper})
-endfunction()
-
-
 ####################################################################################
 ######                           dlsim unit test                              ######
 ####################################################################################
@@ -190,6 +110,7 @@ add_physim_test(physim.5g.nr_dlsim.offset.test2 "106 PRB 51 PDSCH-Offset" nr_dls
 add_physim_test(physim.5g.nr_dlsim.offset.test3 "217 PRB 100 PDSCH-PRBs" nr_dlsim -P -n300 -R217 -b100 -s5)
 add_physim_test(physim.5g.nr_dlsim.offset.test4 "217 PRB 80 PDSCH-Offset" nr_dlsim -P -n300 -R217 -a80 -s5)
 add_physim_test(physim.5g.nr_dlsim.offset.test5 "217 PRB 100 PDSCH-PRBs 110 PDSCH-Offset" nr_dlsim -P -n300 -R217 -a110 -s5 -b100)
+add_physim_test(physim.5g.nr_dlsim.offset.test6 "106 PRB TYPE0 32:47 64:79" nr_dlsim -P -n300 -R106 -D 32:16,64:16 -s5)
 add_physim_test(physim.5g.nr_dlsim.mcs.mimo.test1 "106 PRBs 50 PDSCH-PRBs MCS Index 27" nr_dlsim -P -n300 -e27 -s30)
 add_physim_test(physim.5g.nr_dlsim.mcs.mimo.test2 "106 PRBs 50 PDSCH-PRBs MCS Index 16" nr_dlsim -P -n300 -e16 -s11 -S13)
 add_physim_test(physim.5g.nr_dlsim.mcs.mimo.test3 "106 MCS-TABLE 256 QAM MCS Index 26" nr_dlsim -P -n300 -q1 -e26 -s30)
@@ -343,6 +264,17 @@ add_physim_test(physim.5g.nr_ulsim.3gpp.test27 "3GPP G-FR1-A4-27, PUSCH Type B, 
 add_physim_test(physim.5g.nr_ulsim.3gpp.test28 "3GPP G-FR1-A4-27, PUSCH Type B, 40 MHz BW, 30 kHz SCS, 4 RX Antennas Requirements Test, 2 layers" nr_ulsim -P -n300 -b14 -I15 -i 0,1 -g C,l -t70 -u 1 -m16 -R106 -r106 -U 1,1,1,2 -W2 -y2 -z4 -s11.2 -S11.2)
 
 ####################################################################################
+######                           nr_ulsim_mu_mimo unit test                   ######
+####################################################################################
+
+add_physim_test(physim.5g.nr_ulsim_mu_mimo.test1 "UEs 2 MCS 2 PRBs 106 SNR 1.7" nr_ulsim_mu_mimo -P -n300 -b14 -I15 -i 0,1 -g B,l -t90 -u 1 -m2 -R106 -r106 -U 1,1,1,2 -W1 -y1 -z2 -s1.7 -S1.7 -N2)
+add_physim_test(physim.5g.nr_ulsim_mu_mimo.test2 "UEs 2 MCS 2 PRBs 106 SNR -2.1" nr_ulsim_mu_mimo -P -n300 -b14 -I15 -i 0,1 -g B,l -t90 -u 1 -m2 -R106 -r106 -U 1,1,1,2 -W1 -y1 -z4 -s-2.1 -S-2.1 -N2)
+add_physim_test(physim.5g.nr_ulsim_mu_mimo.test3 "UEs 2 MCS 16 PRBs 217 SNR 18.7" nr_ulsim_mu_mimo -P -n300 -b14 -I15 -i 0,1 -g C,l -t90 -u 1 -m16 -R217 -r217 -U 1,1,1,2 -W1 -y1 -z2 -s18.7 -S18.7 -N2)
+add_physim_test(physim.5g.nr_ulsim_mu_mimo.test4 "UEs 2 MCS 16 PRBs 273 SNR 11.2" nr_ulsim_mu_mimo -P -n300 -b14 -I15 -i 0,1 -g C,l -t90 -u 1 -m16 -R273 -r273 -U 1,1,1,2 -W1 -y1 -z4 -s11.2 -S11.2 -N2)
+add_physim_test(physim.5g.nr_ulsim_mu_mimo.test5 "UEs 2 MCS 27 PRBs 106 SNR 30 QAM 256 " nr_ulsim_mu_mimo -P -n300 -b14 -I15 -i 0,1 -g C,l -t65 -u 1 -m27 -q1 -R106 -r106 -U 1,1,1,2 -W1 -y1 -z4 -s30 -S30 -N2)
+
+
+####################################################################################
 ######                           nr_prachsim unit test                        ######
 ####################################################################################
 
@@ -439,7 +371,7 @@ endif()
 ######                           cuda-specific tests                       ######
 ####################################################################################
 
-if (CUDA_ENABLE)
+if (ENABLE_CHANNEL_SIM_CUDA)
 
 # --- Test Suite 1: 61440 samples, 2/4/8/32 TX - 2/4/8/32 RX  ---
 add_physim_test(cuda.5g.channelsim.test_channel_scalability.test1  "16 channels 61440 samples 2T2R Batch"  test_channel_scalability -c 16 -t 2 -r 2 -s 61440 -l 32 -m batch  -n 12)

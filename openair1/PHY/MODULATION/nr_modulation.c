@@ -7,8 +7,10 @@
 #include "PHY/NR_REFSIG/nr_mod_table.h"
 #include "executables/softmodem-common.h"
 #include <simde/x86/avx512.h>
-// Lacking declaration in present simde external package, will be detected as compilation error when they will add it
+// Lacking declaration in older implementations of simde external package, so let's keep it for now to be backwards compatible
+#if !defined(simde_mm512_extracti64x2_epi64)
 #define simde_mm512_extracti64x2_epi64(a...) _mm512_extracti64x2_epi64(a)
+#endif
 
 // #define DEBUG_DLSCH_PRECODING_PRINT_WITH_TRIVIAL // TODO: For debug, to be removed if want to merge to develop
 // #define DEBUG_LAYER_MAPPING
@@ -537,31 +539,38 @@ void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n
     }
   }
 }
+#if defined(__aarch64__)
 
 void nr_dft(c16_t *z, c16_t *d, uint32_t Msc_PUSCH)
 {
-  simde__m128i dft_in128[3240], dft_out128[3240];
-  c16_t *dft_in0 = (c16_t *)dft_in128, *dft_out0 = (c16_t *)dft_out128;
+  simde__m128i dft_in128[3240];
+  simde__m128i dft_out128[3240];
 
-  uint32_t i, ip;
+  c16_t *dft_in0 = (c16_t *)dft_in128;
+  c16_t *dft_out0 = (c16_t *)dft_out128;
 
+  uint32_t i;
+  uint32_t ip;
   simde__m128i norm128;
 
   if ((Msc_PUSCH % 1536) > 0) {
-    for (i = 0, ip = 0; i < Msc_PUSCH; i++, ip += 4) {
+    for (i = 0, ip = 0; i < Msc_PUSCH; i++, ip += 4)
       dft_in0[ip] = d[i];
-    }
   }
-  dft_size_idx_t dftsize = get_dft(Msc_PUSCH);
+
+  const dft_size_idx_t dftsize = get_dft(Msc_PUSCH);
+
   switch (Msc_PUSCH) {
     case 12:
       dft(dftsize, (int16_t *)dft_in0, (int16_t *)dft_out0, 0);
+
       norm128 = simde_mm_set1_epi16(9459);
+
       for (i = 0; i < 12; i++) {
         ((simde__m128i *)dft_out0)[i] = simde_mm_slli_epi16(simde_mm_mulhi_epi16(((simde__m128i *)dft_out0)[i], norm128), 1);
       }
-
       break;
+
     default:
       dft(dftsize, (int16_t *)dft_in0, (int16_t *)dft_out0, 1);
       break;
@@ -573,13 +582,26 @@ void nr_dft(c16_t *z, c16_t *d, uint32_t Msc_PUSCH)
   }
 }
 
-void perform_symbol_rotation(NR_DL_FRAME_PARMS *fp, double f0, c16_t *symbol_rotation)
+#else
+
+void nr_dft(c16_t *output, c16_t *input, uint32_t Msc_PUSCH)
 {
-  const int nsymb = fp->symbols_per_slot * fp->slots_per_frame / 10;
+  const dft_size_idx_t size = get_dft(Msc_PUSCH);
+
+  dft(size,
+      (int16_t *)input,
+      (int16_t *)output,
+      1);
+}
+
+#endif
+
+void perform_symbol_rotation(const int nsymb, const int numerology_index, double f0, c16_t *symbol_rotation)
+{
   const double Tc = (1 / 480e3 / 4096);
-  const double Nu = 2048 * 64 * (1 / (float)(1 << fp->numerology_index));
-  const double Ncp0 = 16 * 64 + (144 * 64 * (1 / (float)(1 << fp->numerology_index)));
-  const double Ncp1 = (144 * 64 * (1 / (float)(1 << fp->numerology_index)));
+  const double Nu = 2048 * 64 * (1 / (float)(1 << numerology_index));
+  const double Ncp0 = 16 * 64 + (144 * 64 * (1 / (float)(1 << numerology_index)));
+  const double Ncp1 = (144 * 64 * (1 / (float)(1 << numerology_index)));
 
   LOG_D(PHY, "Doing symbol rotation calculation for TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
 
@@ -590,7 +612,7 @@ void perform_symbol_rotation(NR_DL_FRAME_PARMS *fp, double f0, c16_t *symbol_rot
 
   for (int l = 0; l < nsymb; l++) {
     double Ncp;
-    if (l == 0 || l == (7 * (1 << fp->numerology_index))) {
+    if (l == 0 || l == (7 * (1 << numerology_index))) {
       Ncp = Ncp0;
     } else {
       Ncp = Ncp1;
@@ -624,27 +646,29 @@ void init_symbol_rotation(NR_DL_FRAME_PARMS *fp)
     if (f0 == 0)
       continue;
     c16_t *rot = fp->symbol_rotation[ll];
-
-    perform_symbol_rotation(fp, f0, rot);
+    perform_symbol_rotation(fp->symbols_per_slot * fp->slots_per_frame / 10, fp->numerology_index, f0, rot);
   }
 }
 
-void init_timeshift_rotation(NR_DL_FRAME_PARMS *fp)
+void init_timeshift_rotation(const int ofdm_symbol_size,
+                             const int nb_prefix_samples,
+                             const uint ofdm_offset_divisor,
+                             c16_t *timeshift_symbol_rotation)
 {
-  const int sample_offset = fp->nb_prefix_samples / fp->ofdm_offset_divisor;
-  for (int i = 0; i < fp->ofdm_symbol_size; i++) {
-    double poff = -i * 2.0 * M_PI * sample_offset / fp->ofdm_symbol_size;
+  const int sample_offset = nb_prefix_samples / ofdm_offset_divisor;
+  for (int i = 0; i < ofdm_symbol_size; i++) {
+    double poff = -i * 2.0 * M_PI * sample_offset / ofdm_symbol_size;
     double exp_re = cos(poff);
     double exp_im = sin(-poff);
-    fp->timeshift_symbol_rotation[i].r = (int16_t)round(exp_re * 32767);
-    fp->timeshift_symbol_rotation[i].i = (int16_t)round(exp_im * 32767);
+    timeshift_symbol_rotation[i].r = (int16_t)round(exp_re * 32767);
+    timeshift_symbol_rotation[i].i = (int16_t)round(exp_im * 32767);
 
     if (i < 10)
       LOG_D(PHY,
             "Timeshift symbol rotation %d => (%d,%d) %f\n",
             i,
-            fp->timeshift_symbol_rotation[i].r,
-            fp->timeshift_symbol_rotation[i].i,
+            timeshift_symbol_rotation[i].r,
+            timeshift_symbol_rotation[i].i,
             poff);
   }
 }

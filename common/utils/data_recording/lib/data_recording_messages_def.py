@@ -3,6 +3,32 @@
 # ---------------------------------------------------------------------
 # brief defination of captured data recording messages
 
+# Get Common Sync Header - number of bytes
+def get_sync_header_msg_list():
+    """
+    shared memory layout written from the app:
+    =================================
+    msg_id                  (uint8)  message type ID
+    frame                   (uint16)
+    slot                    (uint8)
+    unix_capture_ts_sec       (uint32)  Unix epoch seconds
+    unix_capture_ts_nsec      (uint32)  nanoseconds [0, 999999999]
+
+    """
+    # Get Common Sync Header - number of bytes
+    sync_header_msg = {
+        "msg_id": 2,
+        "frame": 2,
+        "slot": 1,
+        "unix_capture_ts_sec": 4,
+        "unix_capture_ts_nsec": 4,
+    }
+    # initial number of bytes to read to get data
+    sync_header_msg_length = 0
+    for key, value in sync_header_msg.items():
+        sync_header_msg_length = sync_header_msg_length + value
+    return sync_header_msg, sync_header_msg_length
+
 # Data Collection Trace Messages - General message structure - number of bytes
 def get_general_msg_header_list():
     """
@@ -11,8 +37,8 @@ def get_general_msg_header_list():
     msg_id                  (uint8)  message type ID
     frame                   (uint16)
     slot                    (uint8)
-    datetime_yyyymmdd       (uint32)
-    datetime_hhmmssmmm      (uint32)
+    unix_capture_ts_sec     (uint32)  Unix epoch seconds
+    unix_capture_ts_nsec    (uint32)  nanoseconds [0, 999999999]
     frame_type              (uint8)
     freq_range              (uint8)
     subcarrier_spacing      (uint8)
@@ -46,8 +72,8 @@ def get_general_msg_header_list():
         "msg_id": 2,
         "frame": 2,
         "slot": 1,
-        "datetime_yyyymmdd": 4,
-        "datetime_hhmmssmmm": 4,
+        "unix_capture_ts_sec": 4,
+        "unix_capture_ts_nsec": 4,
         "frame_type": 1,
         "freq_range": 1,
         "subcarrier_spacing": 1,

@@ -23,7 +23,7 @@
 #include "oai_asn1.h"
 #include "SIMULATION/TOOLS/sim.h" // for taus
 #include "utils.h"
-
+#include "bits.h"
 #include <executables/softmodem-common.h>
 #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
 #include "RRC/NR_UE/L2_interface_ue.h"
@@ -116,15 +116,22 @@ static void trigger_regular_bsr(NR_UE_MAC_INST_t *mac, NR_LogicalChannelIdentity
     nr_timer_stop(&mac->scheduling_info.sr_DelayTimer);
 }
 
+static void flush_harq_buffers(NR_UE_MAC_INST_t *mac)
+{
+  for (int k = 0; k < NR_MAX_HARQ_PROCESSES; k++) {
+    for (int c = 0; c < 2; c++) {
+      memset(&mac->dl_harq_info[k][c], 0, sizeof(NR_UE_DL_HARQ_STATUS_t));
+      mac->dl_harq_info[k][c].last_ndi = -1; // initialize to invalid value
+    }
+    memset(&mac->ul_harq_info[k], 0, sizeof(*mac->ul_harq_info));
+    mac->ul_harq_info[k].last_ndi = -1; // initialize to invalid value
+  }
+}
+
 void handle_time_alignment_timer_expired(NR_UE_MAC_INST_t *mac)
 {
   // flush all HARQ buffers for all Serving Cells
-  for (int k = 0; k < NR_MAX_HARQ_PROCESSES; k++) {
-    memset(&mac->dl_harq_info[k], 0, sizeof(*mac->dl_harq_info));
-    memset(&mac->ul_harq_info[k], 0, sizeof(*mac->ul_harq_info));
-    mac->dl_harq_info[k].last_ndi = -1; // initialize to invalid value
-    mac->ul_harq_info[k].last_ndi = -1; // initialize to invalid value
-  }
+  flush_harq_buffers(mac);
   // release PUCCH for all Serving Cells;
   // release SRS for all Serving Cells;
   release_PUCCH_SRS(mac);
@@ -142,12 +149,7 @@ void handle_time_alignment_timer_expired(NR_UE_MAC_INST_t *mac)
 void handle_ulsync_loss(NR_UE_MAC_INST_t *mac)
 {
   // flush all HARQ buffers for all Serving Cells
-  for (int k = 0; k < NR_MAX_HARQ_PROCESSES; k++) {
-    memset(&mac->dl_harq_info[k], 0, sizeof(*mac->dl_harq_info));
-    memset(&mac->ul_harq_info[k], 0, sizeof(*mac->ul_harq_info));
-    mac->dl_harq_info[k].last_ndi = -1; // initialize to invalid value
-    mac->ul_harq_info[k].last_ndi = -1; // initialize to invalid value
-  }
+  flush_harq_buffers(mac);
   // clear any configured downlink assignments and uplink grants;
   if (mac->dl_config_request)
     memset(mac->dl_config_request, 0, sizeof(*mac->dl_config_request));
@@ -804,7 +806,7 @@ int nr_config_pusch_pdu(NR_UE_MAC_INST_t *mac,
   delta_pusch = 0; // set to 0 as a workaround for PHY not applying PUSCH tx power
 
   bool is_rar_tx_retx = rnti_type == TYPE_TC_RNTI_;
-
+  bool tp_enabled = pusch_config_pdu->transform_precoding == NR_PUSCH_Config__transformPrecoder_enabled;
   pusch_config_pdu->tx_power = get_pusch_tx_power_ue(mac,
                                                      pusch_config_pdu->rb_size,
                                                      pusch_config_pdu->rb_start,
@@ -817,7 +819,7 @@ int nr_config_pusch_pdu(NR_UE_MAC_INST_t *mac,
                                                      pusch_config_pdu->pusch_data.tb_size << 3,
                                                      delta_pusch,
                                                      is_rar_tx_retx,
-                                                     pusch_config_pdu->transform_precoding);
+                                                     tp_enabled);
 
   pusch_config_pdu->ldpcBaseGraph = get_BG(pusch_config_pdu->pusch_data.tb_size << 3, pusch_config_pdu->target_code_rate);
 
@@ -911,7 +913,7 @@ int configure_srs_pdu(NR_UE_MAC_INST_t *mac,
   srs_config_pdu->num_ant_ports = srs_resource->nrofSRS_Ports;
   srs_config_pdu->num_symbols = srs_resource->resourceMapping.nrofSymbols;
   srs_config_pdu->num_repetitions = srs_resource->resourceMapping.repetitionFactor;
-  srs_config_pdu->time_start_position = srs_resource->resourceMapping.startPosition;
+  srs_config_pdu->time_start_position = NR_SYMBOLS_PER_SLOT - 1 - srs_resource->resourceMapping.startPosition;
   srs_config_pdu->config_index = srs_resource->freqHopping.c_SRS;
   srs_config_pdu->sequence_id = srs_resource->sequenceId;
   srs_config_pdu->bandwidth_index = srs_resource->freqHopping.b_SRS;
@@ -1029,10 +1031,12 @@ void nr_ue_aperiodic_srs_scheduling(NR_UE_MAC_INST_t *mac, long resource_trigger
     LOG_E(NR_MAC, "Slot for scheduling aperiodic SRS %d is not an UL slot\n", sched_slot);
     return;
   }
-  int sched_frame = frame + (slot + slot_offset / n_slots_frame) % MAX_FRAME_NUMBER;
+  int add_frame = (slot + slot_offset) / n_slots_frame;
+  int sched_frame = (frame + add_frame) % MAX_FRAME_NUMBER;
   fapi_nr_ul_config_request_pdu_t *pdu = lockGet_ul_config(mac, sched_frame, sched_slot, FAPI_NR_UL_CONFIG_TYPE_SRS);
   if (!pdu)
     return;
+  LOG_D(NR_MAC, "Scheduling transmission of aperiodic SRS in %d.%d\n", sched_frame, sched_slot);
   int ret = configure_srs_pdu(mac, srs_resource, &pdu->srs_config_pdu, 0, 0, srs_resource_set);
   if (ret != 0)
     remove_ul_config_last_item(pdu);
@@ -1110,7 +1114,8 @@ static void schedule_ta_command(fapi_nr_dl_config_request_t *dl_config, NR_UE_MA
 
 static NR_CSI_ResourceConfigId_t find_CSI_resourceconfig(NR_CSI_MeasConfig_t *csi_measconfig,
                                                          NR_BWP_Id_t dl_bwp_id,
-                                                         NR_NZP_CSI_RS_ResourceId_t csi_id)
+                                                         NR_NZP_CSI_RS_ResourceId_t csi_id,
+                                                         bool *is_last_res)
 {
   bool found = false;
   for (int csi_list = 0; csi_list < csi_measconfig->csi_ResourceConfigToAddModList->list.count; csi_list++) {
@@ -1135,14 +1140,14 @@ static NR_CSI_ResourceConfigId_t find_CSI_resourceconfig(NR_CSI_MeasConfig_t *cs
           AssertFatal(csi_res->nzp_CSI_RS_Resources.list.array[k], "NZP_CSI_RS_ResourceId shoulan't be NULL\n");
           if (csi_id == *csi_res->nzp_CSI_RS_Resources.list.array[k]) {
             found = true;
+            *is_last_res = (k == (csi_res->nzp_CSI_RS_Resources.list.count - 1));
             break;
           }
         }
         if (found && csi_res->trs_Info)
-          // CRI-RS for Tracking (not implemented yet)
-          // in this case we there is no associated CSI report
-          // therefore to signal this we return a value higher than
-          // maxNrofCSI-ResourceConfigurations
+          /* CRI-RS for Tracking. In this case there is no associated CSI report
+           * therefore to signal this we return a value higher than
+           * maxNrofCSI-ResourceConfigurations. */
           return NR_maxNrofCSI_ResourceConfigurations + 1;
         else if (found)
           return csires->csi_ResourceConfigId;
@@ -1212,7 +1217,8 @@ static void nr_schedule_csirs_reception(NR_UE_MAC_INST_t *mac, int frame, int sl
     csi_period_offset(NULL, nzpcsi->periodicityAndOffset, &period, &offset);
     if((frame * mac->frame_structure.numb_slots_frame + slot-offset) % period != 0)
       continue;
-    NR_CSI_ResourceConfigId_t csi_res_id = find_CSI_resourceconfig(csi_measconfig, dl_bwp_id, nzpcsi->nzp_CSI_RS_ResourceId);
+    bool is_last_res = false;
+    NR_CSI_ResourceConfigId_t csi_res_id = find_CSI_resourceconfig(csi_measconfig, dl_bwp_id, nzpcsi->nzp_CSI_RS_ResourceId, &is_last_res);
     // do not schedule reseption of this CSI-RS if not associated with current BWP
     if(csi_res_id < 0)
       continue;
@@ -1222,9 +1228,12 @@ static void nr_schedule_csirs_reception(NR_UE_MAC_INST_t *mac, int frame, int sl
     csirs_config_pdu->subcarrier_spacing = mu;
     csirs_config_pdu->cyclic_prefix = current_DL_BWP->cyclicprefix ? *current_DL_BWP->cyclicprefix : 0;
 
-    if (csi_res_id > NR_maxNrofCSI_ResourceConfigurations)
+    if (csi_res_id > NR_maxNrofCSI_ResourceConfigurations) {
+      /* According to 38.214 5.1.6.1.1, the number of resources indicate if one
+       * or two consequtive slots for TRS is used. We indicate to phy the last slot. */
+      csirs_config_pdu->last_trs_slot = is_last_res;
       csirs_config_pdu->csi_type = 0; // TRS
-    else
+    } else
       csirs_config_pdu->csi_type = 1; // NZP-CSI-RS
 
     csirs_config_pdu->scramb_id = nzpcsi->scramblingID;
@@ -1333,6 +1342,8 @@ void nr_ue_dl_scheduler(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_info
 
 static bool check_pucchres_for_pending_SR(NR_PUCCH_Config_t *pucch_Config, int target_sr_id)
 {
+  if (!pucch_Config || !pucch_Config->schedulingRequestResourceToAddModList)
+    return false;
   for (int id = 0; id < pucch_Config->schedulingRequestResourceToAddModList->list.count; id++) {
     NR_SchedulingRequestResourceConfig_t *sr_Config = pucch_Config->schedulingRequestResourceToAddModList->list.array[id];
     if (sr_Config->schedulingRequestID == target_sr_id)  {
@@ -1410,10 +1421,6 @@ static void nr_update_sr(NR_UE_MAC_INST_t *mac, bool BSRsent)
 
   NR_UE_UL_BWP_t *current_UL_BWP = mac->current_UL_BWP;
   NR_PUCCH_Config_t *pucch_Config = current_UL_BWP ? current_UL_BWP->pucch_Config : NULL;
-  if (!pucch_Config
-      || !pucch_Config->schedulingRequestResourceToAddModList
-      || pucch_Config->schedulingRequestResourceToAddModList->list.count == 0)
-    return; // cannot schedule SR if there is no schedulingRequestResource configured
 
   if (lc_info->sr_id < 0 || lc_info->sr_id >= NR_MAX_SR_ID)
     LOG_E(NR_MAC, "No SR corresponding to this LCID\n"); // TODO not sure what to do here
@@ -1423,14 +1430,17 @@ static void nr_update_sr(NR_UE_MAC_INST_t *mac, bool BSRsent)
       if (check_pucchres_for_pending_SR(pucch_Config, lc_info->sr_id)) {
         // trigger SR
         LOG_D(NR_MAC, "Triggering SR for ID %d\n", lc_info->sr_id);
+        mac->sr_fallback_ra_triggered = false;
         sr->pending = true;
         sr->counter = 0;
-      } else {
+      } else if (!mac->sr_fallback_ra_triggered && !mac->ra.ra_pucch) {
         // initiate a Random Access procedure on the SpCell and cancel the pending SR
         // if the MAC entity has no valid PUCCH resource configured for the pending SR
+        // Wait until any pending Msg4/MsgB HARQ feedback PUCCH has been transmitted
         sr->pending = false;
         sr->counter = 0;
         nr_timer_stop(&sr->prohibitTimer);
+        mac->sr_fallback_ra_triggered = true;
         schedule_RA_after_SR_failure(mac);
       }
     }
@@ -1753,11 +1763,13 @@ static bool schedule_uci_on_pusch(NR_UE_MAC_INST_t *mac,
     return false;
   }
 
+  // Section 9 of 38.213 states:
   // - UE multiplexes only HARQ-ACK information, if any, from the UCI in the PUSCH transmission
   // and does not transmit the PUCCH if the UE multiplexes aperiodic or semi-persistent CSI reports in the PUSCH
-
   // - UE multiplexes only HARQ-ACK information and CSI reports, if any, from the UCI in the PUSCH transmission
   // and does not transmit the PUCCH if the UE does not multiplex aperiodic or semi-persistent CSI reports in the PUSCH
+
+  // HARQ is then multiplexed on PUSCH in both scenarios
   bool mux_done = false;
   if (pucch->n_harq > 0) {
     NR_PUSCH_Config_t *pusch_Config = mac->current_UL_BWP->pusch_Config;
@@ -1781,14 +1793,13 @@ static bool schedule_uci_on_pusch(NR_UE_MAC_INST_t *mac,
     }
   }
 
-  AssertFatal(pusch_pdu->pusch_uci.csi_payload.p1_bits == 0, "PUSCH already has CSI report\n");
-
-  // Check if this PUCCH has CSI report to send. If so, multiplex it on PUSCH
-  if (pucch->csi_payload.p1_bits > 0) {
+  // CSI, if present on PUCCH, is transmitted only if there is no aperiodic/semi-persistent CSI report already
+  bool csi_present = (pusch_pdu->pusch_uci.csi_payload.p1_bits > 0) || (pusch_pdu->pusch_uci.csi_payload.p2_bits > 0);
+  if (pucch->csi_payload.p1_bits > 0 && !csi_present) {
     nfapi_nr_ue_csi_payload_t csi_payload = {0};
     NR_PUSCH_Config_t *pusch_Config = mac->current_UL_BWP->pusch_Config;
     NR_PUCCH_Resource_t *csi_pucch = NULL;
-    nr_get_csi_measurements(mac, frame_tx, slot_tx, &csi_payload, &csi_pucch, true);
+    nr_get_csi_measurements(mac, frame_tx, slot_tx, &csi_payload, &csi_pucch);
     fill_pusch_uci_struct(pusch_Config, &csi_payload, pusch_pdu);
     mux_done = true;
   }
@@ -1807,39 +1818,45 @@ static void nr_ue_pucch_scheduler(NR_UE_MAC_INST_t *mac, frame_t frame, int slot
     // scheduling PUCCH prepared in advance for MSG4
     RA_PUCCH_SCHED_t *ra_pucch = mac->ra.ra_pucch;
     if (ra_pucch->sched_frame == frame && ra_pucch->sched_slot == slot) {
-      pucch[0] = ra_pucch->pucch_sched;
-      num_res++;
+      fapi_nr_ul_config_request_pdu_t *pdu = lockGet_ul_config(mac, frame, slot, FAPI_NR_UL_CONFIG_TYPE_PUCCH);
+      if (!pdu) {
+        LOG_E(NR_MAC, "Error in pucch allocation\n");
+        return;
+      }
+      pdu->pucch_config_pdu = ra_pucch->pucch_pdu;
       free_and_zero(mac->ra.ra_pucch);
-    }
-  } else {
-    // SR
-    if (mac->state == UE_CONNECTED && trigger_periodic_scheduling_request(mac, &pucch[0], frame, slot)) {
-      num_res++;
-      // TODO check if the PUCCH resource for the SR transmission occasion overlap with a UL-SCH resource
-    }
-
-    // CSI
-    int csi_res = 0;
-    if (mac->state == UE_CONNECTED)
-      csi_res = nr_get_csi_measurements(mac, frame, slot, &pucch[num_res].csi_payload, &pucch[num_res].pucch_resource, false);
-    if (csi_res > 0) {
-      num_res += csi_res;
-    }
-
-    // ACKNACK
-    bool any_harq = get_downlink_ack(mac, frame, slot, &pucch[num_res]);
-    if (any_harq)
-      num_res++;
-
-    if (num_res == 0)
+      release_ul_config(pdu, false);
       return;
-    // do no transmit pucch if only SR scheduled and it is negative
-    if (num_res == 1 && pucch[0].n_sr > 0 && pucch[0].sr_payload == 0)
-      return;
-
-    if (num_res > 1)
-      multiplex_pucch_resource(mac, pucch, num_res);
+    }
   }
+
+  // SR
+  if (mac->state == UE_CONNECTED && trigger_periodic_scheduling_request(mac, &pucch[0], frame, slot)) {
+    num_res++;
+    // TODO check if the PUCCH resource for the SR transmission occasion overlap with a UL-SCH resource
+  }
+
+  // CSI
+  int csi_res = 0;
+  if (mac->state == UE_CONNECTED)
+    csi_res = nr_get_csi_measurements(mac, frame, slot, &pucch[num_res].csi_payload, &pucch[num_res].pucch_resource);
+  if (csi_res > 0) {
+    num_res += csi_res;
+  }
+
+  // ACKNACK
+  bool any_harq = get_downlink_ack(mac, frame, slot, &pucch[num_res]);
+  if (any_harq)
+    num_res++;
+
+  if (num_res == 0)
+    return;
+  // do no transmit pucch if only SR scheduled and it is negative
+  if (num_res == 1 && pucch[0].n_sr > 0 && pucch[0].sr_payload == 0)
+    return;
+
+  if (num_res > 1)
+    multiplex_pucch_resource(mac, pucch, num_res);
 
   for (int j = 0; j < num_res; j++) {
     if (pucch[j].n_harq + pucch[j].n_sr + pucch[j].csi_payload.p1_bits != 0) {
@@ -2552,7 +2569,7 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
 
   // Schedule ULSCH only if the current frame and slot match those in ul_config_req
   // AND if a UL grant (UL DCI or Msg3) has been received (as indicated by num_pdus)
-  uint8_t ulsch_input_buffer_array[FAPI_NR_UL_CONFIG_LIST_NUM][MAX_NUM_NR_ULSCH_SEGMENTS_PER_LAYER * NR_MAX_NB_LAYERS * 1056];
+  uint8_t ulsch_input_buffer_array[FAPI_NR_UL_CONFIG_LIST_NUM][MAX_NUM_NR_ULSCH_SEGMENTS * 1056];
   int number_of_pdus = 0;
 
   fapi_nr_ul_config_request_pdu_t *ulcfg_pdu = lockGet_ul_iterator(mac, frame_tx, slot_tx);
@@ -2592,6 +2609,7 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
           }
           // Getting IP traffic to be transmitted
           int tx_power = pdu->tx_power;
+          bool tp_enabled = pdu->transform_precoding == NR_PUSCH_Config__transformPrecoder_enabled;
           int P_CMAX = nr_get_Pcmax(mac->p_Max,
                                     mac->nr_band,
                                     mac->frame_structure.frame_type,
@@ -2601,7 +2619,7 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
                                     false,
                                     mac->current_UL_BWP->scs,
                                     mac->current_UL_BWP->BWPSize,
-                                    pdu->transform_precoding,
+                                    tp_enabled,
                                     pdu->rb_size,
                                     pdu->rb_start);
 

@@ -40,7 +40,6 @@
 #include "common/utils/LOG/log.h"
 #include "common/utils/T/T.h"
 #include "common/utils/load_module_shlib.h"
-#include "common_lib.h"
 #include "defs.h"
 #include "executables/nr-uesoftmodem.h"
 #include "fapi_nr_ue_interface.h"
@@ -74,9 +73,6 @@ static softmodem_params_t softmodem_params;
 softmodem_params_t *get_softmodem_params(void) {
   return &softmodem_params;
 }
-//Fixme: Uniq dirty DU instance, by global var, datamodel need better management
-instance_t DUuniqInstance=0;
-instance_t CUuniqInstance=0;
 
 void inc_ref_sched_response(int _)
 {
@@ -555,9 +551,9 @@ int main(int argc, char **argv){
   // Configure UE
   UE = malloc(sizeof(PHY_VARS_NR_UE));
   memset((void*)UE,0,sizeof(PHY_VARS_NR_UE));
-  PHY_vars_UE_g = malloc(2*sizeof(PHY_VARS_NR_UE**));
-  PHY_vars_UE_g[0] = malloc(2*sizeof(PHY_VARS_NR_UE*));
-  PHY_vars_UE_g[0][0] = UE;
+  nrPHY_vars_UE_g = malloc(sizeof(PHY_VARS_NR_UE **));
+  nrPHY_vars_UE_g[0] = malloc(sizeof(PHY_VARS_NR_UE *));
+  nrPHY_vars_UE_g[0][0] = UE;
   memcpy(&UE->frame_parms,frame_parms,sizeof(NR_DL_FRAME_PARMS));
   UE->nrUE_config.prach_config.num_prach_fd_occasions_list = (fapi_nr_num_prach_fd_occasions_t *) malloc(num_prach_fd_occasions*sizeof(fapi_nr_num_prach_fd_occasions_t));
 
@@ -570,7 +566,6 @@ int main(int argc, char **argv){
   ue_prach_config        = &UE->nrUE_config.prach_config;
   txdata = UE->common_vars.txData;
 
-  ue_prach_pdu->prach_tx_power = AMP;
   ue_prach_pdu->root_seq_id     = rootSequenceIndex;
   ue_prach_pdu->num_cs          = get_NCS(NCS_config, format0, restrictedSetConfig);
   ue_prach_pdu->restricted_set  = restrictedSetConfig;
@@ -648,7 +643,7 @@ int main(int argc, char **argv){
   c16_t *tx[frame_parms->nb_antennas_rx];
   for (int i = 0; i < frame_parms->nb_antennas_rx; i++)
     tx[i] = txdata[i] + slot_start;
-  generate_nr_prach(UE, 0, frame, slot, tx);
+  generate_nr_prach(UE, 0, frame, slot, AMP, tx);
 
   /* tx_lev_dB not used later, no need to set */
   //tx_lev_dB = dB_fixed(tx_lev);
@@ -766,7 +761,7 @@ int main(int argc, char **argv){
                              .Xu = gNB->X_u,
                              .rx_prach = &gNB->rx_prach,
                              .prach_buf = (void *)(in + 1)};
-        rx_nr_prach_ru(in, ru->common.rxdata, ru->nr_frame_parms, ru->N_TA_offset);
+        rx_nr_prach_ru(in, ru->common.rxdata, ru->nr_frame_parms, ru->N_TA_offset, false);
         if (n_frames == 1)
           LOG_I(PHY,
                 "ncs %d,num_seq %d\n",
@@ -834,8 +829,8 @@ int main(int argc, char **argv){
   term_nr_ue_signal(UE);
   free(UE->nrUE_config.prach_config.num_prach_fd_occasions_list);
   free(UE);
-  free(PHY_vars_UE_g[0]);
-  free(PHY_vars_UE_g);
+  free(nrPHY_vars_UE_g[0]);
+  free(nrPHY_vars_UE_g);
 
   for (i=0; i<2; i++) {
     free(s_re[i]);

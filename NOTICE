@@ -84,3 +84,11 @@ Nuand: https://github.com/Nuand/bladeRF/tree/master?tab=License-1-ov-file
 
 Credits for https://github.com/pothosware/SoapySDR
 Pothosware: BSL 1.0 License
+
+Credits for https://github.com/zeromq/libzmq
+ZeroMQ authors: Mozilla Public License Version 2.0
+
+Credits for source code:
+  - radio/zmq/zmq_imported.cpp
+  - radio/zmq/zmq_imported.h
+Software Radio Systems Limited: BSD-3-Clause-Open-MPI

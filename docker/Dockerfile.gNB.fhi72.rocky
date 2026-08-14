@@ -18,6 +18,7 @@ ENV TZ=Europe/Paris
 RUN dnf update -y && \
     dnf install -y \
         procps-ng \
+        libatomic \
         libXpm \
         libX11 \
         lksctp-tools \

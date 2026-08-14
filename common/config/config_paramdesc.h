@@ -181,6 +181,11 @@ typedef struct paramdef {
   {                                                                                                                          \
     OPTNAME(name), HELPSTR(help), PARAMFLAG(flags), .u64ptr = ptr, .defuintval = defval, PARAMTYPE(TYPE_UINT64), .numelt = 0 \
   }
+#define STRINGLISTPARAM(name, help, flags, ptr, defval)                                                                 \
+  {                                                                                                                     \
+    OPTNAME(name), HELPSTR(help), PARAMFLAG(flags), .strptr = ptr, .defstrlistval = defval, PARAMTYPE(TYPE_STRINGLIST), \
+        .numelt = 0                                                                                                     \
+  }
 
 typedef struct paramlist_def {
   char listname[MAX_OPTNAME_SIZE];

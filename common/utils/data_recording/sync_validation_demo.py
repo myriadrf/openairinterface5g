@@ -118,7 +118,7 @@ def calculate_stats(main_config_file: str):
 
 if __name__ == "__main__":
 
-    main_config = "/home/user/workarea/oai_recorded_data/config_data_recording_app.json"
+    main_config = "/home/user/workarea/oai_recorded_data/config_data_recording_app_extended.json"
 
     # calculate BER stats
     calculate_stats(main_config)

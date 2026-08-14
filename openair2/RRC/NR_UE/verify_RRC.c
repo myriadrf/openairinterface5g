@@ -2,7 +2,8 @@
  * SPDX-License-Identifier: LicenseRef-CSSL-1.0
  */
  
- #include "rrc_proto.h"
+#include "rrc_proto.h"
+#include "common/utils/bits.h"
  
 static bool check_resourcesForInterference(const NR_CSI_MeasConfig_t *meas, NR_CSI_ResourceConfigId_t res_id, bool is_CSIIM)
 {
@@ -119,8 +120,9 @@ static bool check_csi_resourceMapping_consistency(NR_CSI_RS_ResourceMapping_t re
             valid = false;
           break;
         case NR_CSI_RS_ResourceMapping__nrofPorts_p8: {
-          uint8_t freq = BIT_STRING_to_uint8(&resourceMapping.frequencyDomainAllocation.choice.other);
-          if (resourceMapping.cdm_Type == NR_CSI_RS_ResourceMapping__cdm_Type_cdm4_FD2_TD2 || count_bits(&freq, 1) != 4) {
+          uint32_t freq32 = 0;
+          freq32 = (uint32_t)BIT_STRING_to_uint8(&resourceMapping.frequencyDomainAllocation.choice.other);
+          if (resourceMapping.cdm_Type == NR_CSI_RS_ResourceMapping__cdm_Type_cdm4_FD2_TD2 || count_bits(&freq32, 1) != 4) {
             // row 7 and 8 -> l0+1
             if (resourceMapping.firstOFDMSymbolInTimeDomain == 13)
               valid = false;

@@ -13,6 +13,13 @@
   </testCase>
 
   <testCase>
+    <class>Custom_Script</class>
+    <desc>Activate carriers on VVDN RU</desc>
+    <node>cacofonix</node>
+    <script>scripts/vvdn-activate-carriers.sh</script>
+  </testCase>
+
+  <testCase>
     <class>Pull_Local_Registry</class>
     <desc>Pull Images from Local Registry</desc>
     <node>cacofonix</node>
@@ -21,7 +28,7 @@
 
   <testCase>
     <class>Create_Workspace</class>
-    <desc>Create new Workspace for server 0</desc>
+    <desc>Create new Workspace</desc>
     <node>cacofonix</node>
   </testCase>
 
@@ -134,9 +141,9 @@
   <testCase>
     <class>Custom_Script</class>
     <always_exec>true</always_exec>
-    <desc>Set CPU to idle state, set kernel parameters to default values</desc>
+    <desc>Inactivate carriers on VVDN RU</desc>
     <node>cacofonix</node>
-    <script>yaml_files/sa_fhi_7.2_vvdn_gnb/setup_cleanup.sh</script>
+    <script>scripts/vvdn-inactivate-carriers.sh</script>
   </testCase>
 
 </testCaseList>

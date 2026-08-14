@@ -11,18 +11,9 @@
 #include "SCHED_NR_UE/defs.h"
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include <math.h>
-
-#define NR_PUSCH_x 2 // UCI placeholder bit TS 38.212 V15.4.0 subclause 5.3.3.1
-#define NR_PUSCH_y 3 // UCI placeholder bit
-
-typedef enum {
-  BIT_TYPE_ULSCH = 0, // Default: UL-SCH data
-  BIT_TYPE_ACK = 1, // HARQ-ACK bit
-  BIT_TYPE_ACK_RESERVED = 2, // Reserved for HARQ-ACK (punctured)
-  BIT_TYPE_ACK_ULSCH = 3,
-  BIT_TYPE_CSI1 = 4, // CSI Part 1 bit
-  BIT_TYPE_CSI2 = 5 // CSI Part 2 bit
-} uci_on_pusch_bit_type_t;
+#include "PHY/nr_phy_common/inc/nr_phy_common.h"
+#include "PHY/CODING/nrPolar_tools/nr_polar_psbch_defs.h"
+#include "common/utils/bits.h"
 
 // Specifies the data that should be copied to the scope during PDSCH RX
 typedef struct pdsch_scope_req_s {
@@ -59,18 +50,17 @@ int get_max_pdcch_monOcc(const NR_UE_PDCCH_CONFIG *phy_pdcch_config, int nb_symb
     @param[in] dlsch_llr Pointers to LLR values computed by dlsch_demodulation
     @param[in] b
     @param[in] G array of Gs
-    @param[in] nb_dlsch number of active downlink shared channels
-    @param[in] DLSCH_ids array of active downlink shared channels
     @returns 0 on success, 1 on unsuccessful decoding
 */
 void nr_dlsch_decoding(PHY_VARS_NR_UE *phy_vars_ue,
                        const UE_nr_rxtx_proc_t *proc,
                        NR_UE_DLSCH_t *dlsch,
-                       short **dlsch_llr,
-                       uint8_t **b,
-                       int *G,
-                       int nb_dlsch,
-                       uint8_t *DLSCH_ids);
+                       int cw_idx,
+                       fapi_nr_dl_config_dlsch_pdu_rel15_t *dlsch_config,
+                       int16_t *dlsch_llr,
+                       uint8_t *b,
+                       int number_rbs,
+                       int G);
 
 int nr_ulsch_pre_encoding(PHY_VARS_NR_UE *ue,
                           const NR_UE_ULSCH_t *ulsch,
@@ -99,22 +89,6 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
                       unsigned int *G,
                       int nb_ulsch,
                       uint8_t *ULSCH_ids);
-
-/*! \brief Perform PUSCH scrambling. TS 38.211 V15.4.0 subclause 6.3.1.1
-  @param[in] in Pointer to input bits
-  @param[in] size of input bits
-  @param[in] Nid cell id
-  @param[in] n_RNTI CRNTI
-  @param[in] uci_on_pusch whether UCI placeholder bits need to be scrambled (true -> no optimized scrambling)
-  @param[out] out the scrambled bits
-*/
-void nr_pusch_codeword_scrambling(uint8_t *in,
-                                  uint32_t size,
-                                  uint32_t Nid,
-                                  uint32_t n_RNTI,
-                                  bool uci_on_pusch,
-                                  const uci_on_pusch_bit_type_t *template,
-                                  uint32_t *out);
 
 /** \brief Alternative entry point to UE uplink shared channels procedures.
     It handles all the HARQ processes in only one call.
@@ -176,25 +150,9 @@ int rx_sss(PHY_VARS_NR_UE *phy_vars_ue,int32_t *tot_metric,uint8_t *flip_max,uin
   \returns number of tx antennas or -1 if error
 */
 
-int nr_rx_pbch(PHY_VARS_NR_UE *ue,
-               const UE_nr_rxtx_proc_t *proc,
-               bool is_synchronized,
-               int estimateSz,
-               struct complex16 dl_ch_estimates[][estimateSz],
-               const NR_DL_FRAME_PARMS *frame_parms,
-               uint8_t i_ssb,
-               int ssb_start_subcarrier,
-               int Nid_cell,
-               fapiPbch_t *result,
-               int *half_frame_bit,
-               int *ssb_index,
-               int *ret_symbol_offset,
-               int rxdataFSize,
-               const struct complex16 rxdataF[][rxdataFSize]);
-
 double nr_ue_pbch_freq_offset(const NR_DL_FRAME_PARMS *frame_parms,
-                              int estimateSz,
-                              const c16_t dl_ch_estimates[][estimateSz]);
+                              const c16_t dl_ch_est_symb1[NR_PBCH_NUM_RB * NR_NB_SC_PER_RB],
+                              const c16_t dl_ch_est_symb3[NR_PBCH_NUM_RB * NR_NB_SC_PER_RB]);
 
 #ifndef modOrder
 #define modOrder(I_MCS,I_TBS) ((I_MCS-I_TBS)*2+2) // Find modulation order from I_TBS and I_MCS
@@ -276,30 +234,32 @@ void nr_sl_rf_card_config_freq(PHY_VARS_NR_UE *ue,
 */
 int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
                 const UE_nr_rxtx_proc_t *proc,
-                NR_UE_DLSCH_t dlsch[2],
+                NR_UE_DLSCH_t *dlsch,
                 const freq_alloc_bitmap_t *freq_alloc,
+                fapi_nr_dl_config_dlsch_pdu_rel15_t *dlsch_config,
+                NR_DL_UE_HARQ_t *dlsch_harq,
                 unsigned char symbol,
                 bool first_symbol_flag,
                 unsigned char harq_pid,
                 uint32_t pdsch_est_size,
                 int32_t dl_ch_estimates[][pdsch_est_size],
-                int16_t *llr[2],
+                int16_t *llr,
                 uint32_t dl_valid_re[NR_SYMBOLS_PER_SLOT],
                 c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP],
                 int32_t *log2_maxh,
-                int rx_size_symbol,
+                uint32_t pdsch_buf_size_max,
                 int nbRx,
-                c16_t rxdataF_comp[][dlsch->Nl][nbRx][rx_size_symbol],
-                c16_t dl_ch_mag[][dlsch->Nl][nbRx][rx_size_symbol],
-                c16_t dl_ch_magb[][dlsch->Nl][nbRx][rx_size_symbol],
-                c16_t dl_ch_magr[][dlsch->Nl][nbRx][rx_size_symbol],
+                c16_t rxdataF_comp[][NR_MAX_NB_LAYERS][pdsch_buf_size_max],
+                c16_t dl_ch_mag[][NR_MAX_NB_LAYERS][pdsch_buf_size_max],
+                c16_t dl_ch_magb[][NR_MAX_NB_LAYERS][pdsch_buf_size_max],
+                c16_t dl_ch_magr[][NR_MAX_NB_LAYERS][pdsch_buf_size_max],
                 c16_t ptrs_phase_per_slot[][NR_SYMBOLS_PER_SLOT],
                 int32_t ptrs_re_per_slot[][NR_SYMBOLS_PER_SLOT],
-                int G,
                 uint32_t nvar,
-                pdsch_scope_req_t *scope_req);
+                pdsch_scope_req_t *scope_req,
+                c16_t rho_dl[][NR_MAX_NB_LAYERS * NR_MAX_NB_LAYERS][pdsch_buf_size_max]);
 
-int32_t generate_nr_prach(PHY_VARS_NR_UE *ue, uint8_t gNB_id, int frame, uint8_t slot, c16_t **txData);
+int32_t generate_nr_prach(PHY_VARS_NR_UE *ue, uint8_t gNB_id, int frame, uint8_t slot, int16_t tx_amp, c16_t **txData);
 void apply_ntn_config(PHY_VARS_NR_UE *UE,
                       const NR_DL_FRAME_PARMS *fp,
                       int hfn_rx,
@@ -314,36 +274,64 @@ void apply_ntn_timing_advance_and_doppler(PHY_VARS_NR_UE *UE, const NR_DL_FRAME_
 void dump_nrdlsch(PHY_VARS_NR_UE *ue,uint8_t gNB_id,uint8_t nr_slot_rx,unsigned int *coded_bits_per_codeword,int round,  unsigned char harq_pid);
 void nr_a_sum_b(c16_t *input_x, c16_t *input_y, unsigned short nb_rb);
 
-int nr_rx_psbch(PHY_VARS_NR_UE *ue,
-                const UE_nr_rxtx_proc_t *proc,
-                int estimateSz,
-                struct complex16 dl_ch_estimates[][estimateSz],
-                NR_DL_FRAME_PARMS *frame_parms,
-                uint8_t *decoded_output,
-                c16_t rxdataF[][frame_parms->samples_per_slot_wCP],
-                uint16_t slss_id);
+void nr_generate_psbch_llr(const NR_DL_FRAME_PARMS *frame_parms,
+                           const c16_t rxdataF[][frame_parms->ofdm_symbol_size],
+                           const c16_t dl_ch_estimates[][frame_parms->ofdm_symbol_size],
+                           int symbol,
+                           int *psbch_e_rx_offset,
+                           int16_t psbch_e_rx[SL_NR_POLAR_PSBCH_E_NORMAL_CP + 2],
+                           int16_t psbch_unClipped[SL_NR_POLAR_PSBCH_E_NORMAL_CP + 2]);
+
+int nr_psbch_decode(PHY_VARS_NR_UE *ue,
+                    int16_t psbch_e_rx[SL_NR_POLAR_PSBCH_E_NORMAL_CP + 2],
+                    const UE_nr_rxtx_proc_t *proc,
+                    int psbch_e_rx_len,
+                    int slss_id,
+                    nr_phy_data_t *phy_data,
+                    uint8_t decoded_pdu[4]);
 
 void nr_tx_psbch(PHY_VARS_NR_UE *UE, uint32_t frame_tx, uint32_t slot_tx, sl_nr_tx_config_psbch_pdu_t *psbch_vars, c16_t **txdataF);
 
 nr_initial_sync_t sl_nr_slss_search(PHY_VARS_NR_UE *UE, UE_nr_rxtx_proc_t *proc, int num_frames);
 
 // Reuse already existing PBCH functions
-void nr_pbch_channel_compensation(struct complex16 rxdataF_ext[][PBCH_MAX_RE_PER_SYMBOL],
-                                  struct complex16 dl_ch_estimates_ext[][PBCH_MAX_RE_PER_SYMBOL],
+void nr_pbch_channel_compensation(const struct complex16 rxdataF_ext[][PBCH_MAX_RE_PER_SYMBOL],
+                                  const struct complex16 dl_ch_estimates_ext[][PBCH_MAX_RE_PER_SYMBOL],
                                   int nb_re,
                                   struct complex16 rxdataF_comp[][PBCH_MAX_RE_PER_SYMBOL],
                                   const NR_DL_FRAME_PARMS *frame_parms,
-                                  uint8_t output_shift);
+                                  const uint8_t output_shift);
 void nr_pbch_unscrambling(int16_t *demod_pbch_e,
-                          uint16_t Nid,
-                          uint8_t nushift,
-                          uint16_t M,
-                          uint16_t length,
-                          uint8_t bitwise,
-                          uint32_t unscrambling_mask,
-                          uint32_t pbch_a_prime,
+                          const uint16_t Nid,
+                          const uint8_t nushift,
+                          const uint16_t M,
+                          const uint16_t length,
+                          const uint8_t bitwise,
+                          const uint32_t unscrambling_mask,
+                          const uint32_t pbch_a_prime,
                           uint32_t *pbch_a_interleaved);
-void nr_pbch_quantize(int16_t *pbch_llr8, int16_t *pbch_llr, uint16_t len);
+void nr_pbch_quantize(int16_t *pbch_llr8, const int16_t *pbch_llr, const uint16_t len);
+void nr_generate_pbch_llr(const PHY_VARS_NR_UE *ue,
+                          const UE_nr_rxtx_proc_t *proc,
+                          const NR_DL_FRAME_PARMS *frame_parms,
+                          const int symbolSSB,
+                          const int i_ssb,
+                          const int nid,
+                          const int ssb_start_subcarrier,
+                          const c16_t rxdataF[frame_parms->nb_antennas_rx][frame_parms->ofdm_symbol_size],
+                          const c16_t dl_ch_estimates[frame_parms->nb_antennas_rx][frame_parms->ofdm_symbol_size],
+                          int16_t pbch_e_rx[NR_POLAR_PBCH_E],
+                          uint8_t *log2_maxh);
+int nr_pbch_decode(PHY_VARS_NR_UE *ue,
+                   const NR_DL_FRAME_PARMS *frame_parms,
+                   const UE_nr_rxtx_proc_t *proc,
+                   const int i_ssb,
+                   const int Nid_cell,
+                   int16_t pbch_e_rx[NR_POLAR_PBCH_E],
+                   int *half_frame_bit,
+                   int *ssb_index,
+                   int *ret_symbol_offset,
+                   fapiPbch_t *result);
 /**@}*/
 #endif
 

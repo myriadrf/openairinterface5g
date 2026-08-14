@@ -4,9 +4,9 @@
 # -------
 # 
 # Finds the xran library. Note that the library number is as follows:
-# - oran_bronze_release_v1.1 -> 2.1.1 (B = second letter)
-# - oran_e_maintenance_release_v1.0 -> 5.1.0
-# the version is currently hardcoded to 5.1.0
+# - oran_e_maintenance_release_v1.5 -> 5.1.6
+# - oran_f_release_v1.3 -> 6.1.4
+# - oran_k_release_v1.5 -> 11.1.6
 #
 # Required options
 # ^^^^^^^^^^^^^^^^
@@ -46,13 +46,7 @@
 # ``xran_LIBRARY``
 #   The path to the xran library.
 
-option(xran_LOCATION "directory of XRAN library" "")
-if (NOT xran_LOCATION)
-  message(FATAL_ERROR "xran_LOCATION required")
-endif()
-if (NOT EXISTS ${xran_LOCATION})
-  message(FATAL_ERROR "no such directory: ${xran_LOCATION}")
-endif()
+set(CACHE{xran_LOCATION} TYPE PATH HELP "directory of XRAN library" VALUE "")
 
 find_path(xran_INCLUDE_DIR
   NAMES
@@ -73,27 +67,26 @@ find_library(xran_LIBRARY
   PATH_SUFFIXES build api
   NO_DEFAULT_PATH
 )
-if (NOT xran_LIBRARY)
-  message(FATAL_ERROR "could not detect xran build artifacts at ${xran_LOCATION}/build")
-endif()
 
 set(xran_VERSION_FILE "${xran_LOCATION}/../app/src/common.h")
-if(NOT EXISTS ${xran_VERSION_FILE})
-  message(FATAL_ERROR "could not find xran version file at ${xran_VERSION_FILE}")
+if(EXISTS ${xran_VERSION_FILE})
+  file(STRINGS ${xran_VERSION_FILE} xran_VERSION_LINE REGEX "^#define[ \t]+VERSIONX[ \t]+\"[a-z_.0-9]+\"$")
+else()
+  set(xran_VERSION_LINE "UNKNOWN")
 endif()
 
-file(STRINGS ${xran_VERSION_FILE} xran_VERSION_LINE REGEX "^#define[ \t]+VERSIONX[ \t]+\"[a-z_.0-9]+\"$")
 string(REGEX REPLACE "^#define[ \t]+VERSIONX[ \t]+\"([a-z_.0-9]+)\"$" "\\1" xran_VERSION_STRING "${xran_VERSION_LINE}")
 if (xran_VERSION_STRING MATCHES "^oran_e_maintenance_release_v")
   string(REGEX REPLACE "oran_e_maintenance_release_v([0-9]+).([0-9]+)" "5.\\1.\\2" xran_VERSION ${xran_VERSION_STRING})
 elseif(xran_VERSION_STRING MATCHES "^oran_f_release_v")
   string(REGEX REPLACE "oran_f_release_v([0-9]+).([0-9]+)" "6.\\1.\\2" xran_VERSION ${xran_VERSION_STRING})
+elseif(xran_VERSION_STRING MATCHES "^oran_k_release_v")
+  string(REGEX REPLACE "oran_k_release_v([0-9]+).([0-9]+)" "11.\\1.\\2" xran_VERSION ${xran_VERSION_STRING})
 elseif(xran_VERSION_STRING MATCHES "^oran_bronze_release_v")
   string(REGEX REPLACE "oran_bronze_release_v([0-9]+).([0-9]+)" "2.\\1.\\2" xran_VERSION ${xran_VERSION_STRING})
 else()
-  message(FATAL_ERROR "unrecognized xran version string: ${xran_VERSION_STRING}")
+  set(xran_VERSION "UNKNOWN")
 endif()
-message(STATUS "Found xran release ${xran_VERSION_STRING} (v${xran_VERSION})")
 unset(xran_VERSION_LINE)
 unset(xran_VERSION_STRING)
 unset(xran_VERSION_FILE)

@@ -11,19 +11,13 @@
 #include "nfapi_interface.h"
 #include "nfapi_nr_interface.h"
 
-#define NFAPI_NR_MAX_NB_CCE_AGGREGATION_LEVELS 5
-#define NFAPI_NR_MAX_NB_TCI_STATES_PDCCH 64
 #define NFAPI_NR_MAX_NB_CORESETS 12
-#define NFAPI_NR_MAX_NB_SEARCH_SPACES 40
-
 #define NFAPI_MAX_NUM_UL_UE_PER_GROUP 6
 #define NFAPI_MAX_NUM_UL_PDU 255
-#define NFAPI_MAX_NUM_UCI_INDICATION 8
 #define NFAPI_MAX_NUM_GROUPS 8
 #define NFAPI_MAX_NUM_CB 8
 #define NFAPI_MAX_NUM_PRGS 1
 #define NFAPI_MAX_NUM_BG_IF 6
-#define NFAPI_MAX_NUM_PERIODS 8
 
 // Extension to the generic structures for single tlv values
 
@@ -81,7 +75,8 @@ typedef enum {
 
   NFAPI_NR_PHY_MSG_TYPE_UL_NODE_SYNC = 0x0180,
   NFAPI_NR_PHY_MSG_TYPE_DL_NODE_SYNC,
-  NFAPI_NR_PHY_MSG_TYPE_TIMING_INFO
+  NFAPI_NR_PHY_MSG_TYPE_TIMING_INFO,
+  NFAPI_NR_PHY_MSG_TYPE_SRS_TOA_VENDOR_EXTENSION_INDICATION = 0x0300 // vendor extension for positioning
 } nfapi_nr_phy_msg_type_e;
 
 // SCF222_5G-FAPI_PHY_SPI_Specificayion.pdf Section 3.3
@@ -828,7 +823,7 @@ typedef struct {
 //table 3-37 
 
 #define DCI_PAYLOAD_BYTE_LEN 8 // 12 ? TS38.212 sec 7.3.1
-#define MAX_DCI_CORESET 8
+#define MAX_DCI_CORESET 12
 
 typedef struct {
   // The RNTI used for identifying the UE when receiving the PDU Value: 1 -> 65535.
@@ -859,6 +854,21 @@ typedef struct {
 
 } nfapi_nr_dl_dci_pdu_t;
 
+// The maximum number of spatial streams to be mapped depends on TLV 0x16E and
+// the number of streams could be same as number of layers or number of antenna
+// ports or number of baseband ports. Hence we set this to be the maximum number
+// of baseband ports
+#define MAX_NUM_SPATIAL_STREAMS 16
+
+typedef struct {
+  uint16_t dci_index;
+  uint16_t spatial_stream_index;
+} nfapi_v4_dci_spatial_stream_index_t;
+
+typedef struct {
+  uint16_t numSpatialStreams;
+  nfapi_v4_dci_spatial_stream_index_t dci_spatialStreamIndices[MAX_NUM_SPATIAL_STREAMS];
+} nfapi_v4_pdcch_pdu_parameters_t;
 
 typedef struct {
   ///Bandwidth part size [TS38.213 sec12]. Number of contiguous PRBs allocated to the BWP,Value: 1->275
@@ -891,12 +901,31 @@ typedef struct {
   uint16_t numDlDci;
   ///DL DCI PDU
   nfapi_nr_dl_dci_pdu_t dci_pdu[MAX_DCI_CORESET];
-}  nfapi_nr_dl_tti_pdcch_pdu_rel15_t;
+  /// Spatial stream indexing for MU-MIMO
+  nfapi_v4_pdcch_pdu_parameters_t param_v4;
+} nfapi_nr_dl_tti_pdcch_pdu_rel15_t;
 
 typedef struct {
   uint8_t ldpcBaseGraph;
   uint32_t tbSizeLbrmBytes;
 }nfapi_v3_pdsch_maintenance_parameters_t;
+
+typedef struct {
+  /// Number of spatial streams used in the index array
+  uint8_t numSpatialStreamIndices;
+  /// Spatial stream index array
+  uint16_t spatialStreamIndices[MAX_NUM_SPATIAL_STREAMS];
+} nfapi_nr_spatial_stream_index_t;
+
+#define MAX_NUM_CODEWORDS 2
+
+typedef struct {
+  // MU-MIMO support in FAPIv4
+  /// Number of codewords with spatial stream indices
+  uint8_t numberCodewords;
+  /// Spatial stream indexing for codeworeds
+  nfapi_nr_spatial_stream_index_t spatialStreamsCw[MAX_NUM_CODEWORDS];
+} nfapi_v4_pdsch_parameters_t;
 
 typedef struct {
   uint16_t pduBitmap;
@@ -990,8 +1019,9 @@ typedef struct {
   uint32_t dlTbCrc;
 
   nfapi_v3_pdsch_maintenance_parameters_t maintenance_parms_v3;
-}nfapi_nr_dl_tti_pdsch_pdu_rel15_t;
-
+  /// PDSCH parameters FAPI v4. used only for spatial stream indexing in MU-MIMO
+  nfapi_v4_pdsch_parameters_t param_v4;
+} nfapi_nr_dl_tti_pdsch_pdu_rel15_t;
 
 //for pdsch_pdu:
 /*
@@ -1075,8 +1105,14 @@ typedef struct
   uint8_t power_control_offset;     // Ratio of PDSCH EPRE to NZP CSI-RSEPRE [3GPP TS 38.214, sec 5.2.2.3.1], Value: 0->23 representing -8 to 15 dB in 1dB steps; 255: L1 is configured with ProfileSSS
   uint8_t power_control_offset_ss;  // Ratio of NZP CSI-RS EPRE to SSB/PBCH block EPRE [3GPP TS 38.214, sec 5.2.2.3.1], Values: 0: -3dB; 1: 0dB; 2: 3dB; 3: 6dB; 255: L1 is configured with ProfileSSS
   nfapi_nr_tx_precoding_and_beamforming_t precodingAndBeamforming;
+  /// Spatial stream indexing for MU-MIMO
+  struct nfapi_nr_csi_spatial_stream_index {
+    /// Number of spatial streams used in the index array
+    uint8_t numSpatialStreamIndices;
+    /// Spatial stream index array
+    uint8_t spatialStreamIndices[MAX_NUM_SPATIAL_STREAMS];
+  } param_v4;
 } nfapi_nr_dl_tti_csi_rs_pdu_rel15_t;
-
 
 typedef struct
 {
@@ -1118,6 +1154,11 @@ typedef struct {
   /// A value indicating the channel quality between the gNB and nrUE. Value: 0->255 dBM
   uint8_t  ssbRsrp;
   nfapi_nr_tx_precoding_and_beamforming_t precoding_and_beamforming;
+  /// Spatial stream indexing
+  struct nfapi_v4_ssb_param {
+    uint8_t spatialStreamIndexPresent;
+    uint16_t spatialStreamIndex;
+  } param_v4;
 } nfapi_nr_dl_tti_ssb_pdu_rel15_t;
 
 typedef struct {
@@ -1285,7 +1326,7 @@ typedef struct
   uint8_t  prach_start_symbol;
   uint16_t num_cs;
   nfapi_nr_ul_beamforming_t beamforming;
-
+  nfapi_nr_spatial_stream_index_t param_v4;
 } nfapi_nr_prach_pdu_t;
 
 //for pusch_pdu:
@@ -1398,6 +1439,8 @@ typedef struct
   //beamforming
   nfapi_nr_ul_beamforming_t beamforming;
   nfapi_v3_pdsch_maintenance_parameters_t maintenance_parms_v3;
+  // Spatial stream indexing for MU-MIMO
+  nfapi_nr_spatial_stream_index_t param_v4;
 } nfapi_nr_pusch_pdu_t;
 
 //for pucch_pdu:
@@ -1443,7 +1486,7 @@ typedef struct
   uint16_t bit_len_csi_part2;
 
   nfapi_nr_ul_beamforming_t beamforming;
-
+  nfapi_nr_spatial_stream_index_t param_v4;
 } nfapi_nr_pucch_pdu_t;
 
 typedef struct {
@@ -1882,13 +1925,23 @@ typedef struct {
 
 // Normalized channel I/Q matrix
 
+// Dimensioning of the SRS channel-estimate buffers: up to 64 gNB antenna
+// elements (Ng), 4 sampled UE SRS ports (Nu), 272 PRGs and 4-byte complex
+// samples (iqSize).
+#define NFAPI_NR_SRS_MAX_PRGS 272
+#define NFAPI_NR_SRS_MAX_GNB_ANTENNA_ELEMENTS 64
+#define NFAPI_NR_SRS_MAX_UE_SRS_PORTS 4
+#define NFAPI_NR_SRS_MAX_IQ_SAMPLE_SIZE 4
+#define NFAPI_NR_SRS_CHANNEL_MATRIX_SIZE \
+  (NFAPI_NR_SRS_MAX_PRGS * NFAPI_NR_SRS_MAX_UE_SRS_PORTS * NFAPI_NR_SRS_MAX_GNB_ANTENNA_ELEMENTS * NFAPI_NR_SRS_MAX_IQ_SAMPLE_SIZE)
+
 typedef struct {
   uint8_t normalized_iq_representation; // 0: 16-bit normalized complex number (iqSize = 2); 1: 32-bit normalized complex number (iqSize = 4)
   uint16_t num_gnb_antenna_elements;    // Ng: Number of gNB antenna elements. Value: 0511
   uint16_t num_ue_srs_ports;            // Nu: Number of sampled UE SRS ports. Value: 07
   uint16_t prg_size;                    // Size in RBs of a precoding resource block group (PRG) – to which the same digital beamforming gets applied. Value: 1->272
   uint16_t num_prgs;                    // Number of PRGs Np to be reported for this SRS PDU. Value: 0-> 272
-  uint8_t channel_matrix[272*2*8*4];    // Array of (numPRGs*Nu*Ng) entries of the type denoted by iqRepresentation H{PRG pI} [ueAntenna uI, gNB antenna gI] = array[uI*Ng*Np + gI*Np + pI]; uI: 0…Nu-1 (UE antenna index); gI: 0…Ng-1 (gNB antenna index); pI: 0…Np-1 (PRG index)
+  uint8_t channel_matrix[NFAPI_NR_SRS_CHANNEL_MATRIX_SIZE];    // Array of (numPRGs*Nu*Ng) entries of the type denoted by iqRepresentation H{PRG pI} [ueAntenna uI, gNB antenna gI] = array[uI*Ng*Np + gI*Np + pI]; uI: 0…Nu-1 (UE antenna index); gI: 0…Ng-1 (gNB antenna index); pI: 0…Np-1 (PRG index)
 } nfapi_nr_srs_normalized_channel_iq_matrix_t;
 
 // Beamforming report
@@ -1915,7 +1968,7 @@ typedef struct {
 typedef struct {
   uint16_t tag;                         // 0: Report is carried directly in the value field; 3: The offset from the end of the control portion of the message to the beginning of the report. Other values are reserved.
   uint32_t length;                      // Length of the actual report in bytes, without the padding bytes.
-  uint32_t value[16384];                // tag=0: Only the most significant bytes of the size indicated by ‘length’ field are valid. Remaining bytes are zero padded to the nearest 32-bit bit boundary; Tag=2 Offset from the end of the control portion of the message to the payload is in the value field. Occupies 32-bits.
+  uint32_t value[NFAPI_NR_SRS_CHANNEL_MATRIX_SIZE / 4];              // tag=0: Only the most significant bytes of the size indicated by ‘length’ field are valid. Remaining bytes are zero padded to the nearest 32-bit bit boundary; Tag=2 Offset from the end of the control portion of the message to the payload is in the value field. Occupies 32-bits.
 } nfapi_srs_report_tlv_t;
 
 typedef struct {
@@ -1937,6 +1990,15 @@ typedef struct {
   nfapi_nr_srs_indication_pdu_t *pdu_list;
 } nfapi_nr_srs_indication_t;
 
+#define NFAPI_NR_MAX_NUM_TA_NSEC 32
+typedef struct {
+  nfapi_nr_p7_message_header_t header;
+  uint16_t sfn; // SFN. Value: 0 -> 1023
+  uint16_t slot; // Slot. Value: 0 -> 159
+  uint16_t rnti;
+  uint8_t num_ta;
+  int16_t ta_offset_nsec[NFAPI_NR_MAX_NUM_TA_NSEC];
+} nfapi_nr_srs_toa_vendor_ext_indication_t;
 
 //3.4.11 rach_indication
 #define NFAPI_NR_RACH_IND_MAX_PDU 100

@@ -26,11 +26,11 @@
 #include <simde/x86/fma.h>
 
 #if defined(__AVX512BW__) || defined(__AVX512F__)
-#include <immintrin.h>
-// a solution should be found to use simde package for also AVX512, but it is C++ implementation, difficult to use in OAI
+#include <simde/x86/avx512/types.h>
+#include <simde/x86/avx512/shuffle.h>
 typedef struct {
   union {
-    __m512i v;
+    simde__m512i v;
     int16_t i16[32];
     int8_t i8[64];
   };
@@ -268,6 +268,30 @@ __attribute__((always_inline)) static inline simde__m256i oai_mm256_swap(simde__
                                       }};
   return simde_mm256_shuffle_epi8(a, shuffle_mask_swap.v);
 }
+
+#if defined(__AVX512BW__) || defined(__AVX512F__)
+/**
+ * Perform element-wise IQ swap on a 512-bit SIMD vector of 16-bit integers.
+ *
+ * This swaps the real and imaginary parts of each complex element in the vector:
+ * Input:  [r0, i0, ..., r15, i15]
+ * Output: [i0, r0, ..., i15, r15]
+ *
+ * @param 512-bit SIMD vector of 16-bit integers.
+ * @return Swapped 512-bit SIMD vector.
+ */
+__attribute__((always_inline)) static inline simde__m512i oai_mm512_swap(simde__m512i a)
+{
+  // Shuffle mask to swap bytes for IQ swapping within each 128-bit lane
+  const oai512_t shuffle_mask_swap = {.i8 = {
+                                          2,  3,  0,  1,  6,  7,  4,  5,  10, 11, 8,  9,  14, 15, 12, 13,
+                                          2,  3,  0,  1,  6,  7,  4,  5,  10, 11, 8,  9,  14, 15, 12, 13,
+                                          2,  3,  0,  1,  6,  7,  4,  5,  10, 11, 8,  9,  14, 15, 12, 13,
+                                          2,  3,  0,  1,  6,  7,  4,  5,  10, 11, 8,  9,  14, 15, 12, 13
+                                      }};
+  return simde_mm512_shuffle_epi8(a, shuffle_mask_swap.v);
+}
+#endif
 
 __attribute__((always_inline)) static inline
 simde__m256i oai_mm256_smadd(simde__m256i z1, simde__m256i z2, int shift)

@@ -12,11 +12,210 @@
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include "openair1/PHY/NR_TRANSPORT/nr_prach.h"
 
+typedef struct {
+  int reps;
+  int Ncp;
+  int dftlen;
+  int N_ZC;
+  int k;
+  dft_size_idx_t dftsize;
+  int sample_offset_slot;
+} prach_ru_params_t;
+
+static prach_ru_params_t get_prach_ru_params(prach_item_t *p,
+                                             int prachStartSymbol,
+                                             NR_DL_FRAME_PARMS *fp)
+{
+  prach_ru_params_t par = {0};
+  const int sum = fp->ofdm_symbol_size + fp->nb_prefix_samples;
+  const int sum0 = fp->ofdm_symbol_size + fp->nb_prefix_samples0;
+  if (prachStartSymbol == 0) {
+    par.sample_offset_slot = 0;
+  } else if (fp->slots_per_subframe == 1) {
+    if (prachStartSymbol <= 7)
+      par.sample_offset_slot = sum * (prachStartSymbol - 1) + sum0;
+    else
+      par.sample_offset_slot = sum * (prachStartSymbol - 2) + sum0 * 2;
+  } else {
+    if (!(p->slot % (fp->slots_per_subframe / 2)))
+      par.sample_offset_slot = sum * (prachStartSymbol - 1) + sum0;
+    else
+      par.sample_offset_slot = sum * prachStartSymbol;
+  }
+
+  int mu = p->numerology_index;
+
+  if (p->prach_sequence_length == 0) {
+    switch (p->pdu.prach_format) {
+      case 0:
+        par.reps = 1;
+        par.Ncp = 3168;
+        par.dftlen = 24576;
+        break;
+
+      case 1:
+        par.reps = 2;
+        par.Ncp = 21024;
+        par.dftlen = 24576;
+        break;
+
+      case 2:
+        par.reps = 4;
+        par.Ncp = 4688;
+        par.dftlen = 24576;
+        break;
+
+      case 3:
+        par.reps = 4;
+        par.Ncp = 3168;
+        par.dftlen = 6144;
+        break;
+
+      default:
+        AssertFatal(1 == 0, "Illegal prach format %d for length 839\n", p->pdu.prach_format);
+        break;
+    }
+  } else {
+    switch (p->pdu.prach_format) {
+      case 4: // A1
+        par.reps = 2;
+        par.Ncp = 288 >> mu;
+        break;
+
+      case 5: // A2
+        par.reps = 4;
+        par.Ncp = 576 >> mu;
+        break;
+
+      case 6: // A3
+        par.reps = 6;
+        par.Ncp = 864 >> mu;
+        break;
+
+      case 7: // B1
+        par.reps = 2;
+        par.Ncp = 216 >> mu;
+        break;
+
+      case 8: // B4
+        par.reps = 12;
+        par.Ncp = 936 >> mu;
+        break;
+
+      case 9: // C0
+        par.reps = 1;
+        par.Ncp = 1240 >> mu;
+        break;
+
+      case 10: // C2
+        par.reps = 4;
+        par.Ncp = 2048 >> mu;
+        break;
+
+      default:
+        AssertFatal(1 == 0, "unknown prach format %x\n", p->pdu.prach_format);
+        break;
+    }
+    par.dftlen = 2048 >> mu;
+  }
+
+  if (p->numerology_index == 0) {
+    if (prachStartSymbol == 0 || prachStartSymbol == 7)
+      par.Ncp += 16;
+  } else {
+    if (p->slot % (fp->slots_per_subframe / 2) == 0 && prachStartSymbol == 0)
+      par.Ncp += 16;
+  }
+
+  switch(fp->samples_per_subframe) {
+  case 7680:
+    // 5 MHz @ 7.68 Ms/s
+    par.Ncp >>= 2;
+    par.dftlen >>= 2;
+    break;
+
+  case 15360:
+    // 10, 15 MHz @ 15.36 Ms/s
+    par.Ncp >>= 1;
+    par.dftlen >>= 1;
+    break;
+
+  case 23040:
+    // 20 MHz @ 23.04 Ms/s
+    par.Ncp = (par.Ncp * 3) / 4;
+    par.dftlen = (par.dftlen * 3) / 4;
+    break;
+
+  case 30720:
+    // 20, 25, 30 MHz @ 30.72 Ms/s
+    break;
+
+  case 46080:
+    // 40 MHz @ 46.08 Ms/s
+    par.Ncp = (par.Ncp*3)/2;
+    par.dftlen = (par.dftlen*3)/2;
+    break;
+
+  case 61440:
+    // 40, 50, 60 MHz @ 61.44 Ms/s
+    par.Ncp <<= 1;
+    par.dftlen <<= 1;
+    break;
+
+  case 92160:
+    // 50, 60, 70, 80, 90 MHz @ 92.16 Ms/s
+    par.Ncp *= 3;
+    par.dftlen *= 3;
+    break;
+
+  case 122880:
+    // 70, 80, 90, 100 MHz @ 122.88 Ms/s
+    par.Ncp <<= 2;
+    par.dftlen <<= 2;
+    break;
+
+  case 184320:
+    // 100 MHz @ 184.32 Ms/s
+    par.Ncp = par.Ncp*6;
+    par.dftlen = par.dftlen*6;
+    break;
+
+  case 245760:
+    // 200 MHz @ 245.76 Ms/s
+    par.Ncp <<= 3;
+    par.dftlen <<= 3;
+    break;
+
+  default:
+    AssertFatal(1==0,"sample rate %f MHz not supported for numerology %d\n", fp->samples_per_subframe / 1000.0, mu);
+  }
+
+  par.dftsize = get_dft(par.dftlen);
+  par.N_ZC = (p->prach_sequence_length == 0) ? 839 : 139;
+
+  const unsigned int K = get_prach_K(p->prach_sequence_length, p->pdu.prach_format, p->numerology_index, p->mu);
+  const uint8_t kbar = get_PRACH_k_bar(p->mu, p->numerology_index);
+
+  int n_ra_prb = p->msg1_frequencystart;
+  int k                   = (12*n_ra_prb) - 6*fp->N_RB_UL;
+
+  if (k<0) k+=(fp->ofdm_symbol_size);
+  
+  k*=K;
+  k+=kbar;
+  par.k = k;
+
+  return par;
+}
+
 void init_nr_prach(PHY_VARS_gNB *gNB)
 {
-  int num_prach = 8;
-  gNB->prach_ru_queue = spsc_q_alloc(num_prach, sizeof(prach_item_t));
-  gNB->prach_l1rx_queue = spsc_q_alloc(num_prach, sizeof(prach_item_t));
+  int num_prach = 16;
+  bool ret;
+  ret = spsc_q_alloc(&gNB->prach_ru_queue, num_prach, sizeof(prach_item_t));
+  DevAssert(ret);
+  ret = spsc_q_alloc(&gNB->prach_l1rx_queue, num_prach, sizeof(prach_item_t));
+  DevAssert(ret);
 }
 
 void reset_nr_prach(PHY_VARS_gNB *gNB)
@@ -34,7 +233,8 @@ static bool drop_old_prach(const void *data, void *user)
 {
   const prach_item_t *p = data;
   const fsn_t *now = user;
-  const fsn_t t = {p->frame, p->slot, now->mu};
+  // account for long PRACH over more than 1 slot
+  const fsn_t t = {p->frame, p->slot + p->num_slots - 1, now->mu};
   bool drop = fsn_in_the_past(t, *now);
   if (drop)
     LOG_E(NR_PHY, "%4d.%2d PRACH job is in the past (%4d.%2d)\n", now->f, now->s, t.f, t.s);
@@ -45,7 +245,8 @@ static bool get_current_prach(const void *data, void *user)
 {
   const prach_item_t *p = data;
   const fsn_t *now = user;
-  const fsn_t t = {p->frame, p->slot, now->mu};
+  // account for long PRACH over more than 1 slot
+  const fsn_t t = {p->frame, p->slot + p->num_slots - 1, now->mu};
   return fsn_equal(t, *now);
 }
 
@@ -61,6 +262,7 @@ void nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_p
   const NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
   const nfapi_nr_prach_config_t *cfg = &gNB->gNB_config.prach_config;
   const nfapi_nr_num_prach_fd_occasions_t *occ = &cfg->num_prach_fd_occasions_list[prach_pdu->num_ra];
+  const int num_rx_per_beam = gNB->frame_parms.nb_antennas_rx / gNB->common_vars.num_beams_period;
   prach_item_t prach = {
       .frame = SFN,
       .slot = Slot,
@@ -73,27 +275,34 @@ void nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_p
       .prach_sequence_length = cfg->prach_sequence_length.value,
       .restricted_set = cfg->restricted_set_config.value,
       .numerology_index = fp->numerology_index,
-      .nb_rx = gNB->gNB_config.carrier_config.num_rx_ant.value,
+      .nb_rx = num_rx_per_beam,
       .Xu = gNB->X_u,
       .rx_prach = &gNB->rx_prach,
       // TODO can be made permanently allocated?
       .prach_buf = calloc_or_fail(1, sizeof(c16_t) * prach.nb_rx * NUMBER_OF_NR_RU_PRACH_OCCASIONS_MAX * NR_PRACH_SEQ_LEN_L),
   };
-  if (gNB->common_vars.beam_id) {
-    int n_symb = get_nr_prach_duration(prach_pdu->prach_format);
-    AssertFatal(prach_pdu->beamforming.dig_bf_interface < NFAPI_MAX_NUM_BG_IF,
-                "impossible beams size %d\n",
-                prach_pdu->beamforming.dig_bf_interface);
-    for (int i = 0; i < prach_pdu->beamforming.dig_bf_interface; i++) {
-      int fapi_beam_idx = prach_pdu->beamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx;
-      int start_symb = prach_pdu->prach_start_symbol + i * n_symb;
-      int bitmap = SL_to_bitmap(start_symb, n_symb);
-      prach.beams[i] = beam_index_allocation(gNB->enable_analog_das,
-                                              fapi_beam_idx,
-                                              &gNB->common_vars,
-                                              Slot,
-                                              gNB->frame_parms.symbols_per_slot,
-                                              bitmap);
+  const int num_beams = prach_pdu->beamforming.dig_bf_interface;
+  int n_symb = get_nr_prach_duration(prach_pdu->prach_format);
+  AssertFatal(num_beams < NFAPI_MAX_NUM_BG_IF, "impossible beams size %d\n", num_beams);
+  for (int i = 0; i < num_beams; i++) {
+    int fapi_beam_idx = prach_pdu->beamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx;
+    int start_symb = prach_pdu->prach_start_symbol + i * n_symb;
+    int bitmap = SL_to_bitmap(start_symb, n_symb);
+    if (gNB->common_vars.beam_id) {
+      // TODO: Remove assumption of contiguous ports after DAS is properly handled in beamforming
+      uint16_t ant_start = get_first_ant_idx(gNB->enable_analog_das,
+                                             num_rx_per_beam,
+                                             fapi_beam_idx,
+                                             prach_pdu->param_v4.spatialStreamIndices[i * num_rx_per_beam]);
+      beam_index_allocation(fapi_beam_idx,
+                            ant_start,
+                            num_rx_per_beam,
+                            NR_SYMBOLS_PER_SLOT,
+                            Slot,
+                            bitmap,
+                            gNB->frame_parms.nb_antennas_rx,
+                            gNB->common_vars.beam_id);
+      prach.ant_start = ant_start;
     }
   }
   bool found = spsc_q_put(&gNB->prach_ru_queue, &prach, sizeof(prach));
@@ -101,277 +310,99 @@ void nr_schedule_rx_prach(PHY_VARS_gNB *gNB, int SFN, int Slot, nfapi_nr_prach_p
     LOG_W(NR_PHY, "%4d.%2d PRACH occ queue is full: dropping PRACH request\n", SFN, Slot);
 }
 
+static void rx_nr_prach_ru_internal_rep(prach_item_t *p,
+                                        int ant_offset,
+                                        int32_t **rxdata,
+                                        NR_DL_FRAME_PARMS *fp,
+                                        int N_TA_offset,
+                                        int rep,
+                                        const prach_ru_params_t *params,
+                                        c16_t (*rxsigF)[NR_PRACH_SEQ_LEN_L])
+{
+  AssertFatal(rep >= 0 && rep < params->reps, "rep %d is out of range (reps = %d)\n", rep, params->reps);
+
+  int slot2 = p->prach_sequence_length ? p->slot : p->slot;
+  int sample_offset = get_samples_slot_timestamp(fp, slot2) + params->sample_offset_slot - N_TA_offset + params->Ncp + rep * params->dftlen;
+
+  for (int aa = 0; aa < p->nb_rx; aa++) {
+    int idx = ant_offset + aa;
+    c16_t *prach2 = (c16_t *)&rxdata[idx][sample_offset];
+
+    // do DFT for the specific repetition
+    c16_t tmp[params->dftlen] __attribute__((aligned(32)));
+    dft(params->dftsize, (int16_t *)prach2, (int16_t *)tmp, 1);
+    // Coherent combining of PRACH repetitions (assumes channel does not change, to be revisted for "long" PRACH)
+    LOG_D(PHY, "Doing PRACH combining of repetition %d/%d N_ZC %d\n", rep, params->reps, params->N_ZC);
+    int k2 = params->k;
+    for (int j = 0; j < params->N_ZC; j++, k2++) {
+      if (k2 == params->dftlen)
+        k2 = 0;
+      rxsigF[aa][j] = c16add(rxsigF[aa][j], tmp[k2]);
+    }
+  }
+}
+
 static void rx_nr_prach_ru_internal(prach_item_t *p,
-                                    int beam_id,
                                     int prachStartSymbol,
                                     int prachOccasion,
                                     int32_t **rxdata,
                                     NR_DL_FRAME_PARMS *fp,
-                                    int N_TA_offset)
+                                    int N_TA_offset,
+                                    bool das)
 {
-  int sample_offset_slot;
-  const int sum = fp->ofdm_symbol_size + fp->nb_prefix_samples;
-  const int sum0 = fp->ofdm_symbol_size + fp->nb_prefix_samples0;
-  if (prachStartSymbol == 0) {
-    sample_offset_slot = 0;
-  } else if (fp->slots_per_subframe == 1) {
-    if (prachStartSymbol <= 7)
-      sample_offset_slot = sum * (prachStartSymbol - 1) + sum0;
-    else
-      sample_offset_slot = sum * (prachStartSymbol - 2) + sum0 * 2;
-  } else {
-    if (!(p->slot % (fp->slots_per_subframe / 2)))
-      sample_offset_slot = sum * (prachStartSymbol - 1) + sum0;
-    else
-      sample_offset_slot = sum * prachStartSymbol;
+  prach_ru_params_t params = get_prach_ru_params(p, prachStartSymbol, fp);
+  c16_t rxsigF_tmp[p->nb_rx][NR_PRACH_SEQ_LEN_L];
+  memset(rxsigF_tmp, 0, sizeof(rxsigF_tmp));
+
+  const uint8_t num_beams = p->pdu.beamforming.dig_bf_interface;
+  // When more than one beams, then each occasion is on one beam
+  int ant_offset = 0;
+  if (num_beams > 1) {
+    AssertFatal(prachOccasion < num_beams, "Num of PRACH Occasions must be same as number of beams in beamforming mode\n");
+    ant_offset = prachOccasion * p->nb_rx;
   }
 
-  LOG_D(PHY,
-        "frame %d, slot %d: doing rx_nr_prach_ru for format %d, numRA %d, prachStartSymbol %d, prachOccasion %d\n",
-        p->frame,
-        p->slot,
-        p->pdu.prach_format,
-        p->pdu.num_ra,
-        prachStartSymbol,
-        prachOccasion);
-  int reps;
-  int Ncp;
-  int dftlen;
-  int mu = p->numerology_index;
+  // TODO: Remove assumption of contiguous ports after DAS is properly handled in beamforming
+  uint16_t ant_start =
+      get_first_ant_idx(das,
+                        p->nb_rx,
+                        p->pdu.beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx,
+                        p->pdu.param_v4.numSpatialStreamIndices > 0 ? p->pdu.param_v4.spatialStreamIndices[ant_offset] : 0);
 
-  if (p->prach_sequence_length == 0) {
-    LOG_D(PHY,
-          "PRACH in %d.%d, format %d, msg1_frequencyStart %d\n",
-          p->frame,
-          p->slot,
-          p->pdu.prach_format,
-          p->msg1_frequencystart);
-    switch (p->pdu.prach_format) {
-      case 0:
-        reps = 1;
-        Ncp = 3168;
-        dftlen = 24576;
-        break;
-
-      case 1:
-        reps = 2;
-        Ncp = 21024;
-        dftlen = 24576;
-        break;
-
-      case 2:
-        reps = 4;
-        Ncp = 4688;
-        dftlen = 24576;
-        break;
-
-      case 3:
-        reps = 4;
-        Ncp = 3168;
-        dftlen = 6144;
-        break;
-
-      default:
-        AssertFatal(1 == 0, "Illegal prach format %d for length 839\n", p->pdu.prach_format);
-        break;
-    }
-  } else {
-    LOG_D(PHY,
-          "PRACH in %d.%d, format %s, msg1_frequencyStart %d,startSymbol %d\n",
-          p->frame,
-          p->slot,
-          prachfmt[p->pdu.prach_format],
-          p->msg1_frequencystart,
-          prachStartSymbol);
-    switch (p->pdu.prach_format) {
-      case 4: // A1
-        reps = 2;
-        Ncp = 288 >> mu;
-        break;
-
-      case 5: // A2
-        reps = 4;
-        Ncp = 576 >> mu;
-        break;
-
-      case 6: // A3
-        reps = 6;
-        Ncp = 864 >> mu;
-        break;
-
-      case 7: // B1
-        reps = 2;
-        Ncp = 216 >> mu;
-        break;
-
-        /*
-        // B2 and B3 do not exist in FAPI
-        case 4: //B2
-          reps = 4;
-          Ncp = 360 >> mu;
-          break;
-
-        case 5: //B3
-          reps = 6;
-          Ncp = 504 >> mu;
-          break;
-        */
-
-      case 8: // B4
-        reps = 12;
-        Ncp = 936 >> mu;
-        break;
-
-      case 9: // C0
-        reps = 1;
-        Ncp = 1240 >> mu;
-        break;
-
-      case 10: // C2
-        reps = 4;
-        Ncp = 2048 >> mu;
-        break;
-
-      default:
-        AssertFatal(1 == 0, "unknown prach format %x\n", p->pdu.prach_format);
-        break;
-    }
-    dftlen = 2048 >> mu;
+  for (int rep = 0; rep < params.reps; rep++) {
+    rx_nr_prach_ru_internal_rep(p, ant_start, rxdata, fp, N_TA_offset, rep, &params, rxsigF_tmp);
   }
-
-  //actually what we should be checking here is how often the current prach crosses a 0.5ms boundary.
-  //I am not quite sure for which paramter set this would be the case,
-  //so I will ignore it for now and just check if the prach starts on a 0.5ms boundary
-  if (p->numerology_index == 0) {
-    if (prachStartSymbol == 0 || prachStartSymbol == 7)
-      Ncp += 16;
-  } else {
-    if (p->slot % (fp->slots_per_subframe / 2) == 0 && prachStartSymbol == 0)
-      Ncp += 16;
-  }
-
-  switch(fp->samples_per_subframe) {
-  case 7680:
-    // 5 MHz @ 7.68 Ms/s
-    Ncp >>= 2;
-    dftlen >>= 2;
-    break;
-
-  case 15360:
-    // 10, 15 MHz @ 15.36 Ms/s
-    Ncp >>= 1;
-    dftlen >>= 1;
-    break;
-
-  case 23040:
-    // 20 MHz @ 23.04 Ms/s
-    Ncp = (Ncp * 3) / 4;
-    dftlen = (dftlen * 3) / 4;
-    break;
-
-  case 30720:
-    // 20, 25, 30 MHz @ 30.72 Ms/s
-    break;
-
-  case 46080:
-    // 40 MHz @ 46.08 Ms/s
-    Ncp = (Ncp*3)/2;
-    dftlen = (dftlen*3)/2;
-    break;
-
-  case 61440:
-    // 40, 50, 60 MHz @ 61.44 Ms/s
-    Ncp <<= 1;
-    dftlen <<= 1;
-    break;
-
-  case 92160:
-    // 50, 60, 70, 80, 90 MHz @ 92.16 Ms/s
-    Ncp *= 3;
-    dftlen *= 3;
-    break;
-
-  case 122880:
-    // 70, 80, 90, 100 MHz @ 122.88 Ms/s
-    Ncp <<= 2;
-    dftlen <<= 2;
-    break;
-
-  case 184320:
-    // 100 MHz @ 184.32 Ms/s
-    Ncp = Ncp*6;
-    dftlen = dftlen*6;
-    break;
-
-  case 245760:
-    // 200 MHz @ 245.76 Ms/s
-    Ncp <<= 3;
-    dftlen <<= 3;
-    break;
-
-  default:
-    AssertFatal(1==0,"sample rate %f MHz not supported for numerology %d\n", fp->samples_per_subframe / 1000.0, mu);
-  }
-
-  const dft_size_idx_t dftsize = get_dft(dftlen);
-
-  // Do forward transform
-  if (LOG_DEBUGFLAG(DEBUG_PRACH)) {
-    LOG_D(PHY, "rx_prach: Doing PRACH FFT for nb_rx:%d Ncp:%d dftlen:%d\n", p->nb_rx, Ncp, dftlen);
-  }
-
-  const unsigned int K = get_prach_K(p->prach_sequence_length, p->pdu.prach_format, p->numerology_index, p->mu);
-  const uint8_t kbar = get_PRACH_k_bar(p->mu, p->numerology_index);
-
-  int n_ra_prb = p->msg1_frequencystart;
-  int k                   = (12*n_ra_prb) - 6*fp->N_RB_UL;
-
-  int N_ZC = (p->prach_sequence_length == 0) ? 839 : 139;
-
-  if (k<0) k+=(fp->ofdm_symbol_size);
-  
-  k*=K;
-  k+=kbar;
 
   for (int aa = 0; aa < p->nb_rx; aa++) {
-    // Fixme: slot or slot makes no sense ???
-    int slot2 = p->prach_sequence_length ? p->slot : p->slot;
-    int idx = aa + beam_id * p->nb_rx;
-    c16_t *prach = (c16_t *)&rxdata[idx][get_samples_slot_timestamp(fp, slot2) + sample_offset_slot - N_TA_offset];
-
-    // do DFT
-    c16_t *prach2 = prach + Ncp;
-    c16_t rxsigF_tmp[N_ZC];
-    memset(rxsigF_tmp, 0, sizeof(rxsigF_tmp));
-    for (int i = 0; i < reps; i++, prach2 += dftlen) {
-      c16_t tmp[dftlen] __attribute__((aligned(32)));
-      dft(dftsize, (int16_t *)prach2, (int16_t *)tmp, 1);
-      // Coherent combining of PRACH repetitions (assumes channel does not change, to be revisted for "long" PRACH)
-      LOG_D(PHY, "Doing PRACH combining of %d reptitions N_ZC %d\n", reps, N_ZC);
-      //    if (k+N_ZC > dftlen) { // PRACH signal is split around DC
-      int k2 = k;
-      for (int j = 0; j < N_ZC; j++, k2++) {
-        if (k2 == dftlen)
-          k2 = 0;
-        rxsigF_tmp[j] = c16add(rxsigF_tmp[j], tmp[k2]);
-      }
-    }
-    memcpy(p->prach_buf[aa][prachOccasion], rxsigF_tmp, sizeof(rxsigF_tmp));
+    memcpy(p->prach_buf[aa][prachOccasion], rxsigF_tmp[aa], sizeof(c16_t) * params.N_ZC);
   }
 }
 
-void rx_nr_prach_ru(prach_item_t *p, int32_t **rxdata, NR_DL_FRAME_PARMS *fp, int N_TA_offset)
+void rx_nr_prach_ru(prach_item_t *p, int32_t **rxdata, NR_DL_FRAME_PARMS *fp, int N_TA_offset, bool das)
 {
   int N_dur = get_nr_prach_duration(p->pdu.prach_format);
   LOG_D(NR_PHY_RACH, "%d.%d try to decode %d occasions \n", p->frame, p->slot, p->pdu.num_prach_ocas);
   for (int prach_oc = 0; prach_oc < p->pdu.num_prach_ocas; prach_oc++) {
     int prachStartSymbol = p->pdu.prach_start_symbol + prach_oc * N_dur;
-    int beam_id = p->beams[prach_oc];
     // comment FK: the standard 38.211 section 5.3.2 has one extra term +14*N_RA_slot. This is because there prachStartSymbol is
     // given wrt to start of the 15kHz slot or 60kHz slot. Here we work slot based, so this function is anyway only called in slots
     // where there is PRACH. Its up to the MAC to schedule another PRACH PDU in the case there are there N_RA_slot \in {0,1}.
-    rx_nr_prach_ru_internal(p, beam_id, prachStartSymbol, prach_oc, rxdata, fp, N_TA_offset);
+    rx_nr_prach_ru_internal(p, prachStartSymbol, prach_oc, rxdata, fp, N_TA_offset, das);
   }
+}
+
+void rx_nr_prach_ru_rep(prach_item_t *p,
+                        int32_t **rxdata,
+                        NR_DL_FRAME_PARMS *fp,
+                        int N_TA_offset,
+                        int rep,
+                        int prachOccasion,
+                        c16_t (*rxsigF)[NR_PRACH_SEQ_LEN_L])
+{
+  int N_dur = get_nr_prach_duration(p->pdu.prach_format);
+  int prachStartSymbol = p->pdu.prach_start_symbol + prachOccasion * N_dur;
+  prach_ru_params_t params = get_prach_ru_params(p, prachStartSymbol, fp);
+  rx_nr_prach_ru_internal_rep(p, 0, rxdata, fp, N_TA_offset, rep, &params, rxsigF);
 }
 
 rx_prach_out_t rx_nr_prach(const prach_item_t *in, int occasion)

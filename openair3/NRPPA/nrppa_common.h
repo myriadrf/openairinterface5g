@@ -9,6 +9,10 @@
 #include "common/utils/LOG/log.h"
 #include "ds/byte_array.h"
 #include "nrppa_includes.h"
+#include "NRPPA_NRPPA-PDU.h"
+#include "NRPPA_TRPInformationItem.h"
+#include "NRPPA_SRSCarrier-List.h"
+#include "NRPPA_SRSType.h"
 
 #define NRPPA_FIND_PROTOCOLIE_BY_ID(IE_TYPE, ie, container, IE_ID, mandatory)                                                  \
   do {                                                                                                                         \

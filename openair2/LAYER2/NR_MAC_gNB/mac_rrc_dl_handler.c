@@ -22,6 +22,8 @@
 
 #include "uper_decoder.h"
 #include "uper_encoder.h"
+#include "openair3/NRPPA/nrppa_gNB_config.h"
+#include "openair2/F1AP/lib/f1ap_positioning.h"
 
 // Standarized 5QI values and Default Priority levels as mentioned in 3GPP TS 23.501 Table 5.7.4-1
 const uint64_t qos_fiveqi[26] = {1, 2, 3, 4, 65, 66, 67, 71, 72, 73, 74, 76, 5, 6, 7, 8, 9, 69, 70, 79, 80, 82, 83, 84, 85, 86};
@@ -34,33 +36,6 @@ static instance_t get_f1_gtp_instance(void)
   if (!inst)
     return -1; // means no F1
   return inst->gtpInst;
-}
-
-static int drb_gtpu_create(instance_t instance,
-                           uint32_t ue_id,
-                           int incoming_id,
-                           int outgoing_id,
-                           int qfi,
-                           in_addr_t tlAddress, // only IPv4 now
-                           teid_t outgoing_teid,
-                           gtpCallback callBack,
-                           gtpCallbackSDAP callBackSDAP,
-                           gtpv1u_gnb_create_tunnel_resp_t *create_tunnel_resp)
-{
-  gtpv1u_gnb_create_tunnel_req_t create_tunnel_req = {0};
-  create_tunnel_req.incoming_rb_id[0] = incoming_id;
-  create_tunnel_req.pdusession_id[0] = outgoing_id;
-  memcpy(&create_tunnel_req.dst_addr[0].buffer, &tlAddress, sizeof(uint8_t) * 4);
-  create_tunnel_req.dst_addr[0].length = 32;
-  create_tunnel_req.outgoing_teid[0] = outgoing_teid;
-  create_tunnel_req.outgoing_qfi[0] = qfi;
-  create_tunnel_req.num_tunnels = 1;
-  create_tunnel_req.ue_id = ue_id;
-
-  // we use gtpv1u_create_ngu_tunnel because it returns the interface
-  // address and port of the interface; apart from that, we also might call
-  // newGtpuCreateTunnel() directly
-  return gtpv1u_create_ngu_tunnel(instance, &create_tunnel_req, create_tunnel_resp, callBack, callBackSDAP);
 }
 
 bool DURecvCb(protocol_ctxt_t *ctxt_pP,
@@ -83,6 +58,28 @@ bool DURecvCb(protocol_ctxt_t *ctxt_pP,
   memcpy(sdu, sdu_buffer_pP, sdu_buffer_sizeP);
   nr_rlc_data_req(ctxt_pP, srb_flagP, rb_idP, muiP, sdu_buffer_sizeP, sdu);
   return true;
+}
+
+/** @brief Fill and send request to create GTP-U tunnel on F1 */
+static f1ap_up_tnl_t f1_drb_gtpu_create(const gtpv1u_gnb_create_tunnel_req_t *req)
+{
+  f1ap_up_tnl_t out = {0};
+
+  LOG_I(GTPU, "Incoming DRB %d / PDU Session %d - UL TEID %d\n", req->incoming_rb_id, req->pdusession_id, req->outgoing_teid);
+
+  instance_t f1inst = get_f1_gtp_instance();
+  DevAssert(f1inst >= 0);
+  gtpv1u_gnb_create_tunnel_resp_t resp = {0};
+  int ret = gtpv1u_create_ngu_tunnel(f1inst, req, &resp, DURecvCb, NULL);
+  AssertFatal(ret >= 0, "Unable to create GTP Tunnel for F1-U\n");
+  AssertFatal(resp.gnb_addr.length == sizeof(in_addr_t),
+              "GTP tunnel response address length %d does not match IPv4 size %zu\n",
+              resp.gnb_addr.length,
+              sizeof(in_addr_t));
+  memcpy(&out.tl_address, &resp.gnb_addr.buffer, resp.gnb_addr.length);
+  out.teid = resp.gnb_NGu_teid;
+
+  return out;
 }
 
 static bool check_plmn_identity(const plmn_id_t *check_plmn, const plmn_id_t *plmn)
@@ -270,8 +267,8 @@ static int get_non_dynamic_priority(int fiveqi)
   for (int i = 0; i < sizeofArray(qos_fiveqi); ++i)
     if (qos_fiveqi[i] == fiveqi)
       return qos_priority[i];
-  AssertFatal(false, "illegal 5QI value %d\n", fiveqi);
-  return 0;
+  LOG_W(NR_MAC, "unsupported non-dynamic 5QI %d\n", fiveqi);
+  return -1;
 }
 
 static NR_QoS_config_t get_qos_config(const f1ap_qos_flow_param_t *qos)
@@ -324,6 +321,8 @@ static int handle_ue_context_drbs_setup(NR_UE_info_t *UE,
     int prio = 100;
     for (int q = 0; q < drb->nr.flows_len; ++q) {
       c.qos_config[q] = get_qos_config(&drb->nr.flows[q].param);
+      if (c.qos_config[q].priority < 0)
+        continue;
       prio = min(prio, c.qos_config[q].priority);
     }
     c.priority = prio;
@@ -335,23 +334,15 @@ static int handle_ue_context_drbs_setup(NR_UE_info_t *UE,
     // just put same number of tunnels in DL as in UL
     DevAssert(drb->up_ul_tnl_len == 1);
     resp_drb->up_dl_tnl_len = drb->up_ul_tnl_len;
-
     if (f1inst >= 0) { // we actually use F1-U
-      int qfi = -1; // don't put PDU session marker in GTP
-      gtpv1u_gnb_create_tunnel_resp_t resp_f1 = {0};
-      int ret = drb_gtpu_create(f1inst,
-                                UE->rnti,
-                                drb->id,
-                                drb->id,
-                                qfi,
-                                drb->up_ul_tnl[0].tl_address,
-                                drb->up_ul_tnl[0].teid,
-                                DURecvCb,
-                                NULL,
-                                &resp_f1);
-      AssertFatal(ret >= 0, "Unable to create GTP Tunnel for F1-U\n");
-      memcpy(&resp_drb->up_dl_tnl[0].tl_address, &resp_f1.gnb_addr.buffer, 4);
-      resp_drb->up_dl_tnl[0].teid = resp_f1.gnb_NGu_teid[0];
+      // F1-U tunnel setup: 1 GTP-U tunnel per DRB
+      gtpv1u_gnb_create_tunnel_req_t req = {.ue_id = UE->rnti,
+                                            .outgoing_teid = drb->up_ul_tnl[0].teid,
+                                            .pdusession_id = drb->id,
+                                            .incoming_rb_id = drb->id,
+                                            .dst_addr.length = 32};
+      memcpy(&req.dst_addr.buffer, &drb->up_ul_tnl[0].tl_address, sizeof(uint8_t) * 4); // only IPv4 now
+      resp_drb->up_dl_tnl[0] = f1_drb_gtpu_create(&req);
     }
 
     if (!cellGroupConfig->rlc_BearerToAddModList)
@@ -557,7 +548,7 @@ static NR_UE_info_t *create_new_UE(gNB_MAC_INST *mac, uint32_t cu_id, const NR_C
   const nr_mac_config_t *configuration = &mac->radio_config;
   int ssb_index = get_ssbidx_from_beam(mac, UE->UE_beam_index);
   if (is_SA) {
-    cellGroupConfig = get_initial_cellGroupConfig(UE->uid, scc, &mac->radio_config, &mac->rlc_config, ssb_index);
+    cellGroupConfig = get_initial_cellGroupConfig(UE->uid, UE->is_redcap, scc, &mac->radio_config, &mac->rlc_config, ssb_index);
     cellGroupConfig->spCellConfig->reconfigurationWithSync = get_reconfiguration_with_sync(UE->rnti, UE->uid, scc, mac->frame);
   } else {
     NR_UE_NR_Capability_t *cap = get_ue_nr_cap_from_cg_config_info(cgci);
@@ -914,53 +905,65 @@ void ue_context_modification_request(const f1ap_ue_context_mod_req_t *req)
 
 void ue_context_modification_confirm(const f1ap_ue_context_modif_confirm_t *confirm)
 {
-  LOG_I(MAC, "Received UE Context Modification Confirm for UE %04x\n", confirm->gNB_DU_ue_id);
+  LOG_I(NR_MAC, "Received UE Context Modification Confirm for UE %04x\n", confirm->gNB_DU_ue_id);
 
   gNB_MAC_INST *mac = RC.nrmac[0];
   NR_SCHED_LOCK(&mac->sched_lock);
   /* check first that the scheduler knows such UE */
   NR_UE_info_t *UE = find_nr_UE(&mac->UE_info, confirm->gNB_DU_ue_id);
   if (UE == NULL) {
-    LOG_E(MAC, "ERROR: unknown UE with RNTI %04x, ignoring UE Context Modification Confirm\n", confirm->gNB_DU_ue_id);
+    LOG_E(NR_MAC, "ERROR: unknown UE with RNTI %04x, ignoring UE Context Modification Confirm\n", confirm->gNB_DU_ue_id);
     NR_SCHED_UNLOCK(&mac->sched_lock);
     return;
   }
+  if (UE->cm_info.trigger_info == BEAM_SWITCH) {
+    LOG_I(NR_MAC, "[UE %x] Switching to beam with ID %d (from %d)\n", UE->rnti, UE->cm_info.new_state, UE->UE_beam_index);
+    UE->UE_beam_index = UE->cm_info.new_state;
+  } else if (UE->cm_info.trigger_info == BWP_SWITCH)
+    UE->local_bwp_id = UE->cm_info.new_state;
+  UE->cm_info.trigger_info = NO_TRIGGER;
   NR_SCHED_UNLOCK(&mac->sched_lock);
 
   if (confirm->rrc_container_length > 0) {
     logical_chan_id_t id = 1;
     nr_rlc_srb_recv_sdu(confirm->gNB_DU_ue_id, id, confirm->rrc_container, confirm->rrc_container_length);
   }
-  /* nothing else to be done? */
 }
 
 void ue_context_modification_refuse(const f1ap_ue_context_modif_refuse_t *refuse)
 {
-  /* Currently, we only use the UE Context Modification Required procedure to
-   * trigger a RRC reconfigurtion after Msg.3 with C-RNTI MAC CE. If the CU
-   * refuses, it cannot do this reconfiguration, leaving the UE in an
-   * unconfigured state. Therefore, we just free all RA-related info, and
-   * request the release of the UE.  */
-  LOG_W(MAC, "Received UE Context Modification Refuse for %04x, requesting release\n", refuse->gNB_DU_ue_id);
+  LOG_W(NR_MAC, "Received UE Context Modification Refuse for %04x\n", refuse->gNB_DU_ue_id);
 
   gNB_MAC_INST *mac = RC.nrmac[0];
   NR_SCHED_LOCK(&mac->sched_lock);
   NR_UE_info_t *UE = find_nr_UE(&RC.nrmac[0]->UE_info, refuse->gNB_DU_ue_id);
   if (UE == NULL) {
-    LOG_E(MAC, "ERROR: unknown UE with RNTI %04x, ignoring UE Context Modification Refuse\n", refuse->gNB_DU_ue_id);
+    LOG_E(NR_MAC, "ERROR: unknown UE with RNTI %04x, ignoring UE Context Modification Refuse\n", refuse->gNB_DU_ue_id);
     NR_SCHED_UNLOCK(&mac->sched_lock);
     return;
   }
 
+  /* if the UE Context Modification Required procedure was initiated
+   * for a RRC reconfigurtion after Msg.3 with C-RNTI MAC CE, if the CU
+   * refuses, it cannot do this reconfiguration, leaving the UE in an
+   * unconfigured state. Therefore, we just free all RA-related info, and
+   * request the release of the UE.  */
+  bool release = UE->cm_info.trigger_info == MSG3_CRNTI;
+  ASN_STRUCT_FREE(asn_DEF_NR_CellGroupConfig, UE->reconfigCellGroup);
+  UE->reconfigCellGroup = NULL;
+  UE->cm_info.trigger_info = NO_TRIGGER;
   NR_SCHED_UNLOCK(&mac->sched_lock);
 
-  f1ap_ue_context_rel_req_t request = {
-    .gNB_CU_ue_id = refuse->gNB_CU_ue_id,
-    .gNB_DU_ue_id = refuse->gNB_DU_ue_id,
-    .cause = F1AP_CAUSE_RADIO_NETWORK,
-    .cause_value = F1AP_CauseRadioNetwork_procedure_cancelled,
-  };
-  mac->mac_rrc.ue_context_release_request(&request);
+  if (release) {
+    LOG_W(NR_MAC, "Context Modification Required after MSG3 with C-RNTI, requesting release\n");
+    f1ap_ue_context_rel_req_t request = {
+      .gNB_CU_ue_id = refuse->gNB_CU_ue_id,
+      .gNB_DU_ue_id = refuse->gNB_DU_ue_id,
+      .cause = F1AP_CAUSE_RADIO_NETWORK,
+      .cause_value = F1AP_CauseRadioNetwork_procedure_cancelled,
+    };
+    mac->mac_rrc.ue_context_release_request(&request);
+  }
 }
 
 void ue_context_release_command(const f1ap_ue_context_rel_cmd_t *cmd)
@@ -1119,4 +1122,99 @@ void dl_rrc_message_transfer(const f1ap_dl_rrc_message_t *dl_rrc)
 
   /* the DU ue id is the RNTI */
   nr_rlc_srb_recv_sdu(dl_rrc->gNB_DU_ue_id, dl_rrc->srb_id, dl_rrc->rrc_container, dl_rrc->rrc_container_length);
+}
+
+/** @brief For CN-initiated Paging, enqueue one MAC record per F1AP/NGAP Paging.
+ * TS 38.413 §8.5.1.2: each NGAP PAGING shall result in one radio page per cell.
+ * One received indication is mapped to one DU queue entry. */
+void f1_paging(const f1ap_paging_t *paging)
+{
+  DevAssert(paging);
+  if (paging->identity_type != F1AP_PAGING_IDENTITY_CN_UE) {
+    LOG_W(MAC, "RAN UE paging identity not supported\n");
+    return;
+  }
+
+  const module_id_t module_id = 0;
+  const uint64_t fiveg_s_tmsi = paging->identity.cn_ue_paging_identity;
+  const uint16_t ue_id = paging->ue_identity_index_value % 1024;
+
+  LOG_I(MAC, "Paging transfer: ue_identity_index=%u, 5G-S-TMSI=0x%012lu\n", paging->ue_identity_index_value, fiveg_s_tmsi);
+  nr_mac_pcch_enqueue(module_id, fiveg_s_tmsi, ue_id);
+}
+
+void trp_information_request(const f1ap_trp_information_req_t *req)
+{
+  positioning_config_t positioning_config = RCconfig_nr_positioning();
+  uint8_t NumTRPs = positioning_config.num_trp;
+  f1ap_trp_information_resp_t resp = {0};
+  gNB_MAC_INST *mac = RC.nrmac[0];
+
+  resp.transaction_id = req->transaction_id;
+  // Check if the TRP_ID matches with the list sent in the trp information request
+  if (req->has_trp_list) {
+    uint8_t trp_resp_len = 0;
+    uint32_t trp_list_length = req->trp_list.trp_list_length;
+    DevAssert(trp_list_length > 0);
+    resp.trp_information_list.trp_information_item =
+        calloc_or_fail(trp_list_length, sizeof(*resp.trp_information_list.trp_information_item));
+    for (int i = 0; i < trp_list_length; i++) {
+      for (int j = 0; j < NumTRPs; j++) {
+        if (positioning_config.trps[j].id == req->trp_list.trp_list_item[i].trp_id) {
+          resp.trp_information_list.trp_information_item[trp_resp_len].trp_id = req->trp_list.trp_list_item[i].trp_id;
+          trp_resp_len++;
+        }
+      }
+    }
+    resp.trp_information_list.trp_information_item_length = trp_resp_len;
+  } else {
+    resp.trp_information_list.trp_information_item =
+        calloc_or_fail(NumTRPs, sizeof(*resp.trp_information_list.trp_information_item));
+    for (int i = 0; i < NumTRPs; i++) {
+      f1ap_trp_information_t *trp_info_item = &resp.trp_information_list.trp_information_item[i];
+      trp_info_item->trp_id = positioning_config.trps[i].id;
+      create_trp_info_item(req, trp_info_item, &positioning_config, i);
+    }
+    resp.trp_information_list.trp_information_item_length = NumTRPs;
+  }
+  mac->mac_rrc.trp_information_response(&resp);
+  free_trp_information_resp(&resp);
+}
+
+void positioning_information_request(const f1ap_positioning_information_req_t *req)
+{
+  f1ap_positioning_information_resp_t resp = {.gNB_CU_ue_id = req->gNB_CU_ue_id, .gNB_DU_ue_id = req->gNB_DU_ue_id};
+  gNB_MAC_INST *mac = RC.nrmac[0];
+  NR_UE_info_t *UE = find_nr_UE(&mac->UE_info, req->gNB_DU_ue_id);
+  NR_UE_UL_BWP_t *current_UL_BWP = &UE->current_UL_BWP;
+  NR_ServingCellConfigCommon_t *scc = mac->common_channels[0].ServingCellConfigCommon;
+  if (current_UL_BWP->srs_Config) {
+    resp.srs_configuration = calloc_or_fail(1, sizeof(*resp.srs_configuration));
+    *resp.srs_configuration = cp_rrc_to_f1ap_srs_configuration(current_UL_BWP, scc);
+  }
+  mac->mac_rrc.positioning_information_response(&resp);
+  free_positioning_information_resp(&resp);
+}
+
+void positioning_activation_request(const f1ap_positioning_activation_req_t *req)
+{
+  f1ap_positioning_activation_resp_t resp = {.gNB_CU_ue_id = req->gNB_CU_ue_id, .gNB_DU_ue_id = req->gNB_DU_ue_id};
+  gNB_MAC_INST *mac = RC.nrmac[0];
+  // Currently in OAI-LMF its hardcoded to aperiodic SRS
+  // Ignoring the SRS type and considering periodic SRS
+  NR_SCHED_LOCK(&mac->sched_lock);
+  NR_UE_info_t *UE = find_nr_UE(&mac->UE_info, req->gNB_DU_ue_id);
+  add_pos_act_ue_context(mac, UE->rnti);
+  NR_SCHED_UNLOCK(&mac->sched_lock);
+  mac->mac_rrc.positioning_activation_response(&resp);
+}
+
+void positioning_measurement_request(const f1ap_positioning_measurement_req_t *req)
+{
+  gNB_MAC_INST *mac = RC.nrmac[0];
+  NR_SCHED_LOCK(&mac->sched_lock);
+  positioning_measurement_info_t *pos_meas_info = &mac->pos_meas_info;
+  pos_meas_info->meas_req = cp_positioning_measurement_req(req);
+  pos_meas_info->active = true;
+  NR_SCHED_UNLOCK(&mac->sched_lock);
 }

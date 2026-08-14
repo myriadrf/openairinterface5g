@@ -16,7 +16,7 @@
 #include <linux/types.h>
 // global var to enable openair performance profiler
 extern int cpu_meas_enabled;
-extern double cpu_freq_GHz  __attribute__ ((aligned(32)));;
+extern double cpu_freq_GHz  __attribute__ ((aligned(32)));
 // structure to store data to compute cpu measurment
 #if defined(__x86_64__) || defined(__i386__) || defined(__arm__) || defined(__aarch64__)
   typedef long long oai_cputime_t;

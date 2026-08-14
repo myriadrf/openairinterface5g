@@ -32,6 +32,8 @@
 
 #define NR_PBCH_DMRS_LENGTH 144 // in mod symbols
 #define NR_PBCH_DMRS_LENGTH_DWORD 10 // ceil(2(QPSK)*NR_PBCH_DMRS_LENGTH/32)
+#define NR_PBCH_NUM_RB 20
+#define NR_PBCH_DMRS_METRIC_FLOOR 1e9
 
 /*used for the resource mapping*/
 #define NR_MAX_PDCCH_DMRS_LENGTH 576 // 16(L)*2(QPSK)*3(3 DMRS symbs per REG)*6(REG per CCE)
@@ -242,29 +244,6 @@ typedef struct {
     float rsrp_dBm;
     int32_t reserved;
 } prs_meas_t;
-
-// Configuration parameters required for 5G Positioning
-// TRP Cartesian Coordinate information
-typedef struct trp_s {
-  // TRP id
-  uint32_t id;
-  // TRP x-axis value
-  uint32_t x_axis;
-  // TRP y-axis value
-  uint32_t y_axis;
-  // TRP z-axis value
-  uint32_t z_axis;
-  // 0 = mm, 1 = cm, 2 = dm
-  uint8_t unit;
-} trp_t;
-
-#define MAX_NUM_TRPs 8
-typedef struct {
-  trp_t trps[MAX_NUM_TRPs];
-  uint8_t num_trp;
-  // Serving gNB indicator
-  bool is_serving_gNB;
-} positioning_config_t;
 
 // rel16 prs k_prime table as per ts138.211 sec.7.4.1.7.2
 #define K_PRIME_TABLE_ROW_SIZE 4

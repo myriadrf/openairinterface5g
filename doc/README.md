@@ -20,6 +20,7 @@ Beware if you previously pulled the `develop` branch that your repository may be
 - [BUILD.md](./BUILD.md): how to build the sources
 - [environment-variables.md](./environment-variables.md): the environment variables used by OAI
 - [tuning_and_security.md](./tuning_and_security.md): performance and security considerations
+- [Supported_Hardware_Operating_System.md](./Supported_Hardware_Operating_System.md): List of supported hardware and operating system for OAI
 
 There is some general information in the [OpenAirInterface Gitlab Wiki](https://gitlab.eurecom.fr/oai/openairinterface5g/-/wikis/home)
 
@@ -76,6 +77,7 @@ Legacy unmaintained files:
 - [Information on analog beamforming implementation](./analog_beamforming.md)
 - [Information on the UE 5G NAS implementation](./5Gnas.md)
 - [Information on UL-MIMO](./UL_MIMO.md): UL-MIMO specific notes
+- [Information on NRPPA](./NRPPA/NRPPA-call-flow.md)
 
 ## Building and running from images
 
@@ -108,6 +110,7 @@ Some directories under `radio` contain READMEs:
 - [fhi_72](../radio/fhi_72/README.md)
 - [vrtsim](../radio/vrtsim/README.md)
 - [rf_emulator](../radio/emulator/README.md)
+- [zmq](../radio/zmq/README.md)
 
 The other SDRs (AW2S, LimeSDR, ...) have no READMEs.
 
@@ -131,6 +134,9 @@ The other SDRs (AW2S, LimeSDR, ...) have no READMEs.
 ## Developer tools
 
 - [code-style-contrib.md](./code-style-contrib.md): overall working practices, code style, and review process
+- [git-guide.md](./git-guide.md): Git how-tos — commit signing setup, branch
+  management, submodules, recovering from mistakes, reusing conflict
+  resolutions (rerere)
 - [cross-compile.md](./cross-compile.md): how to cross-compile OAI for ARM
 - [clang-format.md](./clang-format.md): how to format the code. See also the
   next entry for an error detection tool.

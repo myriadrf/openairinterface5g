@@ -38,6 +38,7 @@
 #include "nr_pdcp_asn1_utils.h"
 #include "nr_pdcp_timer_thread.h"
 #include "nr_pdcp_ue_manager.h"
+#include "openair2/F1AP/f1ap_common.h"
 #include "openair2/F1AP/f1ap_ids.h"
 #include "openair2/SDAP/nr_sdap/nr_sdap.h"
 #include "pdcp.h"
@@ -257,8 +258,6 @@ static void do_pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
   }
 
   nr_pdcp_manager_unlock(nr_pdcp_ue_manager);
-
-  free(sdu_buffer);
 }
 
 static void *pdcp_data_ind_thread(void *_)
@@ -278,6 +277,7 @@ static void *pdcp_data_ind_thread(void *_)
                      pq.q[i].rb_id,
                      pq.q[i].sdu_buffer_size,
                      pq.q[i].sdu_buffer);
+    free(pq.q[i].sdu_buffer);
 
     if (pthread_mutex_lock(&pq.m) != 0) abort();
 
@@ -376,7 +376,9 @@ void nr_pdcp_layer_init(void)
   if ((RC.nrrrc == NULL) || (!NODE_IS_CU(node_type))) {
     init_nr_rlc_data_req_queue();
   }
+#ifdef PDCP_CUCP_CUUP
   nr_pdcp_e1_if_init(node_type == ngran_gNB_CUUP || node_type == ngran_gNB_CUCP);
+#endif
   init_nr_pdcp_data_ind_queue();
   nr_pdcp_init_timer_thread(nr_pdcp_ue_manager);
 }
@@ -440,8 +442,9 @@ static void deliver_pdu_drb_gnb(void *deliver_pdu_data, ue_id_t ue_id, int rb_id
 
   if (NODE_IS_CU(node_type)) {
     LOG_D(PDCP, "%s() (drb %d) sending message to gtp size %d\n", __func__, rb_id, size);
-    extern instance_t CUuniqInstance;
-    gtpv1uSendDirectWithNRUSeqNum(CUuniqInstance, ue_id, rb_id, (uint8_t *)buf, size);
+    const f1ap_cudu_inst_t *inst = getCxt(0);
+    DevAssert(inst);
+    gtpv1uSendDirectWithNRUSeqNum(inst->gtpInst, ue_id, rb_id, (uint8_t *)buf, size);
   } else {
     uint8_t *memblock = malloc16(size);
     memcpy(memblock, buf, size);
@@ -956,21 +959,10 @@ bool cu_f1u_data_req(protocol_ctxt_t  *ctxt_pP,
                      unsigned char *const sdu_buffer,
                      const pdcp_transmission_mode_t mode,
                      const uint32_t *const sourceL2Id,
-                     const uint32_t *const destinationL2Id) {
-  //Force instance id to 0, OAI incoherent instance management
-  ctxt_pP->instance=0;
-  uint8_t *memblock = malloc16(sdu_buffer_size);
-  if (memblock == NULL) {
-    LOG_E(RLC, "%s:%d:%s: ERROR: malloc16 failed\n", __FILE__, __LINE__, __FUNCTION__);
-    exit(1);
-  }
-  memcpy(memblock, sdu_buffer, sdu_buffer_size);
-  int ret = nr_pdcp_data_ind(ctxt_pP, srb_flagP, rb_id, sdu_buffer_size, memblock);
-  if (!ret) {
-    LOG_E(RLC, "%s:%d:%s: ERROR: pdcp_data_ind failed\n", __FILE__, __LINE__, __FUNCTION__);
-    /* what to do in case of failure? for the moment: nothing */
-  }
-  return ret;
+                     const uint32_t *const destinationL2Id)
+{
+  do_pdcp_data_ind(ctxt_pP, srb_flagP, rb_id, sdu_buffer_size, sdu_buffer);
+  return true;
 }
 
 /*

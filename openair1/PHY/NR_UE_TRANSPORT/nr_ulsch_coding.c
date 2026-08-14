@@ -11,8 +11,8 @@
 #include "PHY/CODING/nrLDPC_extern.h"
 #include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/NR_UE_TRANSPORT/nr_transport_ue.h"
+#include "T_messages_creator.h"
 #include "executables/nr-uesoftmodem.h"
-#include "PHY/log_tools.h"
 
 int nr_ulsch_pre_encoding(PHY_VARS_NR_UE *ue,
                           const NR_UE_ULSCH_t *ulsch,
@@ -62,55 +62,13 @@ int nr_ulsch_pre_encoding(PHY_VARS_NR_UE *ue,
     }
 
 #if T_TRACER
-    if (T_ACTIVE(T_UE_PHY_UL_PAYLOAD_TX_BITS)) {
-      // Get Time Stamp for T-tracer messages
-      char trace_tx_payload_time_stamp_str[30];
-      get_time_stamp_usec(trace_tx_payload_time_stamp_str);
-      // trace_time_stamp_str = 8 bytes timestamp = YYYYMMDD
-      //                      + 9 bytes timestamp = HHMMSSMMM
-      // Log UE_PHY_UL_PAYLOAD_TX_BITS using T-Tracer if activated
-      // FORMAT = int,frame : int,slot : int,datetime_yyyymmdd : int,datetime_hhmmssmmm :
-      // int,frame_type : int,freq_range : int,subcarrier_spacing : int,cyclic_prefix : int,symbols_per_slot :
-      // int,Nid_cell : int,rnti :
-      // int,rb_size : int,rb_start : int,start_symbol_index : int,nr_of_symbols :
-      // int,qam_mod_order : int,mcs_index : int,mcs_table : int,nrOfLayers :
-      // int,transform_precoding : int,dmrs_config_type : int,ul_dmrs_symb_pos :  int,number_dmrs_symbols : int,dmrs_port :
-      // int,dmrs_nscid : nb_antennas_tx : int,number_of_bits : buffer,data Define the subcarrier spacing vector
-      // int subcarrier_spacing_vect[] = {15000, 30000, 60000, 120000};
-      NR_DL_FRAME_PARMS *frame_parms = &ue->frame_parms;
-      int subcarrier_spacing_index = frame_parms->subcarrier_spacing / 15000 - 1;
-      T(T_UE_PHY_UL_PAYLOAD_TX_BITS,
-        T_INT((int)frame),
-        T_INT((int)slot),
-        T_INT((int)split_time_stamp_and_convert_to_int(trace_tx_payload_time_stamp_str, 0, 8)),
-        T_INT((int)split_time_stamp_and_convert_to_int(trace_tx_payload_time_stamp_str, 8, 9)),
-        T_INT((int)frame_parms->frame_type), // Frame type (0 FDD, 1 TDD)  frame_structure
-        T_INT((int)frame_parms->freq_range), // Frequency range (0 FR1, 1 FR2)
-        T_INT((int)subcarrier_spacing_index), // Subcarrier spacing (0 15kHz, 1 30kHz, 2 60kHz)
-        T_INT((int)ulsch->pusch_pdu.cyclic_prefix), // Normal or extended prefix (0 normal, 1 extended)
-        T_INT((int)frame_parms->symbols_per_slot), // Number of symbols per slot
-        T_INT((int)frame_parms->Nid_cell),
-        T_INT((int)ulsch->pusch_pdu.rnti),
-        T_INT((int)ulsch->pusch_pdu.rb_size),
-        T_INT((int)ulsch->pusch_pdu.rb_start),
-        T_INT((int)ulsch->pusch_pdu.start_symbol_index), // start_ofdm_symbol
-        T_INT((int)ulsch->pusch_pdu.nr_of_symbols), // num_ofdm_symbols
-        T_INT((int)ulsch->pusch_pdu.qam_mod_order), // modulation
-        T_INT((int)ulsch->pusch_pdu.mcs_index), // mcs
-        T_INT((int)ulsch->pusch_pdu.mcs_table), // mcs_table_index
-        T_INT((int)ulsch->pusch_pdu.nrOfLayers), // num_layer
-        T_INT((int)ulsch->pusch_pdu.transform_precoding), // transformPrecoder_enabled = 0, transformPrecoder_disabled = 1
-        T_INT((int)ulsch->pusch_pdu.dmrs_config_type), // dmrs_resource_map_config: pusch_dmrs_type1 = 0, pusch_dmrs_type2 = 1
-        T_INT((int)ulsch->pusch_pdu.ul_dmrs_symb_pos), // used to derive the DMRS symbol positions
-        T_INT((int)get_num_dmrs(ulsch->pusch_pdu.ul_dmrs_symb_pos)),
-        // dmrs_start_ofdm_symbol
-        // dmrs_duration_num_ofdm_symbols
-        // dmrs_num_add_positions
-        T_INT((int)get_dmrs_port(0, ulsch->pusch_pdu.dmrs_ports)), // dmrs_antenna_port
-        T_INT((int)ulsch->pusch_pdu.scid), // dmrs_nscid
-        T_INT((int)frame_parms->nb_antennas_tx), // number of tx antennas
-        T_INT((int)A), // number_of_bits
-        T_BUFFER((uint8_t *)harq_process->payload_AB, A / 8));
+    {
+      // capture Tx Payload via T-Tracer
+      log_ul_payload_tx_bits(frame, slot, &ue->frame_parms, pusch_pdu,
+                             get_num_dmrs(pusch_pdu->ul_dmrs_symb_pos),
+                             get_dmrs_port(0, pusch_pdu->dmrs_ports),
+                             (const uint8_t *)harq_process->payload_AB,
+                             pusch_pdu->pusch_data.tb_size);
     }
 #endif
     ///////////////////////// b---->| block segmentation |---->c /////////////////////////
@@ -198,17 +156,14 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
 
     for (int r = 0; r < TB_parameters->C; r++) {
       nrLDPC_segment_encoding_parameters_t *segment_parameters = &TB_parameters->segments[r];
+      int E = nr_get_E(TB_parameters->G, TB_parameters->C, TB_parameters->Qm, TB_parameters->nb_layers, r);
+      if (E < 0)
+         return -1;
       segment_parameters->c = harq_process->c[r];
-      segment_parameters->E = nr_get_E(TB_parameters->G,
-                                            TB_parameters->C,
-                                            TB_parameters->Qm,
-                                            TB_parameters->nb_layers,
-                                            r);
-
+      segment_parameters->E = E;
       reset_meas(&segment_parameters->ts_interleave);
       reset_meas(&segment_parameters->ts_rate_match);
       reset_meas(&segment_parameters->ts_ldpc_encode);
-
     } // TB_parameters->C
   } // pusch_id
 

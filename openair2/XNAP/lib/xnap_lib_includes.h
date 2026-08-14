@@ -23,5 +23,31 @@
 #include "XNAP_BroadcastPLMNinTAISupport-Item.h"
 #include "XNAP_Cause.h"
 
+#include "XNAP_NR-CGI.h"
+#include "XNAP_PDUSessionResourcesToBeSetup-Item.h"
+#include "XNAP_GTPtunnelTransportLayerInformation.h"
+#include "XNAP_QoSFlowsToBeSetup-Item.h"
+#include "XNAP_NonDynamic5QIDescriptor.h"
+#include "XNAP_Dynamic5QIDescriptor.h"
+#include "XNAP_AllocationandRetentionPriority.h"
+#include "XNAP_LastVisitedCell-Item.h"
+
+#include "XNAP_PDUSessionResourcesAdmitted-Item.h"
+#include "XNAP_QoSFlowsAdmitted-Item.h"
+
+#include "XNAP_DRBsSubjectToStatusTransfer-Item.h"
+#include "XNAP_DRBBStatusTransfer18bitsSN.h"
+#include "XNAP_DRBBStatusTransfer12bitsSN.h"
+
+#include "XNAP_UEIdentityIndexValue.h"
+#include "XNAP_UERANPagingIdentity.h"
+#include "XNAP_PagingDRX.h"
+#include "XNAP_RANPagingArea.h"
+#include "XNAP_RANPagingAreaChoice.h"
+#include "XNAP_NG-RAN-Cell-Identity-ListinRANPagingArea.h"
+#include "XNAP_NG-RAN-Cell-Identity.h"
+#include "XNAP_RANAreaID-List.h"
+#include "XNAP_RANAreaID.h"
+
 #endif // XNAP_LIB_INCLUDES_H
 

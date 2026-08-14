@@ -2310,6 +2310,7 @@ if((ue->frame_parms.FeMBMS_active == 0)|| is_fembms_cas_subframe(frame_rx,subfra
       dummy[1] = ue->pbch_vars[eNB_id]->decoded_output[1];
       dummy[2] = ue->pbch_vars[eNB_id]->decoded_output[0];
       ws_trace_t tmp = {.direction = DIRECTION_DOWNLINK,
+                        .type = ue->frame_parms.frame_type == FDD ? FDD_RADIO : TDD_RADIO,
                         .pdu_buffer = dummy,
                         .pdu_buffer_size = sizeof(dummy),
                         .ueid = ue->Mod_id,
@@ -3958,7 +3959,8 @@ int phy_procedures_slot_parallelization_UE_RX(PHY_VARS_UE *ue,
   }
 
   //AssertFatal(pthread_cond_signal(&proc->cond_slot1_dl_processing) ==0 ,"");
-  AssertFatal(pthread_mutex_unlock(&proc->mutex_slot1_dl_processing) ==0,"");
+  int ret = pthread_mutex_unlock(&proc->mutex_slot1_dl_processing);
+  AssertFatal(!ret, "%s", strerror(ret));
 
   /**** Slot0 FE Processing ****/
   // I- start main thread for FFT/ChanEst symbol: 0/1 --> 7
@@ -4670,7 +4672,7 @@ int phy_procedures_UE_RX(PHY_VARS_UE *ue,
         LOG_M("rxdataF_comp00.m","rxdataF_comp00",     &ue->pdsch_vars[ue->current_thread_id[subframe_rx]][0]->rxdataF_comp0[0][0],14*ue->frame_parms.N_RB_DL*12,1,1);
         //LOG_M("magDLFirst.m", "magDLFirst", &phy_vars_ue->pdsch_vars[ue->current_thread_id[subframe_rx]][0]->dl_ch_mag0[0][0],14*frame_parms->N_RB_DL*12,1,1);
         //LOG_M("magDLSecond.m", "magDLSecond", &phy_vars_ue->pdsch_vars[ue->current_thread_id[subframe_rx]][0]->dl_ch_magb0[0][0],14*frame_parms->N_RB_DL*12,1,1);
-        AssertFatal (0,"");
+        AssertFatal(0, "for tests");
       }
     }
 

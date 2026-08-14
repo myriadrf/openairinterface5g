@@ -47,7 +47,8 @@ RUN apt-get update && \
         python3-requests \
         libusb-1.0-0 \
         libyaml-cpp-dev \
-        libnanomsg5 && \
+        libnanomsg5 \
+        libzmq5 && \
 # if the --sanitize option was used to build, additional packages are required
     /bin/bash -c 'if [[ "$BUILD_OPTION" = "--sanitize" ]]; then DEBIAN_FRONTEND=noninteractive apt-get install --yes \
         libasan8 \ 
@@ -78,6 +79,7 @@ COPY --from=gnb-build \
     /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_rrc.so \
     /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_o1.so \
     /oai-ran/cmake_targets/ran_build/build/libvrtsim.so \
+    /oai-ran/cmake_targets/ran_build/build/liboai_zmqdevif.so \
     /usr/local/lib/
 
 # Now we are copying from builder-image the UHD files.
@@ -105,7 +107,8 @@ RUN /bin/bash -c "ln -s /usr/local/lib/liboai_usrpdevif.so /usr/local/lib/liboai
         /usr/local/lib/libldpc*.so \
         /usr/local/lib/libtelnetsrv.so \
         /usr/local/lib/libtelnetsrv_ci.so \
-        /usr/local/lib/libuhd.so.4.8.0
+        /usr/local/lib/libuhd.so.4.8.0 \
+        /usr/local/lib/liboai_zmqdevif.so
 
 WORKDIR /opt/oai-gnb
 #EXPOSE 2152/udp  # S1U, GTP/UDP

@@ -27,7 +27,8 @@ static void schedule_ssb(frame_t frame,
                          int beam_index,
                          uint8_t scoffset,
                          uint16_t offset_pointa,
-                         uint32_t payload)
+                         uint32_t payload,
+                         uint16_t stream_idx)
 {
   nfapi_nr_dl_tti_request_pdu_t *dl_config_pdu = &dl_req->dl_tti_pdu_list[dl_req->nPDUs];
   memset((void *) dl_config_pdu, 0, sizeof(nfapi_nr_dl_tti_request_pdu_t));
@@ -58,6 +59,8 @@ static void schedule_ssb(frame_t frame,
   dl_config_pdu->ssb_pdu.ssb_pdu_rel15.precoding_and_beamforming.dig_bf_interfaces = 1;
   dl_config_pdu->ssb_pdu.ssb_pdu_rel15.precoding_and_beamforming.prgs_list[0].pm_idx = 0;
   dl_config_pdu->ssb_pdu.ssb_pdu_rel15.precoding_and_beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = beam_index;
+  dl_config_pdu->ssb_pdu.ssb_pdu_rel15.param_v4.spatialStreamIndexPresent = 1;
+  dl_config_pdu->ssb_pdu.ssb_pdu_rel15.param_v4.spatialStreamIndex = stream_idx;
   dl_req->nPDUs++;
 
   LOG_D(NR_MAC,"Scheduling ssb %d at frame %d and slot %d\n", i_ssb, frame, slot);
@@ -87,25 +90,6 @@ static int encode_mib(NR_BCCH_BCH_Message_t *mib, frame_t frame, uint8_t *buffer
   int encoded = encode_MIB_NR(mib, frame, buffer, encode_size);
   DevAssert(encoded == encode_size);
   return encode_size;
-}
-
-int get_max_ssbs(const NR_ServingCellConfigCommon_t *scc)
-{
-  int L_max = 0;
-  switch (scc->ssb_PositionsInBurst->present) {
-    case NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_shortBitmap:
-      L_max = 4;
-      break;
-    case NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_mediumBitmap:
-      L_max = 8;
-      break;
-    case NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_longBitmap:
-      L_max = 64;
-      break;
-    default:
-      AssertFatal(false, "Invalid SSB configuration\n");
-  }
-  return L_max;
 }
 
 bool is_ssb_configured(const NR_ServingCellConfigCommon_t *scc, int ssb_index)
@@ -188,7 +172,7 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, slot_t slotP, nfapi
         if (is_ssb_configured(scc, i_ssb)) {
           uint16_t ssb_start_symbol = get_ssb_start_symbol(band, scs, i_ssb);
           // if start symbol is in current slot, schedule current SSB, fill VRB map and call get_type0_PDCCH_CSS_config_parameters
-          if ((ssb_start_symbol / 14) == rel_slot) {
+          if ((ssb_start_symbol / NR_SYMBOLS_PER_SLOT) == rel_slot) {
             NR_beam_alloc_t beam = beam_allocation_procedure(&gNB->beam_info,
                                                              frameP,
                                                              slotP,
@@ -197,7 +181,16 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, slot_t slotP, nfapi
             AssertFatal(beam.idx >= 0, "Cannot allocate SSB %d in any available beam\n", i_ssb);
             const uint16_t alloc_beam_idx = get_allocated_beam(&gNB->beam_info, frameP, slotP, slots_per_frame, beam.idx);
             const uint16_t fapi_beam = convert_to_fapi_beam(alloc_beam_idx, gNB->beam_info.beam_mode);
-            schedule_ssb(frameP, slotP, scc, dl_req, i_ssb, fapi_beam, ssbSubcarrierOffset, offset_pointa, mib_pdu);
+            schedule_ssb(frameP,
+                         slotP,
+                         scc,
+                         dl_req,
+                         i_ssb,
+                         fapi_beam,
+                         ssbSubcarrierOffset,
+                         offset_pointa,
+                         mib_pdu,
+                         gNB->radio_config.spatial_stream_index[beam.idx]);
             fill_ssb_vrb_map(cc, prb_offset, ssbSubcarrierOffset, ssb_start_symbol, CC_id, beam.idx);
             if (IS_SA_MODE(get_softmodem_params())) {
               get_type0_PDCCH_CSS_config_parameters(&gNB->type0_PDCCH_CSS_config[i_ssb],
@@ -222,64 +215,6 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, slot_t slotP, nfapi
   }
 }
 
-static bool update_rb_mcs_tbs(NR_sched_pdsch_t *pdsch, uint32_t num_total_bytes, uint16_t *vrb_map)
-{
-  const NR_tda_info_t *tda_info = &pdsch->tda_info;
-
-  // Calculate number of PRB_DMRS
-  uint8_t N_PRB_DMRS = pdsch->dmrs_parms.N_PRB_DMRS;
-  LOG_D(MAC, "dlDmrsSymbPos %x\n", pdsch->dmrs_parms.dl_dmrs_symb_pos);
-  int mcsTableIdx = 0;
-  const uint16_t slbitmap = SL_to_bitmap(tda_info->startSymbolIndex, tda_info->nrOfSymbols);
-  int bwpSize = pdsch->bwp_info.bwpSize;
-  int bwpStart = pdsch->bwp_info.bwpStart;
-
-  for (pdsch->mcs = 0; pdsch->mcs < 10; pdsch->mcs++) {
-    pdsch->Qm = nr_get_Qm_dl(pdsch->mcs, mcsTableIdx);
-    pdsch->R = nr_get_code_rate_dl(pdsch->mcs, mcsTableIdx);
-    if (!nr_find_nb_rb(pdsch->Qm,
-                       pdsch->R,
-                       1, // no transform precoding for DL
-                       1, // single layer
-                       tda_info->nrOfSymbols,
-                       pdsch->dmrs_parms.N_PRB_DMRS * pdsch->dmrs_parms.N_DMRS_SLOT,
-                       num_total_bytes,
-                       1, // min_rbSize
-                       bwpSize, // max_rbSize,
-                       &pdsch->tb_size,
-                       &pdsch->rbSize))
-      continue;
-    int rbStart, rbSize;
-    if (get_rb_alloc(pdsch->rbSize, pdsch->rbSize, bwpStart, bwpSize, vrb_map, slbitmap, &rbStart, &rbSize)) {
-      pdsch->rbStart = rbStart;
-      pdsch->rbSize = rbSize;
-      break;
-    }
-  }
-
-  if (pdsch->mcs >= 10 || pdsch->tb_size < num_total_bytes) {
-    LOG_D(NR_MAC,
-          "Couldn't allocate enough resources for %d bytes in SIB PDSCH (rbStart %d, rbSize %d, bwpSize %d)\n",
-          num_total_bytes,
-          pdsch->rbStart,
-          pdsch->rbSize,
-          bwpSize);
-    return false;
-  }
-
-  LOG_D(NR_MAC,
-        "mcs=%i, startSymbolIndex = %i, nrOfSymbols = %i, rbSize = %i, TBS = %i, dmrs_length %d, N_PRB_DMRS = %d, mappingtype = %d\n",
-        pdsch->mcs,
-        tda_info->startSymbolIndex,
-        tda_info->nrOfSymbols,
-        pdsch->rbSize,
-        pdsch->tb_size,
-        pdsch->dmrs_parms.N_DMRS_SLOT,
-        N_PRB_DMRS,
-        tda_info->mapping_type);
-  return true;
-}
-
 static NR_sched_pdsch_t allocate_sib1(gNB_MAC_INST *gNB_mac,
                                       int CC_id,
                                       NR_sched_pdcch_t *pdcch,
@@ -294,6 +229,7 @@ static NR_sched_pdsch_t allocate_sib1(gNB_MAC_INST *gNB_mac,
   NR_COMMON_channels_t *cc = &gNB_mac->common_channels[CC_id];
   NR_ServingCellConfigCommon_t *scc = cc->ServingCellConfigCommon;
   NR_pdsch_dmrs_t dmrs_parms = get_dl_dmrs_params(scc, NULL, tda_info, 1);
+  const uint16_t *sidx = gNB_mac->radio_config.spatial_stream_index;
   NR_sched_pdsch_t pdsch = {
       .bwp_info = get_pdsch_bwp_start_size(gNB_mac, NULL),
       .time_domain_allocation = time_domain_allocation,
@@ -302,6 +238,8 @@ static NR_sched_pdsch_t allocate_sib1(gNB_MAC_INST *gNB_mac,
       .nrOfLayers = 1,
       .pm_index = 0,
       .mcs = 0, // starting from mcs 0
+      // no of layers 1 and pmi 0 gives only one log antenna port
+      .ant_port_idx = {.numSpatialStreamIndices = 1, .spatialStreamIndices[0] = sidx[beam]},
   };
 
   uint16_t *vrb_map = cc->vrb_map[beam];
@@ -360,8 +298,15 @@ static void nr_fill_nfapi_dl_SIB_pdu(gNB_MAC_INST *gNB_mac,
         pdsch_pdu_rel15->dlDmrsSymbPos);
 
   /* Fill PDCCH DL DCI PDU */
-  nfapi_nr_dl_dci_pdu_t *dci_pdu =
-      prepare_dci_pdu(pdcch_pdu_rel15, scc, search_space, coreset, aggregation_level, cce_index, fapi_beam, SI_RNTI);
+  nfapi_nr_dl_dci_pdu_t *dci_pdu = prepare_dci_pdu(pdcch_pdu_rel15,
+                                                   scc,
+                                                   search_space,
+                                                   coreset,
+                                                   pdsch->ant_port_idx.spatialStreamIndices,
+                                                   aggregation_level,
+                                                   cce_index,
+                                                   fapi_beam,
+                                                   SI_RNTI);
   pdcch_pdu_rel15->numDlDci++;
 
   /* DCI payload */
@@ -386,6 +331,7 @@ static void nr_fill_nfapi_dl_SIB_pdu(gNB_MAC_INST *gNB_mac,
                      &dci_payload,
                      dci_format,
                      rnti_type,
+                     0,
                      search_space,
                      coreset,
                      0,
@@ -457,19 +403,6 @@ static bool check_sib1_tda(gNB_MAC_INST *gNB_mac,
   }
 }
 
-static bool check_frame_sib1(NR_ServingCellConfigCommon_t *scc, NR_Type0_PDCCH_CSS_config_t *type0, int frame)
-{
-  if (type0->type0_pdcch_ss_mux_pattern == 1)
-    return frame % 2 == type0->sfn_c;
-  else {
-    long ssb_period = *scc->ssb_periodicityServingCell;
-    int ssb_frame_periodicity = 1;  // every how many frames SSB are generated
-    if (ssb_period > 1) // 0 is every half frame
-      ssb_frame_periodicity = 1 << (ssb_period -1);
-    return frame % ssb_frame_periodicity == 0;
-  }
-}
-
 void schedule_nr_sib1(module_id_t module_idP,
                       frame_t frameP,
                       slot_t slotP,
@@ -482,30 +415,13 @@ void schedule_nr_sib1(module_id_t module_idP,
   gNB_MAC_INST *gNB_mac = RC.nrmac[module_idP];
   NR_COMMON_channels_t *cc = &gNB_mac->common_channels[CC_id];
   NR_ServingCellConfigCommon_t *scc = cc->ServingCellConfigCommon;
-  int L_max;
-  switch (scc->ssb_PositionsInBurst->present) {
-    case 1:
-      L_max = 4;
-      break;
-    case 2:
-      L_max = 8;
-      break;
-    case 3:
-      L_max = 64;
-      break;
-    default:
-      AssertFatal(false, "SSB bitmap size value %d undefined (allowed values 1,2,3)\n", scc->ssb_PositionsInBurst->present);
-  }
+  const int L_max = get_max_ssbs(scc);
 
   for (int i = 0; i < L_max; i++) {
 
     NR_Type0_PDCCH_CSS_config_t *type0_PDCCH_CSS_config = &gNB_mac->type0_PDCCH_CSS_config[i];
 
-    if(check_frame_sib1(scc, type0_PDCCH_CSS_config, frameP) &&
-       (slotP == type0_PDCCH_CSS_config->slot) &&
-       (type0_PDCCH_CSS_config->num_rbs > 0) &&
-       (type0_PDCCH_CSS_config->active == true)) {
-
+    if (is_type0_occasion(scc, type0_PDCCH_CSS_config, frameP, slotP) && type0_PDCCH_CSS_config->num_rbs > 0) {
       AssertFatal(is_dl_slot(slotP, &gNB_mac->frame_structure),
                   "Trying to schedule SIB1 for SSB %d in slot %d which is not DL. Check searchSpaceZero configuration.\n",
                   type0_PDCCH_CSS_config->ssb_index,
@@ -584,6 +500,7 @@ void schedule_nr_sib1(module_id_t module_idP,
 
       tx_req->PDU_index  = pdu_index;
       tx_req->num_TLV = 1;
+      tx_req->TLVs[0].tag = 0;
       tx_req->TLVs[0].length = tb_size;
       tx_req->PDU_length = compute_PDU_length(tx_req->num_TLV, tx_req->TLVs[0].length);
       TX_req->Number_of_PDUs++;
@@ -678,14 +595,16 @@ static void other_sib_sched_control(module_id_t module_idP,
   // Mark the corresponding RBs as used
   fill_pdcch_vrb_map(gNB_mac, 0, gNB_mac->sched_pdcch_otherSI, cce_index, aggregation_level, beam.idx);
 
-  NR_sched_pdsch_t sched_pdsch_otherSI = {0};
-  sched_pdsch_otherSI.time_domain_allocation = time_domain_allocation;
-  sched_pdsch_otherSI.bwp_info = get_pdsch_bwp_start_size(gNB_mac, NULL);
-  sched_pdsch_otherSI.dmrs_parms = dmrs_parms;
-  sched_pdsch_otherSI.tda_info = tda_info;
-  sched_pdsch_otherSI.nrOfLayers = 1;
-  sched_pdsch_otherSI.pm_index = 0;
-  sched_pdsch_otherSI.mcs = 0; // starting from mcs 0
+  const uint16_t *sidx = gNB_mac->radio_config.spatial_stream_index;
+  NR_sched_pdsch_t sched_pdsch_otherSI = {
+      .time_domain_allocation = time_domain_allocation,
+      .bwp_info = get_pdsch_bwp_start_size(gNB_mac, NULL),
+      .dmrs_parms = dmrs_parms,
+      .tda_info = tda_info,
+      .nrOfLayers = 1,
+      .pm_index = 0,
+      .mcs = 0, // starting from mcs 0
+      .ant_port_idx = {.numSpatialStreamIndices = 1, .spatialStreamIndices[0] = sidx[beam.idx]}};
 
   uint16_t *vrb_map = cc->vrb_map[beam.idx];
   uint8_t *sib_bcch_pdu = cc->other_sib_bcch_pdu[payload_idx];
@@ -719,6 +638,7 @@ static void other_sib_sched_control(module_id_t module_idP,
 
   tx_req->PDU_index = pdu_index;
   tx_req->num_TLV = 1;
+  tx_req->TLVs[0].tag = 0;
   tx_req->TLVs[0].length = sched_pdsch_otherSI.tb_size;
   tx_req->PDU_length = compute_PDU_length(tx_req->num_TLV, tx_req->TLVs[0].length);
   TX_req->Number_of_PDUs++;

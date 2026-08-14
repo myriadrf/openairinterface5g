@@ -53,11 +53,11 @@
 #include "common/openairinterface5g_limits.h"
 #include "common/ran_context.h"
 #include "common/utils/LOG/log.h"
+#include "common/utils/bits.h"
 #include "common/utils/T/T.h"
 #include "common/utils/nr/nr_common.h"
 #include "common/utils/threadPool/thread-pool.h"
 #include "common/utils/var_array.h"
-#include "common_lib.h"
 #include "e1ap_messages_types.h"
 #include "executables/nr-uesoftmodem.h"
 #include "fapi_nr_ue_constants.h"
@@ -73,7 +73,8 @@
 #include "time_meas.h"
 #include "utils.h"
 
-#ifdef ENABLE_CUDA
+#ifdef CHANNEL_SIM_CUDA
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include "SIMULATION/TOOLS/oai_cuda.h"
 #endif
@@ -86,7 +87,6 @@ const char *__asan_default_options()
   return "detect_leaks=0";
 }
 PHY_VARS_gNB *gNB;
-PHY_VARS_NR_UE *UE;
 RAN_CONTEXT_t RC;
 char *uecap_file;
 int64_t uplink_frequency_offset[MAX_NUM_CCs][4];
@@ -96,10 +96,6 @@ double cpuf;
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
 THREAD_STRUCT thread_struct;
 nfapi_ue_release_request_body_t release_rntis;
-
-//Fixme: Uniq dirty DU instance, by global var, datamodel need better management
-instance_t DUuniqInstance=0;
-instance_t CUuniqInstance=0;
 
 // NTN cellSpecificKoffset-r17, but in slots for DL SCS
 unsigned int NTN_UE_Koffset = 0;
@@ -117,24 +113,11 @@ void signal_rrc_msg(void /*const nr_rrc_class_e nr_channel, const uint32_t rrc_m
 void signal_rrc_state_changed_to(void /* const gNB_RRC_UE_t *rrc_ue_context, const rrc_state_e2sm_rc_e rrc_state */) { abort(); }
 void signal_ue_id(void /* const gNB_RRC_UE_t *rrc_ue_context, const uint16_t class, const uint32_t msg_id */) { abort(); }
 
-extern void fix_scd(NR_ServingCellConfig_t *scd);// forward declaration
-
 void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req) { abort(); }
 void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req) { abort(); }
 void e1_bearer_release_cmd(const e1ap_bearer_release_cmd_t *cmd) { abort(); }
 
 int8_t nr_rrc_RA_succeeded(const module_id_t mod_id, const uint8_t gNB_index) {
-  return 0;
-}
-
-int DU_send_INITIAL_UL_RRC_MESSAGE_TRANSFER(module_id_t     module_idP,
-                                            int             CC_idP,
-                                            int             UE_id,
-                                            rnti_t          rntiP,
-                                            const uint8_t   *sduP,
-                                            sdu_size_t      sdu_lenP,
-                                            const uint8_t   *sdu2P,
-                                            sdu_size_t      sdu2_lenP) {
   return 0;
 }
 
@@ -152,7 +135,7 @@ nrUE_params_t *get_nrUE_params(void) {
 }
 // needed for some functions
 uint16_t n_rnti = 0x1234;
-openair0_config_t openair0_cfg[MAX_CARDS];
+openair0_config_t openair0_cfg_g[MAX_CARDS] = {};
 
 channel_desc_t *UE2gNB[MAX_MOBILES_PER_GNB][NUMBER_OF_gNB_MAX];
 
@@ -286,6 +269,7 @@ int main(int argc, char *argv[])
   SCM_t channel_model = AWGN;  //Rayleigh1_anticorr;
   corr_level_t corr_level = CORR_LEVEL_LOW;
   uint16_t N_RB_DL = 106, N_RB_UL = 106, mu = 1;
+  uint8_t length_dmrs = pusch_len1;
 
   // unsigned char frame_type = 0;
   int loglvl = OAILOG_WARNING;
@@ -355,7 +339,7 @@ int main(int argc, char *argv[])
 
   void *h_tx_sig_pinned = NULL;
 
-#ifdef ENABLE_CUDA
+#ifdef CHANNEL_SIM_CUDA
   void *d_tx_sig = NULL, *d_intermediate_sig = NULL, *d_final_output = NULL;
   void *d_curand_states = NULL;
   void *h_final_output_pinned = NULL;
@@ -363,7 +347,7 @@ int main(int argc, char *argv[])
   void *d_channel_coeffs_gpu = NULL;
 #endif
 
-  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:jk:m:n:o::p:q:r:s:t:u:v:w:y:z:A:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:Y:"))
+  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:jk:l:m:n:o::p:q:r:s:t:u:v:w:y:z:A:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:Y:"))
          != -1) {
     /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
     /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
@@ -396,7 +380,7 @@ int main(int argc, char *argv[])
       break;
 
     case 'f':
-#ifdef ENABLE_CUDA
+#ifdef CHANNEL_SIM_CUDA
       if (strcmp(optarg, "cuda") == 0) {
         use_cuda = 1;
       } else
@@ -469,6 +453,12 @@ int main(int argc, char *argv[])
       threequarter_fs = 1;
       break;
 
+    case 'l':
+      length_dmrs = atoi(optarg);
+      AssertFatal(length_dmrs == 1 || length_dmrs == 2, "Illegal PUSCH DMRS length %d\n", length_dmrs);
+      printf("PUSCH DMRS length %d\n", length_dmrs);
+      break;
+
     case 'm':
       Imcs = atoi(optarg);
       break;
@@ -489,6 +479,9 @@ int main(int argc, char *argv[])
 
     case 'W':
       precod_nbr_layers = atoi(optarg);
+      AssertFatal(precod_nbr_layers > 0 && precod_nbr_layers <= 4,
+                  "Number of layers per UE %d should be less than or equal to 4\n",
+                  precod_nbr_layers);
       break;
 
     case 'n':
@@ -659,7 +652,7 @@ int main(int argc, char *argv[])
       printf("-d Introduce delay in terms of number of samples\n");
       printf("-e To simulate MSG3 configuration\n");
       printf("-f <flag> Enable optional feature flag. Available flags:\n");
-#ifdef ENABLE_CUDA
+#ifdef CHANNEL_SIM_CUDA
       printf("          cuda    Enable CUDA channel simulation\n");
 #else
       printf("          (none)  No optional features were compiled into this executable\n");
@@ -669,6 +662,7 @@ int main(int argc, char *argv[])
       printf("-i Change channel estimation technique. Arguments list: Number of arguments=2, Frequency domain {0:Linear interpolation, 1:PRB based averaging}, Time domain {0:Estimates of last DMRS symbol, 1:Average of DMRS symbols}. e.g. -i 1,0\n");
       printf("-j Save signal buffers in binary format.");
       printf("-k 3/4 sampling\n");
+      printf("-l PUSCH DMRS length: 1 or 2\n");
       printf("-m MCS value\n");
       printf("-n Number of trials to simulate\n");
       printf("-o Enable UCI on PUSCH. Optionally accepts input file (without space). This feature is not yet available in gNB so only used to verify with MATLAB generated vector\n");
@@ -706,6 +700,12 @@ int main(int argc, char *argv[])
     }
   }
 
+  AssertFatal(precod_nbr_layers <= min(n_tx, n_rx),
+              "Number of layers %d cannot be more than min(n_tx %d, n_rx %d)\n",
+              precod_nbr_layers,
+              n_tx,
+              n_rx);
+
   logInit();
   set_glog(loglvl);
 
@@ -723,14 +723,14 @@ int main(int argc, char *argv[])
                         &tx_bandwidth,
                         &rx_bandwidth);
 
-  RC.gNB = (PHY_VARS_gNB **) malloc(sizeof(PHY_VARS_gNB *));
-  RC.gNB[0] = calloc(1,sizeof(PHY_VARS_gNB));
+  RC.gNB = (PHY_VARS_gNB **)malloc_or_fail(sizeof(PHY_VARS_gNB *));
+  RC.gNB[0] = calloc_or_fail(1, sizeof(PHY_VARS_gNB));
   gNB = RC.gNB[0];
   gNB->ofdm_offset_divisor = UINT_MAX;
   gNB->num_pusch_symbols_per_thread = 1;
   gNB->dmrs_num_antennas_per_thread = num_antennas_per_thread;
-  gNB->RU_list[0] = calloc(1, sizeof(**gNB->RU_list));
-  gNB->RU_list[0]->rfdevice.openair0_cfg = openair0_cfg;
+  gNB->RU_list[0] = calloc_or_fail(1, sizeof(**gNB->RU_list));
+  gNB->RU_list[0]->rfdevice.openair0_cfg = openair0_cfg_g;
 
   if (setAffinity == false)
     initFloatingCoresTpool(threadCnt, &gNB->threadPool, false, "gNB-tpool");
@@ -751,11 +751,11 @@ int main(int argc, char *argv[])
   AssertFatal((gNB->if_inst = NR_IF_Module_init(0)) != NULL, "Cannot register interface");
   gNB->if_inst->NR_PHY_config_req = nr_phy_config_request;
 
-  s_interleaved = malloc(n_tx * sizeof(float *));
-  r_re = malloc(n_rx * sizeof(float *));
-  r_im = malloc(n_rx * sizeof(float *));
+  s_interleaved = malloc_or_fail(n_tx * sizeof(float *));
+  r_re = malloc_or_fail(n_rx * sizeof(float *));
+  r_im = malloc_or_fail(n_rx * sizeof(float *));
 
-  NR_ServingCellConfigCommon_t *scc = calloc(1,sizeof(*scc));;
+  NR_ServingCellConfigCommon_t *scc = calloc_or_fail(1, sizeof(*scc));
   prepare_scc(scc);
   uint64_t ssb_bitmap;
   fill_scc_sim(scc, &ssb_bitmap, N_RB_DL, N_RB_DL, mu, mu);
@@ -788,7 +788,8 @@ int main(int argc, char *argv[])
                                 .timer_config.n310 = 10,
                                 .timer_config.t311 = 3000,
                                 .timer_config.n311 = 1,
-                                .timer_config.t319 = 400};
+                                .timer_config.t319 = 400,
+                                .spatial_stream_index = {0, 1, 2, 3, 4, 5, 6, 7}};
   const nr_rlc_configuration_t rlc_config = {
     .srb = {
       .t_poll_retransmit = 45,
@@ -816,6 +817,7 @@ int main(int argc, char *argv[])
 
   RC.nb_nr_macrlc_inst = 1;
   mac_top_init_gNB(ngran_gNB, scc, &conf, &rlc_config);
+  RC.nrmac[0]->beam_info = (NR_beam_info_t){.beams_per_period = 1};
   nr_mac_config_scc(RC.nrmac[0], scc, &conf);
 
   NR_UE_NR_Capability_t* UE_Capability_nr = CALLOC(1,sizeof(NR_UE_NR_Capability_t));
@@ -844,14 +846,14 @@ int main(int argc, char *argv[])
   /* RU handles rxdataF, and gNB just has a pointer. Here, we don't have an RU,
    * so we need to allocate that memory as well. */
   for (i = 0; i < n_rx; i++)
-    gNB->common_vars.rxdataF[0][i] = malloc16_clear(gNB->frame_parms.samples_per_frame_wCP*sizeof(int32_t));
+    gNB->common_vars.rxdataF[i] = malloc16_clear(gNB->frame_parms.samples_per_frame_wCP * sizeof(int32_t));
   N_RB_DL = gNB->frame_parms.N_RB_DL;
 
   /* no RU: need to have rxdata */
   c16_t **rxdata;
-  rxdata = malloc(n_rx * sizeof(*rxdata));
+  rxdata = malloc_or_fail(n_rx * sizeof(*rxdata));
   for (int i = 0; i < n_rx; ++i)
-    rxdata[i] = calloc(gNB->frame_parms.samples_per_frame, sizeof(**rxdata));
+    rxdata[i] = calloc_or_fail(gNB->frame_parms.samples_per_frame, sizeof(**rxdata));
 
   NR_BWP_Uplink_t *ubwp=secondaryCellGroup->spCellConfig->spCellConfigDedicated->uplinkConfig->uplinkBWP_ToAddModList->list.array[0];
 
@@ -876,7 +878,7 @@ int main(int argc, char *argv[])
   }
 
   const int num_samples_alloc = 153600;
-#ifdef ENABLE_CUDA
+#ifdef CHANNEL_SIM_CUDA
   init_cuda_chsim_buffers(use_cuda,
                           n_tx,
                           n_rx,
@@ -889,15 +891,15 @@ int main(int argc, char *argv[])
                           &d_channel_coeffs_gpu);
   if (use_cuda) {
     int num_links = n_tx * n_rx;
-    h_channel_coeffs = (float *)malloc(num_links * UE2gNB->channel_length * sizeof(float2));
+    h_channel_coeffs = (float *)malloc_or_fail(num_links * UE2gNB->channel_length * sizeof(float2));
   }
 #endif
 
-#if !defined(ENABLE_CUDA) || !use_cuda
+#if !defined(CHANNEL_SIM_CUDA) || !use_cuda
   printf("Pre-allocating padded host memory for the CPU channel pipeline...\n");
   const int max_padding_alloc = 256 - 1;
   size_t padded_tx_alloc_bytes = n_tx * (num_samples_alloc + max_padding_alloc) * 2 * sizeof(float);
-  h_tx_sig_pinned = malloc(padded_tx_alloc_bytes);
+  h_tx_sig_pinned = malloc_or_fail(padded_tx_alloc_bytes);
   if (h_tx_sig_pinned == NULL) {
     printf("Error: Failed to allocate host buffer for CPU path\n");
     exit(-1);
@@ -905,10 +907,10 @@ int main(int argc, char *argv[])
 #endif
 
   // Configure UE
-  UE = calloc(1, sizeof(PHY_VARS_NR_UE));
-  PHY_vars_UE_g = malloc(sizeof(PHY_VARS_NR_UE**));
-  PHY_vars_UE_g[0] = malloc(sizeof(PHY_VARS_NR_UE*));
-  PHY_vars_UE_g[0][0] = UE;
+  nrPHY_vars_UE_g = malloc_or_fail(sizeof(PHY_VARS_NR_UE **));
+  nrPHY_vars_UE_g[0] = malloc_or_fail(sizeof(PHY_VARS_NR_UE *));
+  PHY_VARS_NR_UE *UE = calloc_or_fail(1, sizeof(PHY_VARS_NR_UE));
+  nrPHY_vars_UE_g[0][0] = UE;
   UE->frame_parms = gNB->frame_parms;
   UE->frame_parms.nb_antennas_tx = n_tx;
   UE->frame_parms.nb_antennas_rx = 0;
@@ -991,7 +993,6 @@ int main(int argc, char *argv[])
     num_dmrs_cdm_grps_no_data = dmrs_arg[3];
   }
 
-  uint8_t  length_dmrs = pusch_len1;
   uint16_t l_prime_mask = get_l_prime(nb_symb_sch, mapping_type, add_pos, length_dmrs, start_symbol, NR_MIB__dmrs_TypeA_Position_pos2);
   int number_dmrs_symbols = count_bits64_with_mask(l_prime_mask, start_symbol, nb_symb_sch);
   uint8_t  nb_re_dmrs = (dmrs_config_type == pusch_dmrs_type1) ? 6 : 4;
@@ -1075,17 +1076,17 @@ int main(int argc, char *argv[])
   unsigned int available_bits = nr_get_G(nb_rb, nb_symb_sch, nb_re_dmrs, number_dmrs_symbols, unav_res, mod_order, precod_nbr_layers);
   uint8_t cw_buf[available_bits];
   memset(cw_buf, 0, available_bits);
-  UE->phy_sim_test_buf = calloc(1, (available_bits + 7) / 8);
+  UE->phy_sim_test_buf = calloc_or_fail(1, (available_bits + 7) / 8);
   printf("[ULSIM]: VALUE OF G: %u, TBS: %u\n", available_bits, TBS);
 
   int frame_length_complex_samples = gNB->frame_parms.samples_per_subframe * NR_NUMBER_OF_SUBFRAMES_PER_FRAME;
   for (int aatx = 0; aatx < n_tx; aatx++) {
-    s_interleaved[aatx] = calloc(1, frame_length_complex_samples * 2 * sizeof(float));
+    s_interleaved[aatx] = calloc_or_fail(1, frame_length_complex_samples * 2 * sizeof(float));
   }
 
   for (int aarx = 0; aarx < n_rx; aarx++) {
-    r_re[aarx] = calloc(1, frame_length_complex_samples * sizeof(float));
-    r_im[aarx] = calloc(1, frame_length_complex_samples * sizeof(float));
+    r_re[aarx] = calloc_or_fail(1, frame_length_complex_samples * sizeof(float));
+    r_im[aarx] = calloc_or_fail(1, frame_length_complex_samples * sizeof(float));
   }
 
   //for (int i=0;i<16;i++) printf("%f\n",gaussdouble(0.0,1.0));
@@ -1173,6 +1174,11 @@ int main(int argc, char *argv[])
     reset_meas(&gNB->rx_pusch_stats);
     reset_meas(&gNB->rx_pusch_init_stats);
     reset_meas(&gNB->rx_pusch_symbol_processing_stats);
+    reset_meas(&gNB->pusch_extraction_stats);
+    reset_meas(&gNB->pusch_channel_compensation_stats);
+    reset_meas(&gNB->ulsch_llr_stats);
+    reset_meas(&gNB->ulsch_layer_demapping_stats);
+    reset_meas(&gNB->ulsch_unscrambling_stats);
     reset_meas(&gNB->ulsch_decoding_stats);
     reset_meas(&gNB->ts_deinterleave);
     reset_meas(&gNB->ts_rate_unmatch);
@@ -1276,9 +1282,11 @@ int main(int argc, char *argv[])
         pusch_pdu->pusch_data.num_cb = 0;
         pusch_pdu->pusch_ptrs.ptrs_time_density = ptrs_time_density;
         pusch_pdu->pusch_ptrs.ptrs_freq_density = ptrs_freq_density;
-        pusch_pdu->pusch_ptrs.ptrs_ports_list = (nfapi_nr_ptrs_ports_t *)malloc(2 * sizeof(nfapi_nr_ptrs_ports_t));
+        pusch_pdu->pusch_ptrs.ptrs_ports_list = (nfapi_nr_ptrs_ports_t *)malloc_or_fail(2 * sizeof(nfapi_nr_ptrs_ports_t));
         pusch_pdu->pusch_ptrs.ptrs_ports_list[0].ptrs_re_offset = 0;
         pusch_pdu->maintenance_parms_v3.ldpcBaseGraph = get_BG(TBS, code_rate);
+        pusch_pdu->param_v4.numSpatialStreamIndices = conf.pusch_AntennaPorts;
+        memcpy(pusch_pdu->param_v4.spatialStreamIndices, conf.spatial_stream_index, sizeof(conf.spatial_stream_index));
 
         // if transform precoding is enabled
         if (transform_precoding == transformPrecoder_enabled) {
@@ -1303,7 +1311,7 @@ int main(int argc, char *argv[])
           srs_pdu->subcarrier_spacing = gNB->frame_parms.subcarrier_spacing;
           srs_pdu->num_ant_ports = n_tx == 4 ? 2 : n_tx == 2 ? 1 : 0;
           srs_pdu->sequence_id = 40;
-          srs_pdu->time_start_position = 0;
+          srs_pdu->time_start_position = gNB->frame_parms.symbols_per_slot - 1;
           srs_pdu->config_index = rrc_get_max_nr_csrs(srs_pdu->bwp_size, srs_pdu->bandwidth_index);
           srs_pdu->resource_type = NR_SRS_Resource__resourceType_PR_periodic;
           srs_pdu->t_srs = 1;
@@ -1313,9 +1321,16 @@ int main(int argc, char *argv[])
           srs_pdu->srs_parameters_v4.iq_representation = 1;
           srs_pdu->srs_parameters_v4.prg_size = 1;
           srs_pdu->srs_parameters_v4.num_total_ue_antennas = 1 << srs_pdu->num_ant_ports;
+          srs_pdu->srs_parameters_v4.num_ul_spatial_streams_ports = n_rx;
           srs_pdu->beamforming.num_prgs = m_SRS[srs_pdu->config_index];
           srs_pdu->beamforming.prg_size = 1;
         }
+
+        // Fill FAPI PUSCH groups for 1 UE
+        UL_tti_req->n_group = 1;
+        nfapi_nr_ul_tti_request_number_of_groups_t *group = &UL_tti_req->groups_list[0];
+        group->n_ue = 1;
+        group->ue_list[0].pdu_idx = 0;
 
         /* load FAPI into RX of L1 */
         nr_save_ul_tti_req(gNB, &Sched_INFO->UL_tti_req);
@@ -1362,7 +1377,8 @@ int main(int argc, char *argv[])
         pusch_config_pdu->pusch_data.harq_process_id = harq_pid;
         pusch_config_pdu->pusch_ptrs.ptrs_time_density = ptrs_time_density;
         pusch_config_pdu->pusch_ptrs.ptrs_freq_density = ptrs_freq_density;
-        pusch_config_pdu->pusch_ptrs.ptrs_ports_list = (nfapi_nr_ue_ptrs_ports_t *)malloc(2 * sizeof(nfapi_nr_ue_ptrs_ports_t));
+        pusch_config_pdu->pusch_ptrs.ptrs_ports_list =
+            (nfapi_nr_ue_ptrs_ports_t *)malloc_or_fail(2 * sizeof(nfapi_nr_ue_ptrs_ports_t));
         pusch_config_pdu->pusch_ptrs.ptrs_ports_list[0].ptrs_re_offset = 0;
         pusch_config_pdu->transform_precoding = transform_precoding;
         // if transform precoding is enabled
@@ -1399,7 +1415,7 @@ int main(int argc, char *argv[])
           srs_config_pdu->sequence_id = 40;
           srs_config_pdu->resource_type = NR_SRS_Resource__resourceType_PR_periodic;
           srs_config_pdu->t_srs = 1;
-          srs_config_pdu->time_start_position = 0;
+          srs_config_pdu->time_start_position = gNB->frame_parms.symbols_per_slot - 1;
         }
 
         for (int i = 0; i < (TBS / 8); i++)
@@ -1464,21 +1480,29 @@ int main(int argc, char *argv[])
             memcpy(data_start_ptr, s_interleaved[j], slot_length * 2 * sizeof(float));
           }
 
-#ifdef ENABLE_CUDA
+#ifdef CHANNEL_SIM_CUDA
           if (use_cuda) {
 #if defined(USE_UNIFIED_MEMORY)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 13000
+            struct cudaMemLocation deviceId;
+            deviceId.type = cudaMemLocationTypeDevice;
+            cudaGetDevice(&deviceId.id);
+            const int padding_len = UE2gNB->channel_length - 1;
+            const int padded_slot_length = slot_length + padding_len;
+            cudaMemPrefetchAsync(d_tx_sig, n_tx * padded_slot_length * 2 * sizeof(float), deviceId, 0, 0);
+#else		  
             int deviceId;
             cudaGetDevice(&deviceId);
             const int padding_len = UE2gNB->channel_length - 1;
             const int padded_slot_length = slot_length + padding_len;
             cudaMemPrefetchAsync(d_tx_sig, n_tx * padded_slot_length * 2 * sizeof(float), deviceId, 0);
 #endif
-
+#endif
             start_meas(&pipeline_stats);
             random_channel(UE2gNB, 0);
             int num_links = UE2gNB->nb_tx * UE2gNB->nb_rx;
             if (h_channel_coeffs == NULL) {
-              h_channel_coeffs = (float *)malloc(num_links * 256 * sizeof(float2));
+              h_channel_coeffs = (float *)malloc_or_fail(num_links * 256 * sizeof(float2));
             }
 
             for (int link = 0; link < num_links; link++) {
@@ -1514,7 +1538,7 @@ int main(int argc, char *argv[])
           } else
 #endif
           {
-            float **tx_sig_for_cpu = malloc(n_tx * sizeof(float *));
+            float **tx_sig_for_cpu = malloc_or_fail(n_tx * sizeof(float *));
             float *h_tx_ptr = (float *)h_tx_sig_pinned;
             const int padding_len = UE2gNB->channel_length - 1;
             const int padded_slot_length = slot_length + padding_len;
@@ -1560,7 +1584,7 @@ int main(int argc, char *argv[])
           was_symbol_used[i] = true;
         }
         nr_ofdm_demod_and_rx_rotation(rxdata,
-                                      gNB->common_vars.rxdataF[0],
+                                      gNB->common_vars.rxdataF,
                                       &gNB->frame_parms,
                                       gNB->frame_parms.nb_antennas_rx,
                                       slot,
@@ -1572,25 +1596,15 @@ int main(int argc, char *argv[])
 
         if (n_trials == 1 && round == 0) {
           LOG_M("rxsig0.m", "rx0", &rxdata[0][slot_offset], slot_length, 1, 1 | log_format);
-          LOG_M("rxsigF0.m", "rxsF0", gNB->common_vars.rxdataF[0][0], 14 * gNB->frame_parms.ofdm_symbol_size, 1, 1 | log_format);
+          LOG_M("rxsigF0.m", "rxsF0", gNB->common_vars.rxdataF[0], 14 * gNB->frame_parms.ofdm_symbol_size, 1, 1 | log_format);
           if (precod_nbr_layers > 1) {
             LOG_M("rxsig1.m", "rx1", &rxdata[1][slot_offset], slot_length, 1, 1);
-            LOG_M("rxsigF1.m", "rxsF1", gNB->common_vars.rxdataF[0][1], 14 * gNB->frame_parms.ofdm_symbol_size, 1, 1 | log_format);
+            LOG_M("rxsigF1.m", "rxsF1", gNB->common_vars.rxdataF[1], 14 * gNB->frame_parms.ofdm_symbol_size, 1, 1 | log_format);
             if (precod_nbr_layers == 4) {
               LOG_M("rxsig2.m", "rx2", &rxdata[2][slot_offset], slot_length, 1, 1);
               LOG_M("rxsig3.m", "rx3", &rxdata[3][slot_offset], slot_length, 1, 1);
-              LOG_M("rxsigF2.m",
-                    "rxsF2",
-                    gNB->common_vars.rxdataF[0][2],
-                    14 * gNB->frame_parms.ofdm_symbol_size,
-                    1,
-                    1 | log_format);
-              LOG_M("rxsigF3.m",
-                    "rxsF3",
-                    gNB->common_vars.rxdataF[0][3],
-                    14 * gNB->frame_parms.ofdm_symbol_size,
-                    1,
-                    1 | log_format);
+              LOG_M("rxsigF2.m", "rxsF2", gNB->common_vars.rxdataF[2], 14 * gNB->frame_parms.ofdm_symbol_size, 1, 1 | log_format);
+              LOG_M("rxsigF3.m", "rxsF3", gNB->common_vars.rxdataF[3], 14 * gNB->frame_parms.ofdm_symbol_size, 1, 1 | log_format);
             }
           }
         }
@@ -1620,9 +1634,9 @@ int main(int argc, char *argv[])
                   1,
                   1 | log_format);
 
-            LOG_M("rxsigF2_comp.m",
-                  "rxsF2_comp",
-                  &pusch_vars->rxdataF_comp[2][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
+            LOG_M("rxsigF1_comp.m",
+                  "rxsF1_comp",
+                  &pusch_vars->rxdataF_comp[1][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
                   nb_symb_sch * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size)),
                   1,
                   1 | log_format);
@@ -1648,21 +1662,15 @@ int main(int argc, char *argv[])
                   1,
                   1 | log_format);
 
-            LOG_M("rxsigF4_comp.m",
-                  "rxsF4_comp",
-                  &pusch_vars->rxdataF_comp[4][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
+            LOG_M("rxsigF2_comp.m",
+                  "rxsF2_comp",
+                  &pusch_vars->rxdataF_comp[2][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
                   nb_symb_sch * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size)),
                   1,
                   1 | log_format);
-            LOG_M("rxsigF8_comp.m",
-                  "rxsF8_comp",
-                  &pusch_vars->rxdataF_comp[8][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
-                  nb_symb_sch * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size)),
-                  1,
-                  1 | log_format);
-            LOG_M("rxsigF12_comp.m",
-                  "rxsF12_comp",
-                  &pusch_vars->rxdataF_comp[12][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
+            LOG_M("rxsigF3_comp.m",
+                  "rxsF3_comp",
+                  &pusch_vars->rxdataF_comp[3][start_symbol * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size))],
                   nb_symb_sch * (off + (NR_NB_SC_PER_RB * pusch_pdu->rb_size)),
                   1,
                   1 | log_format);
@@ -1833,9 +1841,22 @@ int main(int argc, char *argv[])
       printStatIndent3(&gNB->pusch_channel_estimation_antenna_processing_stats, "Antenna Processing time");
       printStatIndent2(&gNB->rx_pusch_init_stats, "RX PUSCH Initialization time");
       printStatIndent2(&gNB->rx_pusch_symbol_processing_stats, "RX PUSCH Symbol Processing time");
+      gNB->pusch_extraction_stats.trials = gNB->rx_pusch_symbol_processing_stats.trials;
+      printStatIndent3(&gNB->pusch_extraction_stats, "RX PUSCH extraction");
+      gNB->pusch_channel_compensation_stats.trials = gNB->rx_pusch_symbol_processing_stats.trials;
+      printStatIndent3(&gNB->pusch_channel_compensation_stats, "RX PUSCH channel compensation");
+      gNB->ulsch_llr_stats.trials = gNB->rx_pusch_symbol_processing_stats.trials;
+      printStatIndent3(&gNB->ulsch_llr_stats, "RX PUSCH LLR");
+      gNB->ulsch_layer_demapping_stats.trials = gNB->rx_pusch_symbol_processing_stats.trials;
+      printStatIndent3(&gNB->ulsch_layer_demapping_stats, "RX PUSCH layer demapping");
+      gNB->ulsch_unscrambling_stats.trials = gNB->rx_pusch_symbol_processing_stats.trials;
+      printStatIndent3(&gNB->ulsch_unscrambling_stats, "RX PUSCH unscrambling");
       printStatIndent(&gNB->ulsch_decoding_stats,"ULSCH total decoding time");
+      gNB->ts_deinterleave.trials = n_trials;
       printStatIndent2(&gNB->ts_deinterleave, "ULSCH segment deinterleaving time");
+      gNB->ts_rate_unmatch.trials = n_trials;
       printStatIndent2(&gNB->ts_rate_unmatch, "ULSCH segment rate matching time");
+      gNB->ts_ldpc_decode.trials = n_trials;
       printStatIndent2(&gNB->ts_ldpc_decode, "ULSCH segments decoding time");
       printStatIndent(&gNB->rx_srs_stats,"RX SRS time");
       printStatIndent2(&gNB->generate_srs_stats,"Generate SRS sequence time");
@@ -1904,7 +1925,12 @@ int main(int argc, char *argv[])
     fclose(uci_ulsch_matlab_vec);
 
   free_and_zero(UE->phy_sim_test_buf);
-#ifdef ENABLE_CUDA
+
+  free(nrPHY_vars_UE_g[0][0]);
+  free(nrPHY_vars_UE_g[0]);
+  free(nrPHY_vars_UE_g);
+
+#ifdef CHANNEL_SIM_CUDA
   free_cuda_chsim_buffers(use_cuda,
                           &d_tx_sig,
                           &d_intermediate_sig,

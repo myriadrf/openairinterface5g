@@ -11,9 +11,8 @@
 #include "lib/f1ap_ue_context.h"
 #include "f1ap_du_task.h"
 #include <openair3/ocp-gtpu/gtp_itf.h>
-
-//Fixme: Uniq dirty DU instance, by global var, datamodel need better management
-instance_t DUuniqInstance=0;
+#include "lib/f1ap_positioning.h"
+#include "f1ap_du_positioning.h"
 
 static instance_t du_create_gtpu_instance_to_cu(const f1ap_net_config_t *nc)
 {
@@ -121,7 +120,6 @@ void *F1AP_DU_task(void *arg)
         instance_t gtpInst = du_create_gtpu_instance_to_cu(nc);
         AssertFatal(gtpInst > 0, "cannot create DU F1-U GTP module\n");
         getCxt(myInstance)->gtpInst = gtpInst;
-        DUuniqInstance = gtpInst;
       } break;
 
       case F1AP_RESET_ACK:
@@ -185,6 +183,22 @@ void *F1AP_DU_task(void *arg)
 
       case F1AP_GNB_DU_CONFIGURATION_UPDATE:
         DU_send_gNB_DU_CONFIGURATION_UPDATE(assoc_id, &F1AP_GNB_DU_CONFIGURATION_UPDATE(msg));
+        break;
+
+      case F1AP_TRP_INFORMATION_RESP:
+        DU_send_TRP_INFORMATION_RESPONSE(assoc_id, &F1AP_TRP_INFORMATION_RESP(msg));
+        break;
+
+      case F1AP_POSITIONING_INFORMATION_RESP:
+        DU_send_POSITIONING_INFORMATION_RESPONSE(assoc_id, &F1AP_POSITIONING_INFORMATION_RESP(msg));
+        break;
+
+      case F1AP_POSITIONING_ACTIVATION_RESP:
+        DU_send_POSITIONING_ACTIVATION_RESPONSE(assoc_id, &F1AP_POSITIONING_ACTIVATION_RESP(msg));
+        break;
+
+      case F1AP_POSITIONING_MEASUREMENT_RESP:
+        DU_send_POSITIONING_MEASUREMENT_RESPONSE(assoc_id, &F1AP_POSITIONING_MEASUREMENT_RESP(msg));
         break;
 
       case TERMINATE_MESSAGE:

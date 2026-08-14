@@ -431,7 +431,7 @@ void nr_deinterleaving_ldpc(uint32_t E, uint8_t Qm, int16_t *e, int16_t *f)
 {
   switch (Qm) {
     case 2: {
-      AssertFatal(E % 2 == 0, "");
+      AssertFatal(E % 2 == 0, "E: %d", E);
       int16_t *e1 = e + (E / 2);
       int16_t *end = f + E - 1;
       while (f < end) {
@@ -440,7 +440,7 @@ void nr_deinterleaving_ldpc(uint32_t E, uint8_t Qm, int16_t *e, int16_t *f)
       }
     } break;
     case 4: {
-      AssertFatal(E % 4 == 0, "");
+      AssertFatal(E % 4 == 0, "E: %d", E);
       int16_t *e1 = e + (E / 4);
       int16_t *e2 = e1 + (E / 4);
       int16_t *e3 = e2 + (E / 4);
@@ -453,7 +453,7 @@ void nr_deinterleaving_ldpc(uint32_t E, uint8_t Qm, int16_t *e, int16_t *f)
       }
     } break;
     case 6: {
-      AssertFatal(E % 6 == 0, "");
+      AssertFatal(E % 6 == 0, "E: %d", E);
       int16_t *e1 = e + (E / 6);
       int16_t *e2 = e1 + (E / 6);
       int16_t *e3 = e2 + (E / 6);
@@ -470,7 +470,7 @@ void nr_deinterleaving_ldpc(uint32_t E, uint8_t Qm, int16_t *e, int16_t *f)
       }
     } break;
     case 8: {
-      AssertFatal(E % 8 == 0, "");
+      AssertFatal(E % 8 == 0, "E: %d", E);
       int16_t *e1 = e + (E / 8);
       int16_t *e2 = e1 + (E / 8);
       int16_t *e3 = e2 + (E / 8);
@@ -577,16 +577,20 @@ int nr_rate_matching_ldpc(uint32_t Tbslbrm,
   }
 
   while (k < E) { // case where we do repetitions (low mcs)
-    for (ind = 0; (ind < Ncb) && (k < E); ind++) {
-#ifdef RM_DEBUG
-      printf("RM_TX k%u Ind: %u (%d)\n", k, ind, d[ind]);
-#endif
-
-      if (ind == Foffset)
-        ind = F + Foffset; // skip filler bits
-
-      e[k++] = d[ind];
-
+    // chunk before filler: d[0 .. Foffset)
+    if (Foffset > 0) {
+      uint32_t n = min(Foffset, E - k);
+      memcpy(e + k, d, n);
+      k += n;
+      if (k >= E)
+        break;
+    }
+    // chunk after filler: d[Foffset+F .. Ncb)
+    uint32_t after = Ncb - Foffset - F;
+    if (after > 0) {
+      uint32_t n = min(after, E - k);
+      memcpy(e + k, d + Foffset + F, n);
+      k += n;
     }
   }
 

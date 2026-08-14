@@ -111,38 +111,53 @@ void handle_meas_timers(NR_UE_RRC_INST_t *rrc)
     rrcPerNB_t *nb = &rrc->perNB[i];
     l3_measurements_t *l3_measurements = &nb->l3_measurements;
 
-    bool ta2_expired = nr_timer_tick(&l3_measurements->TA2);
-    bool ta3_expired = nr_timer_tick(&l3_measurements->TA3);
-    if (ta2_expired && l3_measurements->trigger_quantity > 0) {
-      rrc_ue_generate_measurementReport(nb, rrc->ue_id);
-      l3_measurements->reports_sent = 1;
+    for (int meas_id = 0; meas_id < MAX_MEAS_ID; meas_id++) {
+      meas_report_params_t *params = &l3_measurements->meas_report[meas_id];
 
-      if (l3_measurements->reports_sent < l3_measurements->max_reports
-          && !nr_timer_is_active(&l3_measurements->periodic_report_timer)) {
-        nr_timer_setup(&l3_measurements->periodic_report_timer, l3_measurements->report_interval_ms, 10);
-        nr_timer_start(&l3_measurements->periodic_report_timer);
+      // Check if this measId is configured
+      if (nb->MeasId[meas_id] == NULL)
+        continue;
+
+      // Handle Event A2 timer expiry
+      bool ta2_expired = nr_timer_tick(&params->TA2);
+      if (ta2_expired && params->trigger_quantity > 0) {
+        rrc_ue_generate_measurementReport(nb, rrc->ue_id, meas_id);
+        params->reports_sent = 1;
+
+        if (params->reports_sent < params->max_reports && !nr_timer_is_active(&params->periodic_report_timer)) {
+          nr_timer_setup(&params->periodic_report_timer, params->report_interval_ms, 10);
+          nr_timer_start(&params->periodic_report_timer);
+        }
       }
-    }
 
-    if (ta3_expired && l3_measurements->trigger_quantity > 0) {
-      rrc_ue_generate_measurementReport(nb, rrc->ue_id);
-      l3_measurements->reports_sent = 1;
+      // Handle Event A3 timer expiry
+      bool ta3_expired = nr_timer_tick(&params->TA3);
+      if (ta3_expired && params->trigger_quantity > 0) {
+        rrc_ue_generate_measurementReport(nb, rrc->ue_id, meas_id);
+        params->reports_sent = 1;
 
-      if (l3_measurements->reports_sent < l3_measurements->max_reports
-          && !nr_timer_is_active(&l3_measurements->periodic_report_timer)) {
-        nr_timer_setup(&l3_measurements->periodic_report_timer, l3_measurements->report_interval_ms, 10);
-        nr_timer_start(&l3_measurements->periodic_report_timer);
+        if (params->reports_sent < params->max_reports && !nr_timer_is_active(&params->periodic_report_timer)) {
+          nr_timer_setup(&params->periodic_report_timer, params->report_interval_ms, 10);
+          nr_timer_start(&params->periodic_report_timer);
+        }
       }
-    }
 
-    bool periodic_expired = nr_timer_tick(&l3_measurements->periodic_report_timer);
-    if (periodic_expired && l3_measurements->reports_sent < l3_measurements->max_reports) {
-      rrc_ue_generate_measurementReport(nb, rrc->ue_id);
-      l3_measurements->reports_sent++;
-
-      if (l3_measurements->reports_sent < l3_measurements->max_reports) {
-        nr_timer_setup(&l3_measurements->periodic_report_timer, l3_measurements->report_interval_ms, 10);
-        nr_timer_start(&l3_measurements->periodic_report_timer);
+      // Handle periodical report
+      // Per TS 38.331 Section 5.5.4.1, initiate measurement reporting immediately
+      // after the quantity to be reported becomes available for the NR SpCell
+      bool meas_available = (params->rs_type == NR_NR_RS_Type_ssb) ? l3_measurements->serving_cell.ss_rsrp_dBm.init
+                                                                   : l3_measurements->serving_cell.csi_rsrp_dBm.init;
+      bool initial_condition = meas_available && params->trigger_quantity == 0 && params->reports_sent == 0
+                               && nr_timer_is_active(&params->periodic_report_timer);
+      bool periodic_condition =
+          nr_timer_tick(&params->periodic_report_timer) && params->reports_sent > 0 && params->reports_sent < params->max_reports;
+      if (initial_condition || periodic_condition) {
+        params->reports_sent++;
+        rrc_ue_generate_measurementReport(nb, rrc->ue_id, meas_id);
+        if (params->reports_sent < params->max_reports) {
+          nr_timer_setup(&params->periodic_report_timer, params->report_interval_ms, 10);
+          nr_timer_start(&params->periodic_report_timer);
+        }
       }
     }
   }

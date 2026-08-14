@@ -72,6 +72,7 @@ nfapi_vnf_p7_config_t *get_p7_vnf_config()
 }
 
 int vnf_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p4_p5_codec_config_t *codec) {
+  UNUSED(codec);
   //NFAPI_TRACE(NFAPI_TRACE_INFO, "vnf_pack_vendor_extension_tlv\n");
   nfapi_tl_t *tlv = (nfapi_tl_t *)ve;
 
@@ -93,6 +94,7 @@ int vnf_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8_t 
 
 int vnf_nr_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p4_p5_codec_config_t *codec)
 {
+  UNUSED(codec);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "vnf_pack_vendor_extension_tlv\n");
   nfapi_tl_t *tlv = (nfapi_tl_t *)ve;
 
@@ -111,6 +113,11 @@ int vnf_nr_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8
   return -1;
 }
 int vnf_unpack_vendor_extension_tlv(nfapi_tl_t *tl, uint8_t **ppReadPackedMessage, uint8_t *end, void **ve, nfapi_p4_p5_codec_config_t *codec) {
+  UNUSED(tl);
+  UNUSED(ppReadPackedMessage);
+  UNUSED(end);
+  UNUSED(ve);
+  UNUSED(codec);
   return -1;
 }
 int vnf_nr_unpack_vendor_extension_tlv(nfapi_tl_t *tl,
@@ -119,6 +126,11 @@ int vnf_nr_unpack_vendor_extension_tlv(nfapi_tl_t *tl,
                                        void **ve,
                                        nfapi_p4_p5_codec_config_t *codec)
 {
+  UNUSED(tl);
+  UNUSED(ppReadPackedMessage);
+  UNUSED(end);
+  UNUSED(ve);
+  UNUSED(codec);
   return -1;
 }
 void install_schedule_handlers(IF_Module_t *if_inst);
@@ -414,6 +426,7 @@ extern pthread_mutex_t nfapi_sync_mutex;
 extern int nfapi_sync_var;
 
 int phy_sync_indication(struct nfapi_vnf_p7_config *config, uint8_t sync) {
+  UNUSED(config);
   //NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] SYNC %s\n", sync==1 ? "ACHIEVED" : "LOST");
 
   if (sync==1 && nfapi_sync_var!=0) {
@@ -430,6 +443,8 @@ int phy_sync_indication(struct nfapi_vnf_p7_config *config, uint8_t sync) {
 
 
 int phy_subframe_indication(struct nfapi_vnf_p7_config *config, uint16_t phy_id, uint16_t sfn_sf) {
+  UNUSED(config);
+  UNUSED(phy_id);
   static uint8_t first_time = 1;
 
   if (first_time) {
@@ -452,6 +467,7 @@ int phy_subframe_indication(struct nfapi_vnf_p7_config *config, uint16_t phy_id,
 }
 
 int phy_rach_indication(struct nfapi_vnf_p7_config *config, nfapi_rach_indication_t *ind) {
+  UNUSED(config);
   LOG_D(MAC, "%s() NFAPI SFN/SF:%d number_of_preambles:%u\n", __FUNCTION__, NFAPI_SFNSF2DEC(ind->sfn_sf), ind->rach_indication_body.number_of_preambles);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
   LOG_D(MAC, "[VNF] RACH_IND eNB:%p sfn_sf:%d number_of_preambles:%d\n", eNB, NFAPI_SFNSF2DEC(ind->sfn_sf), ind->rach_indication_body.number_of_preambles);
@@ -543,6 +559,7 @@ int phy_nr_uci_indication(nfapi_nr_uci_indication_t *ind)
 }
 
 int phy_harq_indication(struct nfapi_vnf_p7_config *config, nfapi_harq_indication_t *ind) {
+  UNUSED(config);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
   LOG_D(MAC, "%s() NFAPI SFN/SF:%d number_of_harqs:%u\n", __FUNCTION__, NFAPI_SFNSF2DEC(ind->sfn_sf), ind->harq_indication_body.number_of_harqs);
   AssertFatal(pthread_mutex_lock(&eNB->UL_INFO_mutex)==0, "Mutex lock failed");
@@ -576,6 +593,7 @@ int phy_harq_indication(struct nfapi_vnf_p7_config *config, nfapi_harq_indicatio
 }
 
 int phy_crc_indication(struct nfapi_vnf_p7_config *config, nfapi_crc_indication_t *ind) {
+  UNUSED(config);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
   AssertFatal(pthread_mutex_lock(&eNB->UL_INFO_mutex)==0, "Mutex lock failed");
   if(NFAPI_MODE == NFAPI_MODE_VNF){
@@ -646,6 +664,7 @@ int phy_nr_crc_indication(nfapi_nr_crc_indication_t *ind)
 }
 
 int phy_rx_indication(struct nfapi_vnf_p7_config *config, nfapi_rx_indication_t *ind) {
+  UNUSED(config);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
 
   if (ind->rx_indication_body.number_of_pdus==0) {
@@ -747,12 +766,15 @@ int phy_nr_rx_data_indication(nfapi_nr_rx_data_indication_t *ind)
 }
 
 int phy_srs_indication(struct nfapi_vnf_p7_config *config, nfapi_srs_indication_t *ind) {
+  UNUSED(config);
+  UNUSED(ind);
   // vnf_p7_info* p7_vnf = (vnf_p7_info*)(config->user_data);
   //mac_srs_ind(p7_vnf->mac, ind);
   return 1;
 }
 
 int phy_sr_indication(struct nfapi_vnf_p7_config *config, nfapi_sr_indication_t *ind) {
+  UNUSED(config);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
   LOG_D(MAC, "%s() NFAPI SFN/SF:%d srs:%d\n", __FUNCTION__, NFAPI_SFNSF2DEC(ind->sfn_sf), ind->sr_indication_body.number_of_srs);
   AssertFatal(pthread_mutex_lock(&eNB->UL_INFO_mutex)==0, "Mutex lock failed");
@@ -827,6 +849,7 @@ static void analyze_cqi_pdus_for_duplicates(nfapi_cqi_indication_t *ind)
 }
 
 int phy_cqi_indication(struct nfapi_vnf_p7_config *config, nfapi_cqi_indication_t *ind) {
+  UNUSED(config);
   // vnf_p7_info* p7_vnf = (vnf_p7_info*)(config->user_data);
   //mac_cqi_ind(p7_vnf->mac, ind);
   struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
@@ -947,21 +970,33 @@ int phy_nr_srs_indication(nfapi_nr_srs_indication_t *ind)
     handle_nr_srs_measurements(0, ind->sfn, ind->slot, &ind->pdu_list[i]);
   return 1;
 }
+
+int phy_nr_srs_toa_vendor_ext_indication(nfapi_nr_srs_toa_vendor_ext_indication_t *ind)
+{
+  handle_nr_srs_toa_vendor_ext_measurements(0, ind->sfn, ind->slot, ind->num_ta, ind->ta_offset_nsec, ind->rnti);
+  return 1;
+}
 //end NR phy indication
 
 int phy_lbt_dl_indication(struct nfapi_vnf_p7_config *config, nfapi_lbt_dl_indication_t *ind) {
+  UNUSED(config);
+  UNUSED(ind);
   // vnf_p7_info* p7_vnf = (vnf_p7_info*)(config->user_data);
   //mac_lbt_dl_ind(p7_vnf->mac, ind);
   return 1;
 }
 
 int phy_nb_harq_indication(struct nfapi_vnf_p7_config *config, nfapi_nb_harq_indication_t *ind) {
+  UNUSED(config);
+  UNUSED(ind);
   // vnf_p7_info* p7_vnf = (vnf_p7_info*)(config->user_data);
   //mac_nb_harq_ind(p7_vnf->mac, ind);
   return 1;
 }
 
 int phy_nrach_indication(struct nfapi_vnf_p7_config *config, nfapi_nrach_indication_t *ind) {
+  UNUSED(config);
+  UNUSED(ind);
   // vnf_p7_info* p7_vnf = (vnf_p7_info*)(config->user_data);
   //mac_nrach_ind(p7_vnf->mac, ind);
   return 1;
@@ -998,6 +1033,7 @@ void vnf_trace(nfapi_trace_level_t nfapi_level, const char *message, ...) {
 
 int phy_vendor_ext(struct nfapi_vnf_p7_config *config, void *msg)
 {
+  UNUSED(config);
   if (((nfapi_p7_message_header_t *)msg)->message_id == P7_VENDOR_EXT_IND) {
     // vendor_ext_p7_ind* ind = (vendor_ext_p7_ind*)msg;
     // NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] vendor_ext (error_code:%d)\n", ind->error_code);
@@ -1010,6 +1046,7 @@ int phy_vendor_ext(struct nfapi_vnf_p7_config *config, void *msg)
 
 int phy_nr_vendor_ext(struct nfapi_vnf_p7_config *config, void *msg)
 {
+  UNUSED(config);
   if (((nfapi_nr_p7_message_header_t *)msg)->message_id == P7_VENDOR_EXT_IND) {
     // vendor_ext_p7_ind* ind = (vendor_ext_p7_ind*)msg;
     // NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] vendor_ext (error_code:%d)\n", ind->error_code);
@@ -1050,9 +1087,11 @@ void phy_nr_deallocate_p7_vendor_ext(void *header)
 }
 
 int phy_unpack_vendor_extension_tlv(nfapi_tl_t *tl, uint8_t **ppReadPackedMessage, uint8_t *end, void **ve, nfapi_p7_codec_config_t *codec) {
-  (void)tl;
-  (void)ppReadPackedMessage;
-  (void)ve;
+  UNUSED(tl);
+  UNUSED(ppReadPackedMessage);
+  UNUSED(end);
+  UNUSED(ve);
+  UNUSED(codec);
   return -1;
 }
 
@@ -1062,13 +1101,16 @@ int phy_nr_unpack_vendor_extension_tlv(nfapi_tl_t *tl,
                                        void **ve,
                                        nfapi_p7_codec_config_t *codec)
 {
-  (void)tl;
-  (void)ppReadPackedMessage;
-  (void)ve;
+  UNUSED(tl);
+  UNUSED(ppReadPackedMessage);
+  UNUSED(end);
+  UNUSED(ve);
+  UNUSED(codec);
   return -1;
 }
 
 int phy_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p7_codec_config_t *codec) {
+  UNUSED(codec);
   //NFAPI_TRACE(NFAPI_TRACE_INFO, "phy_pack_vendor_extension_tlv\n");
   nfapi_tl_t *tlv = (nfapi_tl_t *)ve;
 
@@ -1092,6 +1134,7 @@ int phy_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8_t 
 
 int phy_nr_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p7_codec_config_t *codec)
 {
+  UNUSED(codec);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "phy_pack_vendor_extension_tlv\n");
   nfapi_tl_t *tlv = (nfapi_tl_t *)ve;
 
@@ -1113,6 +1156,7 @@ int phy_nr_pack_vendor_extension_tlv(void *ve, uint8_t **ppWritePackedMsg, uint8
 }
 int phy_unpack_p7_vendor_extension(void *header, uint8_t **ppReadPackedMessage, uint8_t *end, nfapi_p7_codec_config_t *config)
 {
+  UNUSED(config);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_p7_message_header_t *)header)->message_id == P7_VENDOR_EXT_IND) {
     vendor_ext_p7_ind *req = (vendor_ext_p7_ind *)(header);
@@ -1126,6 +1170,7 @@ int phy_unpack_p7_vendor_extension(void *header, uint8_t **ppReadPackedMessage, 
 
 int phy_nr_unpack_p7_vendor_extension(void *header, uint8_t **ppReadPackedMessage, uint8_t *end, nfapi_p7_codec_config_t *config)
 {
+  UNUSED(config);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_nr_p7_message_header_t *)header)->message_id == P7_VENDOR_EXT_IND) {
     vendor_ext_p7_ind *req = (vendor_ext_p7_ind *)(header);
@@ -1139,6 +1184,7 @@ int phy_nr_unpack_p7_vendor_extension(void *header, uint8_t **ppReadPackedMessag
 
 int phy_pack_p7_vendor_extension(void *header, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p7_codec_config_t *config)
 {
+  UNUSED(config);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_p7_message_header_t *)header)->message_id == P7_VENDOR_EXT_REQ) {
     // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
@@ -1153,6 +1199,7 @@ int phy_pack_p7_vendor_extension(void *header, uint8_t **ppWritePackedMsg, uint8
 
 int phy_nr_pack_p7_vendor_extension(void *header, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p7_codec_config_t *config)
 {
+  UNUSED(config);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_nr_p7_message_header_t *)header)->message_id == P7_VENDOR_EXT_REQ) {
     // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
@@ -1167,6 +1214,7 @@ int phy_nr_pack_p7_vendor_extension(void *header, uint8_t **ppWritePackedMsg, ui
 
 int vnf_pack_p4_p5_vendor_extension(void *header, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p4_p5_codec_config_t *codec)
 {
+  UNUSED(codec);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_p4_p5_message_header_t *)header)->message_id == P5_VENDOR_EXT_REQ) {
     vendor_ext_p5_req *req = (vendor_ext_p5_req *)(header);
@@ -1179,6 +1227,7 @@ int vnf_pack_p4_p5_vendor_extension(void *header, uint8_t **ppWritePackedMsg, ui
 
 int vnf_nr_pack_p4_p5_vendor_extension(void *header, uint8_t **ppWritePackedMsg, uint8_t *end, nfapi_p4_p5_codec_config_t *codec)
 {
+  UNUSED(codec);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_nr_p4_p5_message_header_t *)header)->message_id == P5_VENDOR_EXT_REQ) {
     vendor_ext_p5_req *req = (vendor_ext_p5_req *)(header);
@@ -1229,6 +1278,7 @@ void *configure_nr_p7_vnf(void *ptr)
 #endif
   p7_vnf->config->nr_slot_indication = &phy_nr_slot_indication;
   p7_vnf->config->nr_srs_indication = &phy_nr_srs_indication;
+  p7_vnf->config->nr_srs_toa_vendor_ext_indication = &phy_nr_srs_toa_vendor_ext_indication;
   p7_vnf->config->malloc = &vnf_allocate;
   p7_vnf->config->free = &vnf_deallocate;
   p7_vnf->config->vendor_ext = &phy_nr_vendor_ext;
@@ -1304,6 +1354,7 @@ void *vnf_p7_thread_start(void *ptr) {
 }
 
 int pnf_nr_start_resp_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_nr_pnf_start_response_t *resp) {
+  UNUSED(resp);
   vnf_info *vnf = (vnf_info *)(config->user_data);
   vnf_p7_info *p7_vnf = vnf->p7_vnfs;
   pnf_info *pnf = vnf->pnfs;
@@ -1333,6 +1384,7 @@ int pnf_nr_start_resp_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_nr_pnf_st
 }
 
 int pnf_start_resp_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_pnf_start_response_t *resp) {
+  UNUSED(resp);
   vnf_info *vnf = (vnf_info *)(config->user_data);
   vnf_p7_info *p7_vnf = vnf->p7_vnfs;
   pnf_info *pnf = vnf->pnfs;
@@ -1525,22 +1577,29 @@ int start_resp_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_start_response_t
 }
 
 int nr_start_resp_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_nr_start_response_scf_t *resp) {
+  UNUSED(config);
   NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] Received NFAPI_START_RESP idx:%d phy_id:%d\n", p5_idx, resp->header.phy_id);
   return 0;
 }
 
 int nr_error_ind_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_nr_error_indication_scf_t *resp)
 {
+  UNUSED(config);
   NFAPI_TRACE(NFAPI_TRACE_WARN,
-              "[VNF] Received NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION idx:%d phy_id:%d\n",
-              p5_idx,
-              resp->header.phy_id);
-  NFAPI_TRACE(NFAPI_TRACE_WARN, "[VNF] Previous message 0x%02x resulted in an error on the PNF \n", resp->message_id);
-  NFAPI_TRACE(NFAPI_TRACE_WARN,
-              "[VNF] Received error code 0x%02x (%s)\n",
+              "[VNF] %4d.%2d Received NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION (error code 0x%02x, %s) idx:%d phy_id:%d (Previous message 0x%02x)\n",
+              resp->sfn,
+              resp->slot,
               resp->error_code,
-              error_ind_code_to_str(resp->error_code));
+              error_ind_code_to_str(resp->error_code),
+              p5_idx,
+              resp->header.phy_id,
+              resp->message_id);
   // TODO: add error handling to the VNF instead of only reporting the received error
+  // - for specific slot errors: possibly reset/stop L1
+  // - out of sync: could use Expected SFN/Slot to clean up state
+  // - error for DL_TTI/UL_TTI/UL_DCI/Tx_data: "should assume that the UE did
+  //   not receive data and control sent in this slot." => this is handled
+  //   implicitly by OAI
   return 0;
 }
 
@@ -1583,6 +1642,7 @@ int vendor_nr_ext_cb(nfapi_vnf_config_t *config, int p5_idx, void *msg)
 
 int vnf_unpack_p4_p5_vendor_extension(void *header, uint8_t **ppReadPackedMessage, uint8_t *end, nfapi_p4_p5_codec_config_t *codec)
 {
+  UNUSED(codec);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_p4_p5_message_header_t *)header)->message_id == P5_VENDOR_EXT_RSP) {
     vendor_ext_p5_rsp *req = (vendor_ext_p5_rsp *)(header);
@@ -1597,6 +1657,7 @@ int vnf_nr_unpack_p4_p5_vendor_extension(void *header,
                                          uint8_t *end,
                                          nfapi_p4_p5_codec_config_t *codec)
 {
+  UNUSED(codec);
   // NFAPI_TRACE(NFAPI_TRACE_INFO, "%s\n", __FUNCTION__);
   if (((nfapi_nr_p4_p5_message_header_t *)header)->message_id == P5_VENDOR_EXT_RSP) {
     vendor_ext_p5_rsp *req = (vendor_ext_p5_rsp *)(header);
@@ -1645,6 +1706,7 @@ static bool has_stop_ind = false;
 static bool waiting_stop_ind = false;
 int nr_stop_ind_cb(nfapi_vnf_config_t *config, int p5_idx, nfapi_nr_stop_indication_scf_t *resp)
 {
+  UNUSED(config);
   NFAPI_TRACE(NFAPI_TRACE_INFO, "[VNF] Received NFAPI_STOP_IND idx:%d phy_id:%d\n", p5_idx, resp->header.phy_id);
   has_stop_ind = true;
 #ifdef ENABLE_AERIAL
@@ -1697,10 +1759,13 @@ void stop_nr_nfapi_vnf()
   }
 }
 
-void configure_nr_nfapi_vnf(eth_params_t params)
+void configure_nr_nfapi_vnf(const char *vnf_addr, uint16_t vnf_p5_port, uint16_t vnf_p7_port)
 {
 #ifndef ENABLE_AERIAL
   nfapi_setmode(NFAPI_MODE_VNF);
+#else
+  UNUSED(vnf_addr);
+  UNUSED(vnf_p7_port);
 #endif
   vnf_info *vnf = calloc(1, sizeof(vnf_info));
   memset(vnf->p7_vnfs, 0, sizeof(vnf->p7_vnfs));
@@ -1709,22 +1774,21 @@ void configure_nr_nfapi_vnf(eth_params_t params)
   vnf->p7_vnfs[0].aperiodic_timing_enabled = 0;
   vnf->p7_vnfs[0].periodic_timing_period = 1;
   vnf->p7_vnfs[0].config = nfapi_vnf_p7_config_create();
-  AssertFatal(params.remote_portc == 0 && params.remote_portd == 0, "remote ports not used, use 0\n");
 #ifndef ENABLE_AERIAL
   NFAPI_TRACE(NFAPI_TRACE_INFO,
               "[VNF] %s() vnf->p7_vnfs[0].config:%p VNF ADDRESS:%s:%d\n",
               __FUNCTION__,
               vnf->p7_vnfs[0].config,
-              params.my_addr,
-              params.my_portc);
-  strcpy(vnf->p7_vnfs[0].local_addr, params.my_addr);
-  vnf->p7_vnfs[0].local_port = params.my_portd;
+              vnf_addr,
+              vnf_p5_port);
+  strcpy(vnf->p7_vnfs[0].local_addr, vnf_addr);
+  vnf->p7_vnfs[0].local_port = vnf_p7_port;
 #endif
   vnf->p7_vnfs[0].mac = malloc(sizeof(mac_t));
   config = nfapi_vnf_config_create();
   config->malloc = malloc;
   config->free = free;
-  config->vnf_p5_port = params.my_portc;
+  config->vnf_p5_port = vnf_p5_port;
   config->vnf_ipv4 = 1;
   config->vnf_ipv6 = 0;
   config->pnf_list = 0;
@@ -1822,6 +1886,8 @@ void configure_nr_nfapi_vnf(eth_params_t params)
 
 
 void configure_nfapi_vnf(char *vnf_addr, int vnf_p5_port, char *pnf_ip_addr, int pnf_p7_port, int vnf_p7_port) {
+  UNUSED(pnf_ip_addr);
+  UNUSED(pnf_p7_port);
   nfapi_setmode(NFAPI_MODE_VNF);
   vnf_info *vnf = calloc(1, sizeof(vnf_info));
   memset(vnf->p7_vnfs, 0, sizeof(vnf->p7_vnfs));

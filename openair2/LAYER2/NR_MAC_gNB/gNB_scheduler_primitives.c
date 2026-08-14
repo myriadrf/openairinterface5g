@@ -6,13 +6,14 @@
  * \brief primitives used by gNB for BCH, RACH, ULSCH, DLSCH scheduling
  */
 
+#include "nfapi_nr_interface_scf.h"
 #include <softmodem-common.h>
 #include "assertions.h"
 
 #include "NR_MAC_gNB/nr_mac_gNB.h"
 #include "NR_MAC_gNB/mac_proto.h"
+#include "common/utils/bits.h"
 #include "common/utils/LOG/log.h"
-#include "common/utils/nr/nr_common.h"
 #include "UTIL/OPT/opt.h"
 
 #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
@@ -92,7 +93,7 @@ static const uint16_t cqi_table3[16][2] = {{0, 0},
                                            {6, 6660},
                                            {6, 7720}};
 
-int get_ssbidx_from_beam(gNB_MAC_INST *mac, int beam_idx)
+int get_ssbidx_from_beam(const gNB_MAC_INST *mac, int beam_idx)
 {
   for (int i = 0; i < MAX_NUM_OF_SSB; i++)
     if (beam_idx == mac->beam_index_list[i])
@@ -109,14 +110,6 @@ uint8_t get_dl_nrOfLayers(const NR_UE_sched_ctrl_t *sched_ctrl, const nr_dci_for
     return 1;
   else
     return sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.ri + 1;
-}
-
-int get_ul_nrOfLayers(const NR_UE_sched_ctrl_t *sched_ctrl, const nr_dci_format_t dci_format)
-{
-  if(dci_format == NR_UL_DCI_FORMAT_0_0)
-    return 1;
-  else
-    return sched_ctrl->srs_feedback.ul_ri + 1;
 }
 
 // Table 5.2.2.2.1-3 and Table 5.2.2.2.1-4 in 38.214
@@ -431,7 +424,7 @@ static void get_coreset_rb_params(const NR_ControlResourceSet_t *coreset, uint16
   AssertFatal(!coreset->ext1 || !coreset->ext1->rb_Offset_r16, "rb-Offset in coreset configuration not handled\n");
   *n_rb = 0;
   *rb_start = 0;
-  
+
   for (int i = 0; i < 6; i++) {
     for (int t = 0; t < 8; t++) {
       if ((coreset->frequencyDomainResources.buf[i] >> (7 - t)) & 1) {
@@ -482,8 +475,7 @@ NR_sched_pdcch_t set_pdcch_structure(gNB_MAC_INST *gNB_mac,
   BIT_STRING_t *symbolsInSlot = ss->monitoringSymbolsWithinSlot;
   AssertFatal(symbolsInSlot->buf != NULL, "ss->monitoringSymbolsWithinSlot->buf is null\n");
 
-  // for SPS=14 8 MSBs in positions 13 downto 6
-  int monitoringSymbolsWithinSlot = (symbolsInSlot->buf[0] << (sps - 8)) | (symbolsInSlot->buf[1] >> (16 - sps));
+  int monitoringSymbolsWithinSlot = nr_pdcch_monitoring_symbols_mask(symbolsInSlot, sps);
 
   for (int i = 0; i < sps; i++) {
     if ((monitoringSymbolsWithinSlot >> (sps - 1 - i)) & 1) {
@@ -628,16 +620,63 @@ void fill_pdcch_vrb_map(gNB_MAC_INST *mac,
   }
 }
 
-static bool multiple_2_3_5(int rb)
+bool update_rb_mcs_tbs(NR_sched_pdsch_t *pdsch, uint32_t num_total_bytes, uint16_t *vrb_map)
 {
-  while (rb % 2 == 0)
-    rb /= 2;
-  while (rb % 3 == 0)
-    rb /= 3;
-  while (rb % 5 == 0)
-    rb /= 5;
+  const NR_tda_info_t *tda_info = &pdsch->tda_info;
 
-  return (rb == 1);
+  // Calculate number of PRB_DMRS
+  uint8_t N_PRB_DMRS = pdsch->dmrs_parms.N_PRB_DMRS;
+  LOG_D(MAC, "dlDmrsSymbPos %x\n", pdsch->dmrs_parms.dl_dmrs_symb_pos);
+  int mcsTableIdx = 0;
+  const uint16_t slbitmap = SL_to_bitmap(tda_info->startSymbolIndex, tda_info->nrOfSymbols);
+  int bwpSize = pdsch->bwp_info.bwpSize;
+  int bwpStart = pdsch->bwp_info.bwpStart;
+
+  for (pdsch->mcs = 0; pdsch->mcs < 10; pdsch->mcs++) {
+    pdsch->Qm = nr_get_Qm_dl(pdsch->mcs, mcsTableIdx);
+    pdsch->R = nr_get_code_rate_dl(pdsch->mcs, mcsTableIdx);
+    if (!nr_find_nb_rb(pdsch->Qm,
+                       pdsch->R,
+                       1, // no transform precoding for DL
+                       1, // single layer
+                       tda_info->nrOfSymbols,
+                       pdsch->dmrs_parms.N_PRB_DMRS * pdsch->dmrs_parms.N_DMRS_SLOT,
+                       num_total_bytes,
+                       1, // min_rbSize
+                       bwpSize, // max_rbSize,
+                       &pdsch->tb_size,
+                       &pdsch->rbSize))
+      continue;
+    int rbStart, rbSize;
+    if (get_rb_alloc(pdsch->rbSize, pdsch->rbSize, bwpStart, bwpSize, vrb_map, slbitmap, &rbStart, &rbSize)) {
+      pdsch->rbStart = rbStart;
+      pdsch->rbSize = rbSize;
+      pdsch->alloc_type = PDSCH_TYPE1;
+      break;
+    }
+  }
+
+  if (pdsch->mcs >= 10 || pdsch->tb_size < num_total_bytes) {
+    LOG_D(NR_MAC,
+          "Couldn't allocate enough resources for %d bytes in SIB PDSCH (rbStart %d, rbSize %d, bwpSize %d)\n",
+          num_total_bytes,
+          pdsch->rbStart,
+          pdsch->rbSize,
+          bwpSize);
+    return false;
+  }
+
+  LOG_D(NR_MAC,
+        "mcs=%i, startSymbolIndex = %i, nrOfSymbols = %i, rbSize = %i, TBS = %i, dmrs_length %d, N_PRB_DMRS = %d, mappingtype = %d\n",
+        pdsch->mcs,
+        tda_info->startSymbolIndex,
+        tda_info->nrOfSymbols,
+        pdsch->rbSize,
+        pdsch->tb_size,
+        pdsch->dmrs_parms.N_DMRS_SLOT,
+        N_PRB_DMRS,
+        tda_info->mapping_type);
+  return true;
 }
 
 bool nr_find_nb_rb(uint16_t Qm,
@@ -652,10 +691,6 @@ bool nr_find_nb_rb(uint16_t Qm,
                    uint32_t *tbs,
                    uint16_t *nb_rb)
 {
-  // for transform precoding only RB = 2^a_2 * 3^a_3 * 5^a_5 is allowed with a non-negative
-  while (transform_precoding == NR_PUSCH_Config__transformPrecoder_enabled && !multiple_2_3_5(nb_rb_max))
-    nb_rb_max--;
-
   /* is the maximum (not even) enough? */
   *nb_rb = nb_rb_max;
   *tbs = nr_compute_tbs(Qm, R, *nb_rb, nb_symb_sch, nb_dmrs_prb, 0, 0, nrOfLayers) >> 3;
@@ -677,11 +712,6 @@ bool nr_find_nb_rb(uint16_t Qm,
   int hi = nb_rb_max;
   int lo = nb_rb_min;
   for (int p = (hi + lo) / 2; lo + 1 < hi; p = (hi + lo) / 2) {
-    // for transform precoding only RB = 2^a_2 * 3^a_3 * 5^a_5 is allowed with a non-negative
-    while(transform_precoding == NR_PUSCH_Config__transformPrecoder_enabled &&
-          !multiple_2_3_5(p))
-      p++;
-
     // If by increasing p for transform precoding we already hit the high, break to avoid infinite loop
     if (p == hi)
       break;
@@ -700,6 +730,34 @@ bool nr_find_nb_rb(uint16_t Qm,
   *tbs = nr_compute_tbs(Qm, R, *nb_rb, nb_symb_sch, nb_dmrs_prb, 0, 0, nrOfLayers) >> 3;
   /* return whether we could allocate all bytes and stay below nb_rb_max */
   return *tbs >= bytes && *nb_rb <= nb_rb_max;
+}
+
+// Find the largest contiguous block of free RBs in the VRB map.
+// Returns the block size, or 0 if no free RB is found. out_start is set to the
+// first RB of the largest block when the returned size is nonzero.
+int find_largest_free_block(const uint16_t *vrb_map, uint16_t slbitmap, int bwp_start, int bwp_size, int *out_start)
+{
+  int best_start = 0, best_len = 0;
+  int cur_start = 0, cur_len = 0;
+  for (int rb = 0; rb < bwp_size; rb++) {
+    if (!(vrb_map[rb + bwp_start] & slbitmap)) {
+      if (cur_len == 0)
+        cur_start = rb;
+      cur_len++;
+    } else {
+      if (cur_len > best_len) {
+        best_start = cur_start;
+        best_len = cur_len;
+      }
+      cur_len = 0;
+    }
+  }
+  if (cur_len > best_len) {
+    best_start = cur_start;
+    best_len = cur_len;
+  }
+  *out_start = best_start;
+  return best_len;
 }
 
 bool get_rb_alloc(int rbSize_min,
@@ -753,13 +811,13 @@ const NR_DMRS_UplinkConfig_t *get_DMRS_UplinkConfig(const NR_PUSCH_Config_t *pus
 NR_pusch_dmrs_t get_ul_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
                                    const NR_UE_UL_BWP_t *ul_bwp,
                                    const NR_tda_info_t *tda_info,
-                                   const int Layers)
+                                   const int Layers,
+                                   const uint16_t dmrs_ports,
+                                   const uint8_t cdm_groups)
 {
   NR_pusch_dmrs_t dmrs = {0};
-  if (ul_bwp->transform_precoding && Layers < 3)
-    dmrs.num_dmrs_cdm_grps_no_data = ul_bwp->dci_format == NR_UL_DCI_FORMAT_0_1 || tda_info->nrOfSymbols <= 2 ? 1 : 2;
-  else
-    dmrs.num_dmrs_cdm_grps_no_data = 2;
+  dmrs.dmrs_ports = (dmrs_ports != 0) ? dmrs_ports : (uint16_t)((1 << Layers) - 1);
+  dmrs.num_dmrs_cdm_grps_no_data = (cdm_groups > 0) ? cdm_groups : 2;
 
   const NR_DMRS_UplinkConfig_t *NR_DMRS_UplinkConfig = get_DMRS_UplinkConfig(ul_bwp->pusch_Config, tda_info);
   dmrs.ptrsConfig = NR_DMRS_UplinkConfig
@@ -811,52 +869,57 @@ NR_pusch_dmrs_t get_ul_dmrs_params(const NR_ServingCellConfigCommon_t *scc,
 
 #define BLER_UPDATE_FRAME 10
 #define BLER_FILTER 0.9f
-int get_mcs_from_bler(const NR_bler_options_t *bler_options,
-                      const NR_mac_dir_stats_t *stats,
-                      NR_bler_stats_t *bler_stats,
-                      int max_mcs,
-                      frame_t frame)
+int nr_adapt_mcs_from_bler(int current_mcs, int min_mcs, int max_mcs, float bler, float bler_lower, float bler_upper, int num_sched)
+{
+  int mcs = current_mcs;
+  if (bler < bler_lower && mcs < max_mcs && num_sched > 3)
+    mcs++;
+  else if (bler > bler_upper || num_sched <= 3) // above threshold or no activity
+    mcs--;
+  return max(min_mcs, min(mcs, max_mcs));
+}
+
+bool update_bler_stats(const NR_bler_options_t *bler_options,
+                       const NR_mac_dir_stats_t *stats,
+                       NR_bler_stats_t *bler_stats,
+                       frame_t frame)
 {
   int diff = frame - bler_stats->last_frame;
   if (diff < 0) // wrap around
     diff += 1024;
 
-  max_mcs = min(max_mcs, bler_options->max_mcs);
-  const uint8_t old_mcs = min(bler_stats->mcs, max_mcs);
   if (diff < BLER_UPDATE_FRAME)
-    return old_mcs; // no update
+    return false;
 
-  // last update is longer than x frames ago
   const int num_dl_sched = (int)(stats->rounds[0] - bler_stats->rounds[0]);
   const int num_dl_retx = (int)(stats->rounds[1] - bler_stats->rounds[1]);
-  const float bler_window = num_dl_sched > 0 ? (float) num_dl_retx / num_dl_sched : bler_stats->bler;
+  const float bler_window = num_dl_sched > 0 ? (float)num_dl_retx / num_dl_sched : bler_stats->bler;
   bler_stats->bler = BLER_FILTER * bler_stats->bler + (1 - BLER_FILTER) * bler_window;
 
-  int new_mcs = old_mcs;
-  if (bler_stats->bler < bler_options->lower && old_mcs < max_mcs && num_dl_sched > 3)
-    new_mcs += 1;
-  else if (bler_stats->bler > bler_options->upper || num_dl_sched <= 3) // above threshold or no activity
-    new_mcs -= 1;
-  // else we are within threshold boundaries
-
-  new_mcs = max(new_mcs, bler_options->min_mcs);
   bler_stats->last_frame = frame;
-  bler_stats->mcs = new_mcs;
+  bler_stats->last_num_sched = num_dl_sched;
   memcpy(bler_stats->rounds, stats->rounds, sizeof(stats->rounds));
-  LOG_D(MAC, "frame %4d MCS %d -> %d (num_dl_sched %d, num_dl_retx %d, BLER wnd %.3f avg %.6f)\n",
-        frame, old_mcs, new_mcs, num_dl_sched, num_dl_retx, bler_window, bler_stats->bler);
-  return new_mcs;
+  LOG_D(MAC,
+        "frame %4d BLER update (num_sched %d, num_retx %d, BLER wnd %.3f avg %.6f)\n",
+        frame,
+        num_dl_sched,
+        num_dl_retx,
+        bler_window,
+        bler_stats->bler);
+  return true;
 }
 
 nfapi_nr_dl_dci_pdu_t *prepare_dci_pdu(nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_pdu,
                                        const NR_ServingCellConfigCommon_t *scc,
                                        const NR_SearchSpace_t *ss,
                                        const NR_ControlResourceSet_t *coreset,
+                                       const uint16_t *spatial_stream_idx,
                                        int aggregation_level,
                                        int cce_index,
                                        int beam_index,
                                        int rnti)
 {
+  DevAssert(pdcch_pdu->numDlDci < MAX_DCI_CORESET);
   nfapi_nr_dl_dci_pdu_t *dci_pdu = &pdcch_pdu->dci_pdu[pdcch_pdu->numDlDci];
   dci_pdu->RNTI = rnti;
   dci_pdu->AggregationLevel = aggregation_level;
@@ -878,11 +941,63 @@ nfapi_nr_dl_dci_pdu_t *prepare_dci_pdu(nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_
   dci_pdu->powerControlOffsetSS = 1;
   dci_pdu->precodingAndBeamforming.num_prgs = 1;
   dci_pdu->precodingAndBeamforming.prg_size = N_rb;
-  dci_pdu->precodingAndBeamforming.dig_bf_interfaces = 1;
   dci_pdu->precodingAndBeamforming.prgs_list[0].pm_idx = 0;
+
+  // Spatial stream indexing for MU-MIMO
+  const int num_ant_ports_per_dci = 1; // Only one stream per DCI for now
+  pdcch_pdu->param_v4.numSpatialStreams = (pdcch_pdu->numDlDci + 1 /*count this dci too*/) * num_ant_ports_per_dci;
+  for (uint_fast16_t i = 0; i < num_ant_ports_per_dci; i++) {
+    pdcch_pdu->param_v4.dci_spatialStreamIndices[pdcch_pdu->numDlDci * num_ant_ports_per_dci + i].dci_index = pdcch_pdu->numDlDci;
+    // Map the spatial stream index from the corresponding PDSCH signal
+    pdcch_pdu->param_v4.dci_spatialStreamIndices[pdcch_pdu->numDlDci * num_ant_ports_per_dci + i].spatial_stream_index =
+        spatial_stream_idx[i];
+  }
+  dci_pdu->precodingAndBeamforming.dig_bf_interfaces = num_ant_ports_per_dci;
   dci_pdu->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = beam_index;
   return dci_pdu;
 }
+
+// See Section 5.1.2.2.1 of 38.214
+static uint32_t bitmap_to_rbg_allocation(const uint8_t *rbBitmap, const NR_UE_DL_BWP_t *dl_BWP)
+{
+  AssertFatal(dl_BWP && dl_BWP->pdsch_Config, "DL BWP and PDSCH_config must be configured for Type0 PDSCH allocation\n");
+  int N_RBG = getNRBG(dl_BWP->BWPSize, dl_BWP->BWPStart, dl_BWP->pdsch_Config->rbg_Size);
+  int P = getRBGSize(dl_BWP->BWPSize, dl_BWP->pdsch_Config->rbg_Size);
+  uint32_t rbg_bitmap = 0;
+  for (int i = 0; i < N_RBG; i++) {
+    // compute start and size of this RBG
+    // LSB of byte 0 of rbBitmap represents VRB 0 per SCF document (assuming it means CRB0)
+    int rbg_start, rbg_sz;
+    if (i == 0) {
+      rbg_start = dl_BWP->BWPStart;
+      rbg_sz = P - (dl_BWP->BWPStart % P);
+    } else if (i == N_RBG - 1) {
+      rbg_start = dl_BWP->BWPStart + P - (dl_BWP->BWPStart % P) + (i - 1) * P;
+      int tmp = (dl_BWP->BWPStart + dl_BWP->BWPSize) % P;
+      rbg_sz = tmp ? tmp : P;
+    } else {
+      rbg_start = dl_BWP->BWPStart + P - (dl_BWP->BWPStart % P) + (i - 1) * P;
+      rbg_sz = P;
+    }
+    // check all RBs in this RBG are either all set or all clear
+    int first_rb_set = (rbBitmap[rbg_start / 8] >> (rbg_start % 8)) & 1;
+    for (int rb = rbg_start + 1; rb < rbg_start + rbg_sz; rb++) {
+      int rb_set = (rbBitmap[rb / 8] >> (rb % 8)) & 1;
+      AssertFatal(rb_set == first_rb_set,
+                 "RB bitmap is not compatible with RBG size %d: RBG %d is partially allocated (PRB %d differs from RB start %d)\n",
+                  P,
+                  i,
+                  rb,
+                  rbg_start);
+    }
+    int allocated = first_rb_set;
+    // The order of RBG bitmap is such that RBG 0 is mapped to MSB
+    if (allocated)
+      rbg_bitmap |= (1 << (N_RBG - 1 - i));
+  }
+  return rbg_bitmap;
+}
+
 
 dci_pdu_rel15_t prepare_dci_dl_payload(const gNB_MAC_INST *gNB_mac,
                                        const NR_UE_info_t *UE,
@@ -912,20 +1027,31 @@ dci_pdu_rel15_t prepare_dci_dl_payload(const gNB_MAC_INST *gNB_mac,
     else
       riv_bwp = UE->sc_info.initial_dl_BWPSize;
   }
-  dci_payload.frequency_domain_assignment.val = PRBalloc_to_locationandbandwidth0(pdsch_pdu->rbSize, pdsch_pdu->rbStart, riv_bwp);
+  if (sched_pdsch->alloc_type == PDSCH_TYPE1)
+    dci_payload.frequency_domain_assignment.val = PRBalloc_to_locationandbandwidth0(pdsch_pdu->rbSize, pdsch_pdu->rbStart, riv_bwp);
+  else
+    dci_payload.frequency_domain_assignment.val = bitmap_to_rbg_allocation(sched_pdsch->rbBitmap, dl_BWP);
   if (rnti_type == TYPE_SI_RNTI_) {
     dci_payload.system_info_indicator = !is_sib1;
     return dci_payload;
   }
+
   if (rnti_type == TYPE_RA_RNTI_) {
     dci_payload.tb_scaling = tb_scaling;
     return dci_payload;
   }
 
-  const NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
+  if (rnti_type == TYPE_P_RNTI_) {
+    /* Paging DCI 1_0: P-RNTI has no UE-specific HARQ fields. */
+    dci_payload.tb_scaling = tb_scaling;
+    return dci_payload;
+  }
+
   dci_payload.dmrs_sequence_initialization.val = pdsch_pdu->SCID;
   dci_payload.antenna_ports.val = sched_pdsch->dmrs_parms.dmrs_ports_id;
   dci_payload.tpc = tpc;
+
+  const NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   const NR_UE_harq_t *harq = &sched_ctrl->harq_processes[harq_pid];
   AssertFatal(harq, "HARQ process should be available for DCI with RNTI %s\n", rnti_types(rnti_type));
   dci_payload.harq_pid.val = harq_pid;
@@ -1201,6 +1327,17 @@ static uint32_t compute_precoding_information(NR_PUSCH_Config_t *pusch_Config,
   return val;
 }
 
+static uint8_t get_pusch_front_load_symb(const nfapi_nr_pusch_pdu_t *pusch_pdu)
+{
+  // Detect if the scheduled DMRS uses 1 or 2 front-loaded symbols
+  // Consecutive bits signify a double-symbol DMRS
+  for (int i = 0; i < NR_SYMBOLS_PER_SLOT - 1; i++) {
+    if (((pusch_pdu->ul_dmrs_symb_pos >> i) & 0x3) == 0x3)
+      return 2;
+  }
+  return 1;
+}
+
 void config_uldci(const NR_UE_ServingCell_Info_t *sc_info,
                   const nfapi_nr_pusch_pdu_t *pusch_pdu,
                   dci_pdu_rel15_t *dci_pdu_rel15,
@@ -1261,9 +1398,25 @@ void config_uldci(const NR_UE_ServingCell_Info_t *sc_info,
                                                                                &pusch_pdu->nrOfLayers,
                                                                                tpmi);
 
-      // antenna_ports.val = 0 for transform precoder is disabled, dmrs-Type=1, maxLength=1, Rank=1/2/3/4
       // Antenna Ports
-      dci_pdu_rel15->antenna_ports.val = 0;
+      uint8_t front_load_symb = get_pusch_front_load_symb(pusch_pdu);
+      int antenna_ports_val = get_dci_antenna_ports_val(pusch_pdu->nrOfLayers,
+                                                        pusch_pdu->dmrs_ports,
+                                                        pusch_pdu->num_dmrs_cdm_grps_no_data,
+                                                        pusch_pdu->dmrs_config_type,
+                                                        front_load_symb,
+                                                        ul_bwp->transform_precoding);
+      if (antenna_ports_val < 0) {
+        LOG_E(NR_MAC,
+              "No DCI antenna_ports entry for rank=%d ports=0x%04x cdm=%d type=%d front load symbols %d\n",
+              pusch_pdu->nrOfLayers,
+              pusch_pdu->dmrs_ports,
+              pusch_pdu->num_dmrs_cdm_grps_no_data,
+              pusch_pdu->dmrs_config_type,
+              front_load_symb);
+        antenna_ports_val = 0;
+      }
+      dci_pdu_rel15->antenna_ports.val = (uint32_t)antenna_ports_val;
 
       // DMRS sequence initialization
       dci_pdu_rel15->dmrs_sequence_initialization.val = pusch_pdu->scid;
@@ -1348,7 +1501,10 @@ void nr_configure_pucch(nfapi_nr_pucch_pdu_t *pucch_pdu,
                         uint16_t O_ack,
                         uint8_t O_sr,
                         int r_pucch,
-                        nr_beam_mode_t beam_mode)
+                        nr_beam_mode_t beam_mode,
+                        uint16_t ant_port_start,
+                        uint16_t *ssi,
+                        uint16_t num_ant)
 {
   NR_PUCCH_Resource_t *pucchres;
   NR_PUCCH_FormatConfig_t *pucchfmt;
@@ -1456,8 +1612,7 @@ void nr_configure_pucch(nfapi_nr_pucch_pdu_t *pucch_pdu,
             pucch_pdu->start_symbol_index = pucchres->format.choice.format2->startingSymbolIndex;
             pucch_pdu->data_scrambling_id = pusch_id ? *pusch_id : *scc->physCellId;
             pucch_pdu->dmrs_scrambling_id = id0 ? *id0 : *scc->physCellId;
-            pucch_pdu->prb_size = compute_pucch_prb_size(2,
-                                                         pucchres->format.choice.format2->nrofPRBs,
+            pucch_pdu->prb_size = compute_pucch_prb_size(pucchres->format.choice.format2->nrofPRBs,
                                                          O_csi,
                                                          O_ack,
                                                          O_sr,
@@ -1482,8 +1637,7 @@ void nr_configure_pucch(nfapi_nr_pucch_pdu_t *pucch_pdu,
               pucch_pdu->add_dmrs_flag = pucchfmt->additionalDMRS ? 1 : 0;
             }
             int f3_dmrs_symbols = get_f3_dmrs_symbols(pucchres, pucch_Config);
-            pucch_pdu->prb_size = compute_pucch_prb_size(3,
-                                                         pucchres->format.choice.format3->nrofPRBs,
+            pucch_pdu->prb_size = compute_pucch_prb_size(pucchres->format.choice.format3->nrofPRBs,
                                                          O_csi,
                                                          O_ack,
                                                          O_sr,
@@ -1562,6 +1716,9 @@ void nr_configure_pucch(nfapi_nr_pucch_pdu_t *pucch_pdu,
   pucch_pdu->beamforming.dig_bf_interface = 1;
   const uint16_t fapi_beam = convert_to_fapi_beam(UE->UE_beam_index, beam_mode);
   pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = fapi_beam;
+  pucch_pdu->param_v4.numSpatialStreamIndices = num_ant;
+  for (int i = 0; i < num_ant; i++)
+    pucch_pdu->param_v4.spatialStreamIndices[i] = ssi[ant_port_start + i];
 }
 
 void set_r_pucch_parms(int rsetindex,
@@ -1586,6 +1743,7 @@ static void prepare_dci_X1(const NR_UE_ServingCell_Info_t *servingCellInfo,
                            const NR_UE_DL_BWP_t *current_BWP,
                            const NR_ControlResourceSet_t *coreset,
                            dci_pdu_rel15_t *dci_pdu_rel15,
+                           int srs_request,
                            nr_dci_format_t format)
 {
   const NR_PDSCH_Config_t *pdsch_Config = current_BWP ? current_BWP->pdsch_Config : NULL;
@@ -1601,7 +1759,7 @@ static void prepare_dci_X1(const NR_UE_ServingCell_Info_t *servingCellInfo,
       if (servingCellInfo->supplementaryUplink != NULL)
         AssertFatal(1==0,"Supplementary Uplink currently not supported\n");
       // SRS request
-      dci_pdu_rel15->srs_request.val = 0;
+      dci_pdu_rel15->srs_request.val = srs_request;
       dci_pdu_rel15->ulsch_indicator = 1;
       break;
     case NR_DL_DCI_FORMAT_1_1:
@@ -1662,6 +1820,7 @@ void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
                         dci_pdu_rel15_t *dci_pdu_rel15,
                         int dci_format,
                         int rnti_type,
+                        int srs_request,
                         NR_SearchSpace_t *ss,
                         NR_ControlResourceSet_t *coreset,
                         long pdsch_HARQ_ACK_Codebook,
@@ -1730,7 +1889,7 @@ void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
   pdcch_dci_pdu->PayloadSizeBits = dci_size;
   AssertFatal(dci_size <= 64, "DCI sizes above 64 bits not yet supported");
   if (dci_format == NR_DL_DCI_FORMAT_1_1 || dci_format == NR_UL_DCI_FORMAT_0_1)
-    prepare_dci_X1(servingCellInfo, current_DL_BWP, coreset, dci_pdu_rel15, dci_format);
+    prepare_dci_X1(servingCellInfo, current_DL_BWP, coreset, dci_pdu_rel15, srs_request, dci_format);
 
   /// Payload generation
   switch (dci_format) {
@@ -1883,27 +2042,33 @@ void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
         break;
 
       case TYPE_P_RNTI_:
-        // Short Messages Indicator – 2 bits
-        for (int i = 0; i < 2; i++)
-          *dci_pdu |= (((uint64_t)dci_pdu_rel15->short_messages_indicator >> (1 - i)) & 1) << (dci_size - pos++);
-        // Short Messages – 8 bits
-        for (int i = 0; i < 8; i++)
-          *dci_pdu |= (((uint64_t)dci_pdu_rel15->short_messages >> (7 - i)) & 1) << (dci_size - pos++);
-        // Freq domain assignment 0-16 bit
+        /* TS 38.212 §7.3.1.2.1: pack MSB-first field groups. Per-bit placement shifts every
+         * field after SMI/short messages by one bit. */
+        *dci_pdu |= (dci_pdu_rel15->short_messages_indicator & 0x3) * (1ULL << (dci_size - pos - 2));
+        pos += 2;
+        *dci_pdu |= (dci_pdu_rel15->short_messages & 0xff) * (1ULL << (dci_size - pos - 8));
+        pos += 8;
         fsize = (int)ceil(log2((N_RB * (N_RB + 1)) >> 1));
-        for (int i = 0; i < fsize; i++)
-          *dci_pdu |= (((uint64_t)dci_pdu_rel15->frequency_domain_assignment.val >> (fsize - i - 1)) & 1) << (dci_size - pos++);
-        // Time domain assignment 4 bit
-        for (int i = 0; i < 4; i++)
-          *dci_pdu |= (((uint64_t)dci_pdu_rel15->time_domain_assignment.val >> (3 - i)) & 1) << (dci_size - pos++);
-        // VRB to PRB mapping 1 bit
-        *dci_pdu |= ((uint64_t)dci_pdu_rel15->vrb_to_prb_mapping.val & 1) << (dci_size - pos++);
-        // MCS 5 bit
-        for (int i = 0; i < 5; i++)
-          *dci_pdu |= (((uint64_t)dci_pdu_rel15->mcs >> (4 - i)) & 1) << (dci_size - pos++);
-        // TB scaling 2 bit
-        for (int i = 0; i < 2; i++)
-          *dci_pdu |= (((uint64_t)dci_pdu_rel15->tb_scaling >> (1 - i)) & 1) << (dci_size - pos++);
+        *dci_pdu |= (dci_pdu_rel15->frequency_domain_assignment.val & ((1U << fsize) - 1)) * (1ULL << (dci_size - pos - fsize));
+        pos += fsize;
+        *dci_pdu |= (dci_pdu_rel15->time_domain_assignment.val & 0xf) * (1ULL << (dci_size - pos - 4));
+        pos += 4;
+        *dci_pdu |= (dci_pdu_rel15->vrb_to_prb_mapping.val & 1) * (1ULL << (dci_size - pos - 1));
+        pos += 1;
+        *dci_pdu |= (dci_pdu_rel15->mcs & 0x1f) * (1ULL << (dci_size - pos - 5));
+        pos += 5;
+        *dci_pdu |= (dci_pdu_rel15->tb_scaling & 0x3) * (1ULL << (dci_size - pos - 2));
+        pos += 2;
+        LOG_I(NR_MAC,
+              "P-RNTI DCI TX packed: dci_size=%d payload=0x%lx SMI=%u short_msg=0x%02x FDA=%u TDA=%u mcs=%u tb_scaling=%u\n",
+              dci_size,
+              *dci_pdu,
+              dci_pdu_rel15->short_messages_indicator,
+              dci_pdu_rel15->short_messages,
+              dci_pdu_rel15->frequency_domain_assignment.val,
+              dci_pdu_rel15->time_domain_assignment.val,
+              dci_pdu_rel15->mcs,
+              dci_pdu_rel15->tb_scaling);
         break;
 
       case TYPE_SI_RNTI_:
@@ -2323,11 +2488,11 @@ int get_spf(nfapi_nr_config_request_scf_t *cfg) {
   AssertFatal(mu>=0&&mu<4,"Illegal scs %d\n",mu);
 
   return(10 * (1<<mu));
-} 
+}
 
 int to_absslot(nfapi_nr_config_request_scf_t *cfg,int frame,int slot) {
 
-  return(get_spf(cfg)*frame) + slot; 
+  return(get_spf(cfg)*frame) + slot;
 
 }
 
@@ -2539,7 +2704,7 @@ uint8_t *allocate_transportBlock_buffer(byte_array_t *tb, uint32_t needed)
     size *= 2;
   LOG_D(NR_MAC, "allocating new TB block of size %d\n", size);
   free(tb->buf);
-  tb->buf = malloc_or_fail(size);
+  tb->buf = aligned_alloc(4, size); // important: FAPI use u32*
   tb->len = size;
   return tb->buf;
 }
@@ -2758,7 +2923,7 @@ void configure_UE_BWP(gNB_MAC_INST *nr_mac,
     UL_BWP->configuredGrantConfig = ubwpd->configuredGrantConfig ? ubwpd->configuredGrantConfig->choice.setup : NULL;
     UL_BWP->pusch_Config = ubwpd->pusch_Config->choice.setup;
     UL_BWP->pucch_Config = ubwpd->pucch_Config->choice.setup;
-    UL_BWP->srs_Config = ubwpd->srs_Config->choice.setup;
+    UL_BWP->srs_Config = ubwpd->srs_Config ? ubwpd->srs_Config->choice.setup : NULL;
   } else {
     DL_BWP->bwp_id = 0;
     UL_BWP->bwp_id = 0;
@@ -2989,6 +3154,8 @@ static void init_bler_stats(const NR_bler_options_t *bler_options, NR_bler_stats
 NR_UE_info_t *get_new_nr_ue_inst(uid_allocator_t *uia, rnti_t rnti, NR_CellGroupConfig_t *CellGroup, const nr_mac_config_t *config)
 {
   NR_UE_info_t *UE = calloc_or_fail(1, sizeof(NR_UE_info_t));
+  for (int i = 0; i < MAX_NUM_OF_SSB; i++)
+    UE->beam_rsrp[i] = UE->beam_sinr[i] = INT16_MIN;
   UE->uid = uid_linear_allocator_new(uia);
   UE->rnti = rnti;
   UE->CellGroup = CellGroup;
@@ -3076,6 +3243,10 @@ bool add_connected_nr_ue(gNB_MAC_INST *nr_mac, NR_UE_info_t *UE)
   NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   sched_ctrl->dl_max_mcs = 28; /* do not limit MCS for individual UEs */
   sched_ctrl->pdcch_cl_adjust = 0;
+  if (nr_mac->radio_config.do_SRS == APERIODIC_SRS) {
+    nr_timer_setup(&sched_ctrl->aperiodic_srs_trigger, 160, 1); // for now aperiodic hardcoded every 160 slots
+    nr_timer_start(&sched_ctrl->aperiodic_srs_trigger);
+  }
   reset_srs_stats(UE);
 
   // Initialize bler_stats
@@ -3239,35 +3410,62 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, slot_t slot, nfapi_nr_dl_tt
 
     NR_CSI_MeasConfig_t *csi_measconfig = UE->sc_info.csi_MeasConfig;
 
-    // looking for the correct CSI-RS resource in current BWP
-    NR_NZP_CSI_RS_ResourceSetId_t *nzp = NULL;
-    for (int csi_list=0; csi_list<csi_measconfig->csi_ResourceConfigToAddModList->list.count; csi_list++) {
+    // Need all three lists in order to resolve CSI-ResourceConfig -> ResourceSet -> Resource.
+    if (csi_measconfig->nzp_CSI_RS_ResourceToAddModList == NULL || csi_measconfig->nzp_CSI_RS_ResourceSetToAddModList == NULL
+        || csi_measconfig->csi_ResourceConfigToAddModList == NULL)
+      continue;
+
+    nfapi_nr_dl_tti_request_body_t *dl_req = &DL_req->dl_tti_request_body;
+
+    for (int csi_list = 0; csi_list < csi_measconfig->csi_ResourceConfigToAddModList->list.count; csi_list++) {
       NR_CSI_ResourceConfig_t *csires = csi_measconfig->csi_ResourceConfigToAddModList->list.array[csi_list];
-      if (csires->bwp_Id > 1)
+
+      // Transmitting CSI-RS only for current BWP
+      if (csires->bwp_Id > 1) {
         LOG_E(NR_MAC, "Invalid CSI resource BWP ID %ld, we only configure BWP up to 1\n", csires->bwp_Id);
-      else if (csires->csi_RS_ResourceSetList.present == NR_CSI_ResourceConfig__csi_RS_ResourceSetList_PR_nzp_CSI_RS_SSB &&
-               csires->csi_RS_ResourceSetList.choice.nzp_CSI_RS_SSB->nzp_CSI_RS_ResourceSetList) {
-        nzp = csires->csi_RS_ResourceSetList.choice.nzp_CSI_RS_SSB->nzp_CSI_RS_ResourceSetList->list.array[0];
+        continue;
       }
-    }
+      if (csires->csi_RS_ResourceSetList.present != NR_CSI_ResourceConfig__csi_RS_ResourceSetList_PR_nzp_CSI_RS_SSB
+          || !csires->csi_RS_ResourceSetList.choice.nzp_CSI_RS_SSB->nzp_CSI_RS_ResourceSetList)
+        continue;
 
-    if (csi_measconfig->nzp_CSI_RS_ResourceToAddModList != NULL && nzp != NULL) {
+      // Iterate over every NZP-CSI-RS-ResourceSet ID referenced by this CSI-ResourceConfig
+      for (int s = 0; s < csires->csi_RS_ResourceSetList.choice.nzp_CSI_RS_SSB->nzp_CSI_RS_ResourceSetList->list.count; s++) {
+        NR_NZP_CSI_RS_ResourceSetId_t target_set_id =
+            *csires->csi_RS_ResourceSetList.choice.nzp_CSI_RS_SSB->nzp_CSI_RS_ResourceSetList->list.array[s];
 
-      NR_NZP_CSI_RS_Resource_t *nzpcsi;
-      int period, offset;
-
-      nfapi_nr_dl_tti_request_body_t *dl_req = &DL_req->dl_tti_request_body;
-
-      for (int id = 0; id < csi_measconfig->nzp_CSI_RS_ResourceToAddModList->list.count; id++){
-        nzpcsi = csi_measconfig->nzp_CSI_RS_ResourceToAddModList->list.array[id];
-        // transmitting CSI-RS only for current BWP
-        if (nzpcsi->nzp_CSI_RS_ResourceId != *nzp)
+        // Resolve the ResourceSet by its set ID
+        NR_NZP_CSI_RS_ResourceSet_t *nzp_set = NULL;
+        for (int k = 0; k < csi_measconfig->nzp_CSI_RS_ResourceSetToAddModList->list.count; k++) {
+          if (csi_measconfig->nzp_CSI_RS_ResourceSetToAddModList->list.array[k]->nzp_CSI_ResourceSetId == target_set_id) {
+            nzp_set = csi_measconfig->nzp_CSI_RS_ResourceSetToAddModList->list.array[k];
+            break;
+          }
+        }
+        if (!nzp_set)
           continue;
 
-        NR_CSI_RS_ResourceMapping_t  resourceMapping = nzpcsi->resourceMapping;
-        csi_period_offset(NULL, nzpcsi->periodicityAndOffset, &period, &offset);
+        // For each NZP-CSI-RS-Resource ID listed inside this ResourceSet, resolve the matching NZP-CSI-RS-Resource and
+        // try to schedule its transmission in this slot.
+        for (int r = 0; r < nzp_set->nzp_CSI_RS_Resources.list.count; r++) {
+          NR_NZP_CSI_RS_ResourceId_t target_res_id = *nzp_set->nzp_CSI_RS_Resources.list.array[r];
 
-        if((frame * n_slots_frame + slot - offset) % period == 0) {
+          NR_NZP_CSI_RS_Resource_t *nzpcsi = NULL;
+          for (int q = 0; q < csi_measconfig->nzp_CSI_RS_ResourceToAddModList->list.count; q++) {
+            if (csi_measconfig->nzp_CSI_RS_ResourceToAddModList->list.array[q]->nzp_CSI_RS_ResourceId == target_res_id) {
+              nzpcsi = csi_measconfig->nzp_CSI_RS_ResourceToAddModList->list.array[q];
+              break;
+            }
+          }
+          if (!nzpcsi)
+            continue;
+
+          NR_CSI_RS_ResourceMapping_t resourceMapping = nzpcsi->resourceMapping;
+          int period, offset;
+          csi_period_offset(NULL, nzpcsi->periodicityAndOffset, &period, &offset);
+
+          if ((frame * n_slots_frame + slot - offset) % period != 0)
+            continue;
 
           LOG_D(NR_MAC,"Scheduling CSI-RS in frame %d slot %d Resource ID %ld\n", frame, slot, nzpcsi->nzp_CSI_RS_ResourceId);
           NR_beam_alloc_t beam_csi = beam_allocation_procedure(&gNB_mac->beam_info, frame, slot, UE->UE_beam_index, n_slots_frame);
@@ -3286,7 +3484,16 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, slot_t slot, nfapi_nr_dl_tt
           csirs_pdu_rel15->precodingAndBeamforming.dig_bf_interfaces = 1;
           csirs_pdu_rel15->precodingAndBeamforming.prgs_list[0].pm_idx = 0;
           const uint16_t fapi_beam = convert_to_fapi_beam(UE->UE_beam_index, gNB_mac->beam_info.beam_mode);
+          // TODO: set correctly dig_bf_interface_list when ports of same CDM group is used and PMI if used.
           csirs_pdu_rel15->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = fapi_beam;
+          const nr_pdsch_AntennaPorts_t *p = &gNB_mac->radio_config.pdsch_AntennaPorts;
+          const uint16_t num_max_csi_ports = p->N1 * p->N2 * p->XP;
+          /* The L1 does not take number of spatial streams parameter into
+          consideration because the CSI-RS generation function uses information
+          in mapping params to determine number of ports and maps to contiguous
+          logical ports. Hence we set only the first port for CSI-RS here. */
+          csirs_pdu_rel15->param_v4.numSpatialStreamIndices = 1;
+          csirs_pdu_rel15->param_v4.spatialStreamIndices[0] = beam_csi.idx * num_max_csi_ports;
           csirs_pdu_rel15->bwp_size = dl_bwp->BWPSize;
           csirs_pdu_rel15->bwp_start = dl_bwp->BWPStart;
           csirs_pdu_rel15->subcarrier_spacing = dl_bwp->scs;
@@ -3570,7 +3777,7 @@ void nr_mac_trigger_release_complete(gNB_MAC_INST *mac, int rnti)
   // table. This can happen, e.g., on Msg.3 with C-RNTI, where we create a UE
   // MAC context, decode the PDU, find the C-RNTI MAC CE, and then throw the
   // newly created context away. See also in _nr_rx_sdu() and commit 93f59a3c6e56f
-  if (!du_exists_f1_ue_data(rnti)) 
+  if (!du_exists_f1_ue_data(rnti))
     return;
 
   // unlock the scheduler temporarily to prevent possible deadlocks with
@@ -3597,9 +3804,14 @@ void nr_mac_release_ue(gNB_MAC_INST *mac, int rnti)
 
 void beam_switching_procedure(gNB_MAC_INST *mac, NR_UE_info_t *UE, int new_beam_index)
 {
-  LOG_I(NR_MAC, "[UE %x] Switching to beam with ID %d (from %d)\n", UE->rnti, new_beam_index, UE->UE_beam_index);
-  UE->UE_beam_index = new_beam_index;
-  nr_mac_trigger_reconfiguration(mac, UE, -1, true);
+  // currently we only need to reconfigure if CSI-RS is enabled
+  // if we reconfigure we need to wait to switch the confirmation of context modification
+  if (mac->radio_config.do_CSIRS)
+    nr_mac_trigger_reconfiguration(mac, UE, -1, new_beam_index);
+  else {
+    LOG_I(NR_MAC, "[UE %x] Switching to beam with ID %d (from %d)\n", UE->rnti, new_beam_index, UE->UE_beam_index);
+    UE->UE_beam_index = new_beam_index;
+  }
 }
 
 void nr_mac_update_timers(module_id_t module_id)
@@ -3644,6 +3856,7 @@ void nr_mac_update_timers(module_id_t module_id)
       nr_timer_stop(&sched_ctrl->tci_beam_switch);
       beam_switching_procedure(mac, UE, sched_ctrl->UE_mac_ce_ctrl.tci_state_ind.tciStateId);
     }
+    nr_timer_tick(&sched_ctrl->aperiodic_srs_trigger);
   }
 }
 
@@ -3675,6 +3888,43 @@ int get_beam_from_ssbidx(gNB_MAC_INST *mac, int ssb_idx)
   int beam_idx = mac->beam_index_list[ssb_idx];
   AssertFatal(beam_idx >= 0, "Invalid beamforming index %d\n", beam_idx);
   return beam_idx;
+}
+
+/** @brief Maximum number of SS/PBCH block positions (L_max)
+ * @param scc ServingCellConfigCommon for which to determine L_max from ssb-PositionsInBurst (TS 38.331).
+ * @return L_max: shortBitmap: 4; mediumBitmap: 8; longBitmap: 64. */
+int get_max_ssbs(const NR_ServingCellConfigCommon_t *scc)
+{
+  switch (scc->ssb_PositionsInBurst->present) {
+    case NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_shortBitmap:
+      return 4;
+    case NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_mediumBitmap:
+      return 8;
+    case NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_longBitmap:
+      return 64;
+    default:
+      AssertFatal(false, "Invalid SSB configuration\n");
+  }
+}
+
+/** @brief Returns true if @param frame contains a Type0-PDCCH CSS monitoring occasion (TS 38.213 Clause 13). */
+static bool check_frame_type0(const long *ssb_periodicityServingCell, const NR_Type0_PDCCH_CSS_config_t *type0, int frame)
+{
+  if (type0->type0_pdcch_ss_mux_pattern == 1)
+    return (frame % 2) == type0->sfn_c;
+  DevAssert(ssb_periodicityServingCell);
+  long ssb_period = *ssb_periodicityServingCell; // every how many frames SSB are generated
+  int ssb_frame_periodicity = (ssb_period > 1) ? (1 << (ssb_period - 1)) : 1; // 0 is every half frame
+  return (frame % ssb_frame_periodicity) == 0;
+}
+
+/** @brief True if @param frame, @param slot is the Type0-PDCCH CSS monitoring occasion
+ * for @param type0 (TS 38.213 Clause 13). Used by SIB1 and paging (SearchSpaceId = 0) scheduling. */
+bool is_type0_occasion(NR_ServingCellConfigCommon_t *scc, const NR_Type0_PDCCH_CSS_config_t *type0, int frame, uint32_t slot)
+{
+  DevAssert(scc);
+  DevAssert(type0);
+  return type0->active && (slot == type0->slot) && check_frame_type0(scc->ssb_periodicityServingCell, type0, frame);
 }
 
 uint64_t get_ssb_bitmap_and_len(const NR_ServingCellConfigCommon_t *scc, uint8_t *len)
@@ -3802,7 +4052,7 @@ int beam_selection_procedures(gNB_MAC_INST *mac, NR_UE_info_t *UE)
   tci->is_scheduled = true;
   tci->coresetId = sched_ctrl->coreset->controlResourceSetId;
   tci->tciStateId = new_bf_index; // assumption: this correspond to the TCI index
-  return new_bf_index;
+  return -1;  // no beam change now in case of TCI
 }
 
 void send_initial_ul_rrc_message(int rnti, const uint8_t *sdu, sdu_size_t sdu_len, void *data)
@@ -3857,10 +4107,15 @@ bool prepare_initial_ul_rrc_message(gNB_MAC_INST *mac, NR_UE_info_t *UE)
   int srb_id = 1;
   const NR_ServingCellConfigCommon_t *scc = mac->common_channels[CC_id].ServingCellConfigCommon;
   int ssb_index = get_ssbidx_from_beam(mac, UE->UE_beam_index);
-  NR_CellGroupConfig_t *cellGroupConfig = get_initial_cellGroupConfig(UE->uid, scc, &mac->radio_config, &mac->rlc_config, ssb_index);
+  NR_CellGroupConfig_t *cellGroupConfig = get_initial_cellGroupConfig(UE->uid,
+                                                                      UE->is_redcap,
+                                                                      scc,
+                                                                      &mac->radio_config,
+                                                                      &mac->rlc_config,
+                                                                      ssb_index);
   ASN_STRUCT_FREE(asn_DEF_NR_CellGroupConfig, UE->CellGroup);
   UE->CellGroup = cellGroupConfig;
-  UE->local_bwp_id = mac->radio_config.first_active_bwp;
+  UE->local_bwp_id = UE->is_redcap ? 0 : mac->radio_config.first_active_bwp;
 
   if (!cellGroupConfig)
     return true;
@@ -3983,42 +4238,41 @@ static bool verify_bwp_switch(const NR_UE_info_t *UE, const nr_mac_config_t *con
   return false;
 }
 
-void nr_mac_trigger_reconfiguration(const gNB_MAC_INST *nrmac, NR_UE_info_t *UE, int new_bwp_id, bool new_beam)
+void nr_mac_trigger_reconfiguration(const gNB_MAC_INST *nrmac, NR_UE_info_t *UE, int new_bwp_id, int new_beam)
 {
   DevAssert(UE->CellGroup != NULL);
   NR_CellGroupConfig_t *cellGroup_for_UE = NULL;
-  if (new_beam) {
-      UE->sc_info.csi_MeasConfig = NULL;  // to avoid segfault when freeing csi_MeasConfig in configDedicated
-      NR_UE_UL_BWP_t *current_BWP = &UE->current_UL_BWP;
-      current_BWP->srs_Config = NULL;
-      int ssb_index = nrmac->common_channels[0].ssb_index[UE->UE_beam_index];
-      cellGroup_for_UE = update_cellGroupConfig_for_beam_switch(UE->CellGroup,
-                                                               &nrmac->radio_config,
-                                                               UE->capability,
-                                                               nrmac->common_channels[0].ServingCellConfigCommon,
-                                                               UE->uid,
-                                                               UE->current_DL_BWP.bwp_id,
-                                                               ssb_index);
-  } else {
-    if (new_bwp_id >= 0) {
-      AssertFatal(UE->current_DL_BWP.bwp_id == UE->current_UL_BWP.bwp_id, "We only support same BWP for UL and DL\n");
-      if (!verify_bwp_switch(UE, &nrmac->radio_config, new_bwp_id))
-        return;
-      else {
-        UE->sc_info.csi_MeasConfig = NULL;  // to avoid segfault when freeing csi_MeasConfig in configDedicated
-        UE->local_bwp_id = new_bwp_id;
-        int ssb_index = nrmac->common_channels[0].ssb_index[UE->UE_beam_index];
-        cellGroup_for_UE = update_cellGroupConfig_for_BWP_switch(UE->CellGroup,
-                                                                &nrmac->radio_config,
-                                                                UE->capability,
-                                                                nrmac->common_channels[0].ServingCellConfigCommon,
-                                                                UE->uid,
-                                                                UE->current_DL_BWP.bwp_id,
-                                                                new_bwp_id,
-                                                                ssb_index);
-      }
+  int ssb_index = get_ssbidx_from_beam(nrmac, UE->UE_beam_index);
+  if (new_beam >= 0) {
+    UE->cm_info.trigger_info = BEAM_SWITCH;
+    UE->cm_info.new_state = new_beam;
+    cellGroup_for_UE = update_cellGroupConfig_for_reconfig(UE->CellGroup,
+                                                           &nrmac->radio_config,
+                                                           UE->capability,
+                                                           nrmac->common_channels[0].ServingCellConfigCommon,
+                                                           UE->uid,
+                                                           UE->current_DL_BWP.bwp_id,
+                                                           -1,
+                                                           ssb_index);
+  } else if (new_bwp_id >= 0) {
+    AssertFatal(UE->current_DL_BWP.bwp_id == UE->current_UL_BWP.bwp_id, "We only support same BWP for UL and DL\n");
+    if (!verify_bwp_switch(UE, &nrmac->radio_config, new_bwp_id))
+      return;
+    else {
+      UE->cm_info.trigger_info = BWP_SWITCH;
+      UE->cm_info.new_state = new_bwp_id;
+      cellGroup_for_UE = update_cellGroupConfig_for_reconfig(UE->CellGroup,
+                                                             &nrmac->radio_config,
+                                                             UE->capability,
+                                                             nrmac->common_channels[0].ServingCellConfigCommon,
+                                                             UE->uid,
+                                                             UE->current_DL_BWP.bwp_id,
+                                                             new_bwp_id,
+                                                             ssb_index);
     }
-  }
+  } else
+    UE->cm_info.trigger_info = MSG3_CRNTI;
+
   uint8_t buf[2048];
   asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_CellGroupConfig,
                                                   NULL,
@@ -4146,6 +4400,12 @@ void nr_mac_update_pdcch_closed_loop_adjust(NR_UE_sched_ctrl_t *sched_ctrl, bool
 float nr_mac_get_snr(const nr_power_control_t *pc)
 {
   return pc->avg_snr + pc->tpc_in_flight;
+}
+
+float nr_mac_get_rssi(const nr_power_control_t *pc)
+{
+  // in FAPI scale: convert to dBm/dBFs
+  return pc->avg_rssi / 10.f - 128.f;
 }
 
 /**

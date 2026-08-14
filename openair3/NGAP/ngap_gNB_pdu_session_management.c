@@ -9,7 +9,7 @@
 #include "INTEGER.h"
 #include "ngap_msg_includes.h"
 #include "OCTET_STRING.h"
-#include "asn_application.h"
+#include "aper_encoder.h"
 #include "assertions.h"
 #include "conversions.h"
 #include "ngap_common.h"
@@ -90,6 +90,11 @@ int ngap_gNB_pdusession_setup_resp(instance_t instance, ngap_pdusession_setup_re
 
       // PDU Session Resource Setup Response Transfer (Mandatory)
       byte_array_t ba = encode_ngap_pdusession_setup_response_transfer(pdusession);
+      if (ba.buf == NULL) {
+        NGAP_ERROR("Failed to encode PDUSessionResourceSetupResponseTransfer for PDU session %ld\n", item->pDUSessionID);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_NGAP_PDU, &pdu);
+        return -1;
+      }
       item->pDUSessionResourceSetupResponseTransfer.buf = ba.buf;
       item->pDUSessionResourceSetupResponseTransfer.size = ba.len;
     }
@@ -107,23 +112,16 @@ int ngap_gNB_pdusession_setup_resp(instance_t instance, ngap_pdusession_setup_re
       asn1cSequenceAdd(ie->value.choice.PDUSessionResourceFailedToSetupListSURes.list,
                        NGAP_PDUSessionResourceFailedToSetupItemSURes_t,
                        item);
-      NGAP_PDUSessionResourceSetupUnsuccessfulTransfer_t pdusessionUnTransfer_p = {0};
-
-      /* pDUSessionID */
       item->pDUSessionID = pdusession_failed->pdusession_id;
 
-      /* cause */
-      encode_ngap_cause(&pdusessionUnTransfer_p.cause, &pdusession_failed->cause);
-      NGAP_INFO("pdusession setup response: failed pdusession ID %ld\n", item->pDUSessionID);
-
-      asn_encode_to_new_buffer_result_t res = asn_encode_to_new_buffer(NULL,
-                                                                       ATS_ALIGNED_CANONICAL_PER,
-                                                                       &asn_DEF_NGAP_PDUSessionResourceSetupUnsuccessfulTransfer,
-                                                                       &pdusessionUnTransfer_p);
-      item->pDUSessionResourceSetupUnsuccessfulTransfer.buf = res.buffer;
-      item->pDUSessionResourceSetupUnsuccessfulTransfer.size = res.result.encoded;
-
-      ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceSetupUnsuccessfulTransfer, &pdusessionUnTransfer_p);
+      byte_array_t ba = encode_ngap_pdusession_setup_unsuccessful_transfer(&pdusession_failed->cause);
+      if (ba.buf == NULL) {
+        NGAP_ERROR("Failed to encode PDUSessionResourceSetupUnsuccessfulTransfer for PDU session %ld\n", item->pDUSessionID);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_NGAP_PDU, &pdu);
+        return -1;
+      }
+      item->pDUSessionResourceSetupUnsuccessfulTransfer.buf = ba.buf;
+      item->pDUSessionResourceSetupUnsuccessfulTransfer.size = ba.len;
     }
   }
 
@@ -194,12 +192,10 @@ int ngap_gNB_pdusession_modify_resp(instance_t instance, ngap_pdusession_modify_
   /* mandatory */
   {
     asn1cSequenceAdd(out->protocolIEs.list, NGAP_PDUSessionResourceModifyResponseIEs_t, ie);
-    ie = (NGAP_PDUSessionResourceModifyResponseIEs_t *)calloc(1, sizeof(NGAP_PDUSessionResourceModifyResponseIEs_t));
     ie->id = NGAP_ProtocolIE_ID_id_AMF_UE_NGAP_ID;
     ie->criticality = NGAP_Criticality_ignore;
     ie->value.present = NGAP_PDUSessionResourceModifyResponseIEs__value_PR_AMF_UE_NGAP_ID;
     asn_uint642INTEGER(&ie->value.choice.AMF_UE_NGAP_ID, pdusession_modify_resp_p->amf_ue_ngap_id);
-    asn1cSeqAdd(&out->protocolIEs.list, ie);
   }
   /* mandatory */
   {
@@ -222,19 +218,23 @@ int ngap_gNB_pdusession_modify_resp(instance_t instance, ngap_pdusession_modify_
       item->pDUSessionID = pdusession_modify_resp_p->pdusessions[i].pdusession_id;
 
       NGAP_PDUSessionResourceModifyResponseTransfer_t transfer = {0};
-      asn1cCalloc(transfer.qosFlowAddOrModifyResponseList, tmp);
-
-      for (int qos_flow_index = 0; qos_flow_index < pdusession_modify_resp_p->pdusessions[i].nb_of_qos_flow; qos_flow_index++) {
-        asn1cSequenceAdd(tmp->list, NGAP_QosFlowAddOrModifyResponseItem_t, qos);
-        qos->qosFlowIdentifier = pdusession_modify_resp_p->pdusessions[i].qos[qos_flow_index].qfi;
+      if (pdusession_modify_resp_p->pdusessions[i].nb_of_qos_flow > 0) {
+        asn1cCalloc(transfer.qosFlowAddOrModifyResponseList, tmp);
+        for (int qos_flow_index = 0; qos_flow_index < pdusession_modify_resp_p->pdusessions[i].nb_of_qos_flow; qos_flow_index++) {
+          asn1cSequenceAdd(tmp->list, NGAP_QosFlowAddOrModifyResponseItem_t, qos);
+          qos->qosFlowIdentifier = pdusession_modify_resp_p->pdusessions[i].qos[qos_flow_index].qfi;
+        }
       }
-      asn_encode_to_new_buffer_result_t res = {0};
-      res = asn_encode_to_new_buffer(NULL,
-                                     ATS_ALIGNED_CANONICAL_PER,
-                                     &asn_DEF_NGAP_PDUSessionResourceModifyResponseTransfer,
-                                     &transfer);
-      item->pDUSessionResourceModifyResponseTransfer.buf = res.buffer;
-      item->pDUSessionResourceModifyResponseTransfer.size = res.result.encoded;
+      void *buf = NULL;
+      ssize_t encoded = aper_encode_to_new_buffer(&asn_DEF_NGAP_PDUSessionResourceModifyResponseTransfer, NULL, &transfer, &buf);
+      if (encoded < 0) {
+        NGAP_ERROR("Failed to encode PDUSessionResourceModifyResponseTransfer for PDU session %ld\n", item->pDUSessionID);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceModifyResponseTransfer, &transfer);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_NGAP_PDU, &pdu);
+        return -1;
+      }
+      item->pDUSessionResourceModifyResponseTransfer.buf = buf;
+      item->pDUSessionResourceModifyResponseTransfer.size = encoded;
 
       ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceModifyResponseTransfer, &transfer);
 
@@ -257,19 +257,21 @@ int ngap_gNB_pdusession_modify_resp(instance_t instance, ngap_pdusession_modify_
 
       NGAP_PDUSessionResourceModifyUnsuccessfulTransfer_t pdusessionTransfer = {0};
 
-      // NGAP cause
       encode_ngap_cause(&pdusessionTransfer.cause, &pdusession_modify_resp_p->pdusessions_failed[i].cause);
 
-      asn_encode_to_new_buffer_result_t res = {0};
-      NGAP_PDUSessionResourceModifyUnsuccessfulTransfer_t *pdusessionTransfer_p = NULL;
-      res = asn_encode_to_new_buffer(NULL,
-                                     ATS_ALIGNED_CANONICAL_PER,
-                                     &asn_DEF_NGAP_PDUSessionResourceModifyUnsuccessfulTransfer,
-                                     &pdusessionTransfer);
-      item->pDUSessionResourceModifyUnsuccessfulTransfer.buf = res.buffer;
-      item->pDUSessionResourceModifyUnsuccessfulTransfer.size = res.result.encoded;
+      void *buf = NULL;
+      ssize_t encoded =
+          aper_encode_to_new_buffer(&asn_DEF_NGAP_PDUSessionResourceModifyUnsuccessfulTransfer, NULL, &pdusessionTransfer, &buf);
+      if (encoded < 0) {
+        NGAP_ERROR("Failed to encode PDUSessionResourceModifyUnsuccessfulTransfer for PDU session %ld\n", item->pDUSessionID);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceModifyUnsuccessfulTransfer, &pdusessionTransfer);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_NGAP_PDU, &pdu);
+        return -1;
+      }
+      item->pDUSessionResourceModifyUnsuccessfulTransfer.buf = buf;
+      item->pDUSessionResourceModifyUnsuccessfulTransfer.size = encoded;
 
-      ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceModifyUnsuccessfulTransfer, pdusessionTransfer_p);
+      ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceModifyUnsuccessfulTransfer, &pdusessionTransfer);
 
       NGAP_INFO("pdusession_modify_resp: failed pdusession ID %ld\n", item->pDUSessionID);
     }
@@ -307,15 +309,16 @@ int ngap_gNB_pdusession_modify_resp(instance_t instance, ngap_pdusession_modify_
 static byte_array_t encode_ngap_pdusession_release_response_transfer(void)
 {
   NGAP_PDUSessionResourceReleaseResponseTransfer_t pdusessionTransfer = {0};
+  byte_array_t out = {0};
 
-  // Encode
-  asn_encode_to_new_buffer_result_t res = asn_encode_to_new_buffer(NULL,
-                                                                   ATS_ALIGNED_CANONICAL_PER,
-                                                                   &asn_DEF_NGAP_PDUSessionResourceReleaseResponseTransfer,
-                                                                   &pdusessionTransfer);
-  AssertFatal(res.buffer, "ASN1 message encoding failed (%s, %lu)!\n", res.result.failed_type->name, res.result.encoded);
+  void *buf = NULL;
+  ssize_t encoded =
+      aper_encode_to_new_buffer(&asn_DEF_NGAP_PDUSessionResourceReleaseResponseTransfer, NULL, &pdusessionTransfer, &buf);
   ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_PDUSessionResourceReleaseResponseTransfer, &pdusessionTransfer);
-  byte_array_t out = {.buf = res.buffer, .len = res.result.encoded};
+  if (encoded < 0)
+    return out;
+  out.buf = buf;
+  out.len = encoded;
   return out;
 }
 
@@ -379,6 +382,11 @@ int ngap_gNB_pdusession_release_resp(instance_t instance, ngap_pdusession_releas
       /* PDU Session Resource Release Response Transfer (mandatory) */
       // Empty transfer is valid since Secondary RAT Usage Information is optional and not used
       byte_array_t transfer = encode_ngap_pdusession_release_response_transfer();
+      if (transfer.buf == NULL) {
+        NGAP_ERROR("Failed to encode PDUSessionResourceReleaseResponseTransfer for PDU session %ld\n", item->pDUSessionID);
+        ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_NGAP_NGAP_PDU, &pdu);
+        return -1;
+      }
       OCTET_STRING_fromBuf(&item->pDUSessionResourceReleaseResponseTransfer, (const char *)transfer.buf, transfer.len);
       free_byte_array(transfer);
       NGAP_DEBUG("PDU Session Resource Release Response: pdusession ID %ld\n", item->pDUSessionID);

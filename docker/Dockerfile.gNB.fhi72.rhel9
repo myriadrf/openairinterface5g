@@ -41,6 +41,7 @@ RUN rm -f /etc/rhsm-host && \
         python3-pip \
         net-tools \
         iputils \
+        libatomic \
         yaml-cpp-devel && \
     pip3 install six && \
     pip3 install requests && \

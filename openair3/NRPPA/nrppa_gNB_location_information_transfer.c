@@ -10,7 +10,7 @@
 #include "nrppa_gNB_encoder.h"
 #include "openair3/UTILS/conversions.h"
 
-void free_trp_information_request(nrppa_trp_information_req_t *msg)
+void free_nrppa_trp_information_request(nrppa_trp_information_req_t *msg)
 {
   if (msg->trp_information_type_list.trp_information_type_item) {
     free(msg->trp_information_type_list.trp_information_type_item);
@@ -234,7 +234,7 @@ NRPPA_TRPInformationItem_t encode_trp_info_type_response_item_nrppa(nrppa_trp_in
   return out;
 }
 
-void free_trp_information_response(nrppa_trp_information_resp_t *msg)
+void free_nrppa_trp_information_response(nrppa_trp_information_resp_t *msg)
 {
   nrppa_trp_information_list_t *trp_information_list = &msg->trp_information_list;
   uint32_t trp_info_item_length = trp_information_list->trp_information_item_length;
@@ -915,7 +915,7 @@ NRPPA_SRSCarrier_List_t encode_srs_carrier_list_nrppa(const nrppa_srs_carrier_li
   return out_list;
 }
 
-void free_srs_carrier_list(nrppa_srs_carrier_list_t *srs_carrier_list)
+void free_nrppa_srs_carrier_list(nrppa_srs_carrier_list_t *srs_carrier_list)
 {
   uint32_t srs_carrier_list_len = srs_carrier_list->srs_carrier_list_length;
   for (int i = 0; i < srs_carrier_list_len; i++) {
@@ -958,12 +958,12 @@ void free_srs_carrier_list(nrppa_srs_carrier_list_t *srs_carrier_list)
   free(srs_carrier_list->srs_carrier_list_item);
 }
 
-void free_positioning_information_response(nrppa_positioning_information_resp_t *msg)
+void free_nrppa_positioning_information_response(nrppa_positioning_information_resp_t *msg)
 {
   /* SRS Configuration (O) */
   if (msg->srs_configuration) {
     nrppa_srs_carrier_list_t *srs_carrier_list = &msg->srs_configuration->srs_carrier_list;
-    free_srs_carrier_list(srs_carrier_list);
+    free_nrppa_srs_carrier_list(srs_carrier_list);
     free(msg->srs_configuration);
   }
 }
@@ -990,7 +990,7 @@ void decode_nrppa_srstype(NRPPA_SRSType_t *srs_type, nrppa_srs_type_t *out)
   }
 }
 
-void free_positioning_activation_request(nrppa_positioning_activation_req_t *msg)
+void free_nrppa_positioning_activation_request(nrppa_positioning_activation_req_t *msg)
 {
   if (msg->srs_type.present == NRPPA_SRS_TYPE_PR_SEMIPERSISTENTSRS) {
     free(msg->srs_type.choice.srs_resource_set_id);
@@ -1069,7 +1069,7 @@ int nrppa_gNB_trp_information_response(instance_t instance, MessageDef *msg_p)
 
   if (ue_info->gNB_ue_ngap_id != 0 && ue_info->amf_ue_ngap_id != 0) {
     LOG_E(NRPPA, "Illegal gNB_ue_ngap_id %d and amf_ue_ngap_id %ld\n", ue_info->gNB_ue_ngap_id, ue_info->amf_ue_ngap_id);
-    free_trp_information_response(resp);
+    free_nrppa_trp_information_response(resp);
     nrppa_free_ue_context(ue_info);
     return -1;
   }
@@ -1120,7 +1120,7 @@ int nrppa_gNB_trp_information_response(instance_t instance, MessageDef *msg_p)
     }
   }
 
-  free_trp_information_response(resp);
+  free_nrppa_trp_information_response(resp);
 
   if (LOG_DEBUGFLAG(DEBUG_ASN1)) {
     xer_fprint(stdout, &asn_DEF_NRPPA_NRPPA_PDU, &pdu);
@@ -1187,7 +1187,7 @@ int nrppa_gNB_positioning_information_response(instance_t instance, MessageDef *
 
   if (ue_info->gNB_ue_ngap_id <= 0 && ue_info->amf_ue_ngap_id <= 0) {
     LOG_E(NRPPA, "Illegal gNB_ue_ngap_id %d and amf_ue_ngap_id %ld\n", ue_info->gNB_ue_ngap_id, ue_info->amf_ue_ngap_id);
-    free_positioning_information_response(resp);
+    free_nrppa_positioning_information_response(resp);
     nrppa_free_ue_context(ue_info);
     return -1;
   }
@@ -1223,7 +1223,7 @@ int nrppa_gNB_positioning_information_response(instance_t instance, MessageDef *
     }
   }
 
-  free_positioning_information_response(resp);
+  free_nrppa_positioning_information_response(resp);
 
   LOG_I(NRPPA, "Calling encoder for Positioning Information Response \n");
 

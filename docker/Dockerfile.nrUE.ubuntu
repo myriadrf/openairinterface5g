@@ -50,7 +50,8 @@ RUN apt-get update && \
         iperf \
         libyaml-cpp-dev \
         libzstd1 \
-        libnanomsg5 && \
+        libnanomsg5 \
+        libzmq5 && \
 # if the --sanitize option was used to build, additional packages are required
     /bin/bash -c 'if [[ "$BUILD_OPTION" = "--sanitize" ]]; then DEBIAN_FRONTEND=noninteractive apt-get install --yes \
         libasan8 \
@@ -83,6 +84,7 @@ COPY --from=nr-ue-build \
     /oai-ran/cmake_targets/ran_build/build/libtelnetsrv.so \
     /oai-ran/cmake_targets/ran_build/build/libparams_yaml.so \
     /oai-ran/cmake_targets/ran_build/build/libvrtsim.so \
+    /oai-ran/cmake_targets/ran_build/build/liboai_zmqdevif.so \
     # Wildcards so it doesn't fail if not present
     /oai-ran/cmake_targets/ran_build/build/_deps*/fmtlog-build*/libfmtlog-shared*.so \
     /oai-ran/cmake_targets/ran_build/build/_deps*/clickhouse-cpp-build*/clickhouse/libclickhouse*.so \
@@ -114,7 +116,8 @@ RUN /bin/bash -c "ln -s /usr/local/lib/liboai_usrpdevif.so /usr/local/lib/liboai
         /usr/local/lib/libtelnetsrv.so \
         /usr/local/lib/libtelnetsrv_ciUE.so \
         /usr/local/lib/libtelnetsrv_5Gue.so \
-        /usr/local/lib/libuhd.so.4.8.0
+        /usr/local/lib/libuhd.so.4.8.0 \
+        /usr/local/lib/liboai_zmqdevif.so
 
 WORKDIR /opt/oai-nr-ue
 

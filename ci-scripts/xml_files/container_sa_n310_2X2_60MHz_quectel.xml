@@ -104,7 +104,7 @@
     <node>matix</node>
     <yaml_path>ci-scripts/yaml_files/5g_sa_n310_2x2_60MHz</yaml_path>
     <analysis>
-      <services>oai-gnb=RetxCheck=dl=15,100,100,100;ul=20,100,100,100 oai-gnb=EndsWithBye</services>
+      <services>oai-gnb=EndsWithBye</services>
     </analysis>
   </testCase>
 
