@@ -155,15 +155,14 @@ static void pss_sss_extract_nr(
     const c16_t *sss_rxF = rxdataF[sss_symbol][aarx];
     c16_t *pss_rxF_ext = pss_ext[aarx];
     c16_t *sss_rxF_ext = sss_ext[aarx];
-    unsigned int k = params->first_carrier_offset + params->ssb_start_subcarrier
-                     + ((get_softmodem_params()->sl_mode == 0) ? PSS_SSS_SUB_CARRIER_START : PSS_SSS_SUB_CARRIER_START_SL);
+    unsigned int k = CIRCULAR_INC(params->first_carrier_offset + params->ssb_start_subcarrier,
+                                  get_softmodem_params()->sl_mode == 0 ? PSS_SSS_SUB_CARRIER_START : PSS_SSS_SUB_CARRIER_START_SL,
+                                  params->ofdm_symbol_size);
 
-    for (int i=0; i < LENGTH_PSS_NR; i++) {
-      if (k >= params->ofdm_symbol_size)
-        k -= params->ofdm_symbol_size;
+    for (int i = 0; i < LENGTH_PSS_NR; i++) {
       pss_rxF_ext[i] = pss_rxF[k];
       sss_rxF_ext[i] = sss_rxF[k];
-      k++;
+      k = CIRCULAR_INC(k, 1, params->ofdm_symbol_size);
     }
   }
 }

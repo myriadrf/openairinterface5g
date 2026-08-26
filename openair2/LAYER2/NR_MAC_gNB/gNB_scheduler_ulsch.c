@@ -1812,7 +1812,19 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
       break;
   }
 
-  positioning_config_t positioning_config = RCconfig_nr_positioning();
+  positioning_config_t *positioning_config = mac->positioning_config;
+  if (positioning_config == NULL) {
+    LOG_E(NR_MAC, "No TRPs configured for positioning in the configuration file\n");
+    f1ap_positioning_measurement_failure_t fail = {.transaction_id = req->transaction_id,
+                                                   .lmf_measurement_id = req->lmf_measurement_id,
+                                                   .ran_measurement_id = req->ran_measurement_id};
+    fail.cause = F1AP_CAUSE_RADIO_NETWORK;
+    mac->mac_rrc.positioning_measurement_failure(&fail);
+    // since we suppport 1 measurement report per positioning request, we deactive the UE after sending failure message
+    rm_pos_act_ue_context(mac, rnti);
+    mac->pos_meas_info.active = false;
+    return;
+  }
   const f1ap_trp_measurement_request_list_t *req_list = &req->trp_measurement_request_list;
   uint32_t req_list_len = req_list->trp_measurement_request_list_length;
   f1ap_trp_measurement_request_item_t *req_item = req_list->trp_measurement_request_item;
@@ -1821,8 +1833,8 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
 
   // Count the number of relavent TRPs
   for (int i = 0; i < req_list_len; i++) {
-    for (int j = 0; j < positioning_config.num_trp; j++) {
-      if (req_item[i].tRPID == positioning_config.trps[j].id) {
+    for (int j = 0; j < positioning_config->num_trp; j++) {
+      if (req_item[i].tRPID == positioning_config->trps[j].id) {
         if (num_trps < MAX_NUM_MEASURE_TRPS) {
           trp_ids_list[num_trps] = req_item[i].tRPID;
           num_trps++;
@@ -1834,7 +1846,14 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
 
   if (num_ta != num_trps) {
     LOG_E(NR_MAC, "Number of TRPs doesn't match with number of ToAs\n");
-    // send positioning measurement failure
+    f1ap_positioning_measurement_failure_t fail = {.transaction_id = req->transaction_id,
+                                                   .lmf_measurement_id = req->lmf_measurement_id,
+                                                   .ran_measurement_id = req->ran_measurement_id};
+    fail.cause = F1AP_CAUSE_RADIO_NETWORK;
+    mac->mac_rrc.positioning_measurement_failure(&fail);
+    // since we suppport 1 measurement report per positioning request, we deactive the UE after sending failure message
+    rm_pos_act_ue_context(mac, rnti);
+    mac->pos_meas_info.active = false;
     return;
   }
 
@@ -1843,6 +1862,8 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
       generate_pos_measurement_result(&req->pos_measurement_quantities, num_trps, trp_ids_list, mu, ta_offset_nsec, frame, slot);
   mac->mac_rrc.positioning_measurement_response(&resp);
   free_positioning_measurement_resp(&resp);
+  // We suppport 1 measurement report per positioning request (no periodic measurement report support)
+  // We deactive the UE after sending measurement report
   rm_pos_act_ue_context(mac, rnti);
   mac->pos_meas_info.active = false;
 }

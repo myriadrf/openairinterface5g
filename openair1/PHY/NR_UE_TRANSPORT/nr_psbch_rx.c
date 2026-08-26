@@ -28,8 +28,8 @@ static void nr_psbch_extract(uint32_t dataF_sz,
   AssertFatal((symbol == 0 || symbol >= 5), "SIDELINK: PSBCH DMRS not contained in symbol %d \n", symbol);
 
   for (aarx = 0; aarx < frame_params->nb_antennas_rx; aarx++) {
-    unsigned int rx_offset = frame_params->first_carrier_offset + frame_params->ssb_start_subcarrier;
-    rx_offset = rx_offset % frame_params->ofdm_symbol_size;
+    unsigned int rx_offset =
+        CIRCULAR_INC(frame_params->first_carrier_offset, frame_params->ssb_start_subcarrier, frame_params->ofdm_symbol_size);
 
     const c16_t *rxF = rxdataF[aarx];
     rxF_ext = rxdataF_ext[aarx];
@@ -70,7 +70,7 @@ static void nr_psbch_extract(uint32_t dataF_sz,
 #endif
           j++;
         }
-        rx_offset = (rx_offset + 1) % (frame_params->ofdm_symbol_size);
+        rx_offset = CIRCULAR_INC(rx_offset, 1, frame_params->ofdm_symbol_size);
       }
 
       rxF_ext += SL_NR_NUM_PSBCH_DATA_RE_IN_ONE_RB;

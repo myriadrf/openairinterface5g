@@ -792,9 +792,11 @@ typedef struct nr_mac_rrc_ul_if_s {
   ue_context_release_complete_func_t ue_context_release_complete;
   initial_ul_rrc_message_transfer_func_t initial_ul_rrc_message_transfer;
   trp_information_response_func_t trp_information_response;
+  trp_information_failure_func_t trp_information_failure;
   positioning_information_response_func_t positioning_information_response;
   positioning_activation_response_func_t positioning_activation_response;
   positioning_measurement_response_func_t positioning_measurement_response;
+  positioning_measurement_failure_func_t positioning_measurement_failure;
 } nr_mac_rrc_ul_if_t;
 
 typedef struct measgap_config {
@@ -1336,6 +1338,7 @@ typedef struct gNB_MAC_INST_s {
 
   seq_arr_t pos_act_ue_arr;
   positioning_measurement_info_t pos_meas_info;
+  positioning_config_t *positioning_config;
 } gNB_MAC_INST;
 
 #endif /*__LAYER2_NR_MAC_GNB_H__ */

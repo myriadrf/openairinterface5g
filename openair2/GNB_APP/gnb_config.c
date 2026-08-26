@@ -58,6 +58,7 @@
 #include "gnb_config_common.h"
 #include "positioning_nr_paramdef.h"
 #include "f1ap_cu_task.h"
+#include "openair3/NRPPA/nrppa_gNB_config.h"
 
 static int DEFBANDS[] = {7};
 static int DEFENBS[] = {0};
@@ -1819,6 +1820,7 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
 
       // triggers also PHY initialization in case we have L1 via FAPI
       nr_mac_config_scc(RC.nrmac[j], scc, &config);
+      RC.nrmac[j]->positioning_config = RCconfig_nr_positioning();
     } //  for (j=0;j<RC.nb_nr_macrlc_inst;j++)
 
     uint64_t gnb_du_id = 0;

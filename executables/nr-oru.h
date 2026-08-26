@@ -12,6 +12,7 @@
 #include "openair1/PHY/defs_gNB.h"
 
 #define MAX_DL_READ_THREADS 8
+#define MAX_ORU_UL_WORKERS 8
 
 typedef struct {
   RU_t *ru;
@@ -40,6 +41,11 @@ typedef struct {
   /// number of UL symbols
   int num_UL_symbols;
   int numerology;
+
+  int north_cores[MAX_DL_READ_THREADS]; ///< affinity for DL reader i (-1 = unpinned); length sets num_dl_read_threads
+  int south_core;
+  int ul_worker_cores[MAX_ORU_UL_WORKERS];
+  int num_ul_worker_cores;
 
   int num_dl_read_threads;
   pthread_t dl_read_threads[MAX_DL_READ_THREADS];

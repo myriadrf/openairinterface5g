@@ -41,14 +41,13 @@ static uint16_t nr_pbch_extract(const NR_DL_FRAME_PARMS *frame_parms,
               symbol);
 
   for (aarx=0; aarx<frame_parms->nb_antennas_rx; aarx++) {
-    unsigned int rx_offset = frame_parms->first_carrier_offset + ssb_start_subcarrier;
-    rx_offset = (rx_offset)%(frame_parms->ofdm_symbol_size);
+    unsigned int rx_offset = CIRCULAR_INC(frame_parms->first_carrier_offset, ssb_start_subcarrier, frame_parms->ofdm_symbol_size);
     const struct complex16 *rxF = rxdataF[aarx];
     struct complex16 *rxF_ext = rxdataF_ext[aarx];
 #ifdef DEBUG_PBCH
     printf("extract_rbs (nushift %d): rx_offset=%d, symbol %u\n",
            nushiftmod4,
-           (rx_offset + ((symbol+s_offset) * (frame_parms->ofdm_symbol_size))),
+           rx_offset + (symbol + s_offset) * frame_parms->ofdm_symbol_size,
            symbol);
     int16_t *p = (int16_t *)rxF;
 
@@ -80,8 +79,7 @@ static uint16_t nr_pbch_extract(const NR_DL_FRAME_PARMS *frame_parms,
             j++;
           }
 
-          rx_offset=(rx_offset+1)%(frame_parms->ofdm_symbol_size);
-          //rx_offset = (rx_offset >= frame_parms->ofdm_symbol_size) ? (rx_offset - frame_parms->ofdm_symbol_size + 1) : (rx_offset+1);
+          rx_offset = CIRCULAR_INC(rx_offset, 1, frame_parms->ofdm_symbol_size);
         }
 
         rxF_ext+=9;
@@ -104,13 +102,11 @@ static uint16_t nr_pbch_extract(const NR_DL_FRAME_PARMS *frame_parms,
               j++;
             }
 
-            rx_offset=(rx_offset+1)%(frame_parms->ofdm_symbol_size);
-            //rx_offset = (rx_offset >= frame_parms->ofdm_symbol_size) ? (rx_offset - frame_parms->ofdm_symbol_size + 1) : (rx_offset+1);
+            rx_offset = CIRCULAR_INC(rx_offset, 1, frame_parms->ofdm_symbol_size);
           }
-
           rxF_ext+=9;
-        } else { //rx_offset = (rx_offset >= frame_parms->ofdm_symbol_size) ? (rx_offset - frame_parms->ofdm_symbol_size + 12) : (rx_offset+12);
-          rx_offset = (rx_offset+12)%(frame_parms->ofdm_symbol_size);
+        } else {
+          rx_offset = CIRCULAR_INC(rx_offset, 12, frame_parms->ofdm_symbol_size);
         }
       }
     }

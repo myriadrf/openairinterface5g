@@ -109,11 +109,10 @@ void nr_idft(int32_t *z, uint32_t Msc_PUSCH)
 
 #endif
 
-static void nr_ulsch_extract_rbs(c16_t* const rxdataF,
-                                 c16_t* const chF,
+static void nr_ulsch_extract_rbs(c16_t *const rxF,
+                                 c16_t *const chF,
                                  c16_t *rxFext,
                                  c16_t *chFext,
-                                 int rxoffset,
                                  int choffset,
                                  int is_dmrs_symbol,
                                  const nfapi_nr_pusch_pdu_t *pusch_pdu,
@@ -129,9 +128,10 @@ static void nr_ulsch_extract_rbs(c16_t* const rxdataF,
     int first_port = get_dmrs_port(0, pusch_pdu->dmrs_ports);
     delta = get_delta(first_port, pusch_pdu->dmrs_config_type);
   }
-  int start_re = (frame_parms->first_carrier_offset + (pusch_pdu->rb_start + pusch_pdu->bwp_start) * NR_NB_SC_PER_RB)%frame_parms->ofdm_symbol_size;
+  int start_re = CIRCULAR_INC(frame_parms->first_carrier_offset,
+                              (pusch_pdu->rb_start + pusch_pdu->bwp_start) * NR_NB_SC_PER_RB,
+                              frame_parms->ofdm_symbol_size);
   int nb_re_pusch = NR_NB_SC_PER_RB * pusch_pdu->rb_size;
-  c16_t *rxF = &rxdataF[rxoffset];
   c16_t *rxF_ext = &rxFext[0];
   c16_t *ul_ch0 = &chF[choffset];
   c16_t *ul_ch0_ext = &chFext[0];
@@ -256,13 +256,12 @@ static void inner_rx(PHY_VARS_gNB *gNB,
   for (int aarx = 0; aarx < nb_rx_ant; aarx++) {
     for (int aatx = 0; aatx < nb_layer; aatx++) {
       start_meas(pusch_extr);
-      nr_ulsch_extract_rbs(rxF[aarx],
+      nr_ulsch_extract_rbs(rxF[aarx] + soffset + symbol * frame_parms->ofdm_symbol_size,
                            (c16_t *)pusch_vars->ul_ch_estimates[aatx * nb_rx_ant + aarx],
                            rxFext[aarx],
                            chFext[aatx][aarx],
-                           soffset+(symbol * frame_parms->ofdm_symbol_size),
                            dmrs_symbol * frame_parms->ofdm_symbol_size,
-                           dmrs_symbol_flag, 
+                           dmrs_symbol_flag,
                            rel15_ul,
                            frame_parms);
       stop_meas(pusch_extr);
@@ -528,9 +527,9 @@ int nr_rx_pusch_group_tp(PHY_VARS_gNB *gNB,
                                               rel15_ul_ref->beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx,
                                               p->numSpatialStreamIndices > 0 ? p->spatialStreamIndices[0] : 0);
 
-  uint32_t bwp_start_subcarrier =
-      ((rel15_ul_ref->rb_start + rel15_ul_ref->bwp_start) * NR_NB_SC_PER_RB + frame_parms->first_carrier_offset)
-      % frame_parms->ofdm_symbol_size;
+  uint32_t bwp_start_subcarrier = CIRCULAR_INC(frame_parms->first_carrier_offset,
+                                               (rel15_ul_ref->rb_start + rel15_ul_ref->bwp_start) * NR_NB_SC_PER_RB,
+                                               frame_parms->ofdm_symbol_size);
   LOG_D(PHY,
         "pusch %d.%d : bwp_start_subcarrier %d, rb_start %d, first_carrier_offset %d\n",
         frame,
@@ -784,11 +783,10 @@ int nr_rx_pusch_group_tp(PHY_VARS_gNB *gNB,
   for (int aarx = 0; aarx < num_sp_streams; aarx++)
     for (int nl = 0; nl < total_layers; nl++) {
       start_meas(&gNB->pusch_extraction_stats);
-      nr_ulsch_extract_rbs(gNB->common_vars.rxdataF[ant_port_start + aarx],
+      nr_ulsch_extract_rbs(gNB->common_vars.rxdataF[ant_port_start + aarx] + soffset + meas_symbol * frame_parms->ofdm_symbol_size,
                            (c16_t *)joint_pv->ul_ch_estimates[nl * num_sp_streams + aarx],
                            temp_rxFext[aarx],
                            (c16_t *)&ul_ch_estimates_ext[nl * num_sp_streams + aarx][meas_symbol * nb_re_pusch],
-                           soffset + meas_symbol * frame_parms->ofdm_symbol_size,
                            dmrs_symbol * frame_parms->ofdm_symbol_size,
                            (rel15_ul_ref->ul_dmrs_symb_pos >> meas_symbol) & 0x01,
                            &joint_pdu,
@@ -818,9 +816,10 @@ int nr_rx_pusch_group_tp(PHY_VARS_gNB *gNB,
   else
     joint_pv->log2_maxh = (log2_approx(avgs) >> 1) + 1 + log2_approx(num_sp_streams >> 1);
 
-  if (joint_pv->log2_maxh < 0)
-    joint_pv->log2_maxh = 0;
-
+  if (joint_pv->log2_maxh < 1)
+    joint_pv->log2_maxh = 1;
+  else if (joint_pv->log2_maxh > 14)
+    joint_pv->log2_maxh = 14;
   stop_meas(&gNB->rx_pusch_init_stats);
 
   start_meas(&gNB->rx_pusch_symbol_processing_stats);

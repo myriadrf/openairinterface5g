@@ -330,7 +330,7 @@ static void nr_rx_pdcch_symbol(PHY_VARS_NR_UE *ue,
   // Note: pilot returned by the following function is already the complex conjugate of the transmitted DMRS
   const uint32_t *gold = nr_gold_pdcch(fp->N_RB_DL, fp->symbols_per_slot, scrambling_id, proc->nr_slot_rx, symbol);
   nr_pdcch_dmrs_ref(gold, pilot, n_rb + rb_offset + dmrs_ref);
-  nr_pdcch_channel_estimation(ue,
+  nr_pdcch_channel_estimation(fp,
                               n_rb,
                               rb_offset,
                               dmrs_ref,

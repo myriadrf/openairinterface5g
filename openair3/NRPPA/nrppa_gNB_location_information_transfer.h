@@ -22,5 +22,6 @@ int nrppa_gNB_handle_positioning_activation_request(nrppa_gnb_ue_info_t *nrppa_m
 void decode_nrppa_srstype(NRPPA_SRSType_t *srs_type, nrppa_srs_type_t *out);
 void free_nrppa_positioning_activation_request(nrppa_positioning_activation_req_t *msg);
 int nrppa_gNB_positioning_activation_response(instance_t instance, MessageDef *msg_p);
+int nrppa_gNB_trp_information_failure(instance_t instance, MessageDef *msg_p);
 
 #endif /* NRPPA_GNB_POSITIONING_PROCEDURES_H_ */

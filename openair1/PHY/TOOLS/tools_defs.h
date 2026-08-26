@@ -59,7 +59,7 @@ extern "C" {
     int dim2;
     int dim3;
     int dim4;
-    uint8_t data[] __attribute__((aligned(32)));
+    uint8_t data[] __attribute__((aligned(64)));
   } fourDimArray_t;
 
   static inline fourDimArray_t *allocateFourDimArray(int elmtSz, int dim1, int dim2, int dim3, int dim4)
@@ -229,6 +229,13 @@ extern "C" {
     return (c32_t) {
       .r = ((a.r * b.r - a.i * b.i) >> Shift) + c.r,
       .i = ((a.r * b.i + a.i * b.r) >> Shift) + c.i
+    };
+  }
+
+  __attribute__((always_inline)) inline c64_t c64x16maddConjShift(const c16_t a, const c16_t b, const c64_t c, const int Shift) {
+    return (c64_t) {
+      .r = (((int64_t)a.r * b.r + (int64_t)a.i * b.i) >> Shift) + c.r,
+      .i = (((int64_t)a.r * b.i - (int64_t)a.i * b.r) >> Shift) + c.i
     };
   }
 

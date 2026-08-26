@@ -66,6 +66,7 @@ MESSAGE_DEF(F1AP_POSITIONING_MEASUREMENT_REQ,
 
 /* DU -> CU*/
 MESSAGE_DEF(F1AP_TRP_INFORMATION_RESP, MESSAGE_PRIORITY_MED, f1ap_trp_information_resp_t, f1ap_trp_information_resp)
+MESSAGE_DEF(F1AP_TRP_INFORMATION_FAILURE, MESSAGE_PRIORITY_MED, f1ap_trp_information_failure_t, f1ap_trp_information_failure)
 MESSAGE_DEF(F1AP_POSITIONING_INFORMATION_RESP,
             MESSAGE_PRIORITY_MED,
             f1ap_positioning_information_resp_t,
@@ -78,3 +79,7 @@ MESSAGE_DEF(F1AP_POSITIONING_MEASUREMENT_RESP,
             MESSAGE_PRIORITY_MED,
             f1ap_positioning_measurement_resp_t,
             f1ap_positioning_measurement_resp)
+MESSAGE_DEF(F1AP_POSITIONING_MEASUREMENT_FAILURE,
+            MESSAGE_PRIORITY_MED,
+            f1ap_positioning_measurement_failure_t,
+            f1ap_positioning_measurement_failure)

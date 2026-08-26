@@ -32,6 +32,9 @@ add_dependencies(nr_ulsim ldpc ldpc_orig)
 add_dependencies(nr_ulschsim ldpc ldpc_orig)
 add_dependencies(nr_dlsim ldpc ldpc_orig)
 add_dependencies(nr_dlschsim ldpc ldpc_orig)
+if (ENABLE_TESTS)
+  add_dependencies(tests ldpc ldpc_orig)
+endif()
 
 add_library(crc_byte OBJECT crc_byte.c)
 

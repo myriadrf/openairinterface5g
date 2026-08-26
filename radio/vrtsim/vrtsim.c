@@ -54,14 +54,19 @@ typedef enum { ROLE_SERVER = 1, ROLE_CLIENT } role;
 #define TAPS_SOCKET_HLP "Socket to connect to the channel emulation server\n"
 #define CLIENT_NUM_RX_HLP "Number of RX antennas of the client, specified on the server\n"
 #define CONNECTION_DESCRIPTOR_HLP "Path to the file written by the server that the client can use to connect."
+#define CONNECTION_TIMEOUT_HLP                                                                                                 \
+  "Seconds the client waits for the peer unix socket (0 = wait forever). Useful when the peer starts slowly (e.g. O-RU after " \
+  "DPDK/xRAN init).\n"
 #define DEFAULT_CHANNEL_NAME "vrtsim_channel"
 #define DEFAULT_DESCRIPTOR "/tmp/vrtsim_connection"
+#define DEFAULT_CONNECTION_TIMEOUT 120
 #define TPOOL_HLP "Thread pool for channel modelling. Only used if CUDA support is disabled."
 
 // clang-format off
 #define VRTSIM_PARAMS_DESC \
   { \
      {"connection_descriptor",  CONNECTION_DESCRIPTOR_HLP,   0, .strptr = &vrtsim_state->connection_descriptor,  .defstrval = DEFAULT_DESCRIPTOR, TYPE_STRING, 0}, \
+     {"connection_timeout",     CONNECTION_TIMEOUT_HLP,      0, .uptr = &vrtsim_state->connection_timeout,       .defuintval = DEFAULT_CONNECTION_TIMEOUT, TYPE_UINT, 0}, \
      {"role",                   "either client or server\n", 0, .strptr = &role,                                 .defstrval = ROLE_CLIENT_STRING, TYPE_STRING, 0}, \
      {"timescale",              TIME_SCALE_HLP,              0, .dblptr = &vrtsim_state->timescale,              .defdblval = 1.0,                TYPE_DOUBLE, 0}, \
      {"chanmod",                "Enable channel modelling",  0, .iptr = &vrtsim_state->chanmod,                  .defintval = 0,                  TYPE_INT,    0}, \
@@ -124,6 +129,7 @@ typedef struct client_info_s {
 typedef struct {
   int role;
   char *connection_descriptor;
+  uint32_t connection_timeout;
   ShmTDIQChannel *channel;
   uint64_t last_received_sample;
   pthread_t timing_thread;
@@ -352,7 +358,8 @@ static void server_publish_client_info(vrtsim_state_t *vrtsim_state)
   LOG_A(HW, "VRTSIM: Started IPC server on socket %s\n", socket_path);
 }
 
-static size_t try_read_client_info(int fd, client_info_t *client_info) {
+static size_t try_read_client_info(int fd, client_info_t *client_info)
+{
   size_t total_read = 0;
   char *ptr = (char *)client_info;
   while (total_read < sizeof(*client_info)) {
@@ -371,17 +378,18 @@ static size_t try_read_client_info(int fd, client_info_t *client_info) {
   return total_read;
 }
 
-static client_info_t client_read_info(char *socket_path)
+static client_info_t client_read_info(char *socket_path, uint32_t connection_timeout)
 {
   client_info_t client_info;
-  int tries = 0;
+  uint32_t tries = 0;
   struct sockaddr_un addr;
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
 
-  while (tries < 10) {
+  /* connection_timeout == 0 means wait forever */
+  while (connection_timeout == 0 || tries < connection_timeout) {
     int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock_fd >= 0) {
       if (connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
@@ -397,7 +405,7 @@ static client_info_t client_read_info(char *socket_path)
     sleep(1);
     tries++;
   }
-  AssertFatal(0, "Timeout waiting for client info on socket %s\n", socket_path);
+  AssertFatal(0, "Timeout waiting for client info on socket %s after %u s\n", socket_path, connection_timeout);
   return client_info;
 }
 
@@ -534,7 +542,7 @@ static int vrtsim_connect(openair0_device_t *device)
       threadCreate(&vrtsim_state->timing_thread, vrtsim_timing_job, vrtsim_state, "vrtsim_timing", -1, OAI_PRIORITY_RT_MAX);
     }
   } else {
-    client_info_t client_info = client_read_info(vrtsim_state->connection_descriptor);
+    client_info_t client_info = client_read_info(vrtsim_state->connection_descriptor, vrtsim_state->connection_timeout);
     AssertFatal(client_info.num_ues > 0, "Server did not publish valid num_ues\n");
     AssertFatal(vrtsim_state->ue_id < client_info.num_ues, "ue_id %d >= num_ues %d\n", vrtsim_state->ue_id, client_info.num_ues);
 
@@ -912,18 +920,6 @@ static int vrtsim_write(openair0_device_t *device,
   }
 }
 
-static int vrtsim_write_beams(openair0_device_t *device,
-                              openair0_timestamp_t timestamp,
-                              void ***buff,
-                              int nsamps,
-                              int nb_antennas_tx,
-                              int num_beams,
-                              int flags)
-{
-  vrtsim_write(device, timestamp, (void **)buff[0], nsamps, nb_antennas_tx, flags);
-  return nsamps;
-}
-
 static int vrtsim_read(openair0_device_t *device, openair0_timestamp_t *ptimestamp, void **samplesVoid, int nsamps, int nbAnt)
 {
   vrtsim_state_t *vrtsim_state = (vrtsim_state_t *)device->priv;
@@ -1084,12 +1080,7 @@ static int vrtsim_set_freq(openair0_device_t *device, openair0_config_t *openair
   return 0;
 }
 
-static int vrtsim_set_beams(openair0_device_t *device, uint64_t beam_map, openair0_timestamp_t timestamp)
-{
-  return 0;
-}
-
-static int vrtsim_set_beams2(openair0_device_t *device, int *beam_ids, int num_beams, openair0_timestamp_t timestamp)
+static int vrtsim_set_beams(openair0_device_t *device, uint16_t *beam_ids, int num_beams, openair0_timestamp_t timestamp)
 {
   return 0;
 }
@@ -1124,12 +1115,7 @@ __attribute__((__visibility__("default"))) int device_init(openair0_device_t *de
   device->trx_set_gains_func = vrtsim_stub2;
   device->trx_write_func = vrtsim_write;
   device->trx_read_func = vrtsim_read;
-  device->trx_write_beams_func = vrtsim_write_beams;
   device->trx_set_beams = vrtsim_set_beams;
-  device->trx_set_beams2 = vrtsim_set_beams2;
-  if (vrtsim_state->role == ROLE_SERVER) {
-    device->get_timestamp = vrtsim_get_timestamp;
-  }
 
   device->type = RFSIMULATOR;
   device->openair0_cfg = &openair0_cfg[0];

@@ -54,8 +54,10 @@ typedef struct {
   int rsrp_dBm;
   float sinr_dB;  
   uint8_t rank_indicator;
-  uint16_t i1;
-  uint8_t i2;
+  uint8_t i_1_1;
+  uint8_t i_1_2;
+  uint8_t i_1_3;
+  uint8_t i_2;
   uint8_t cqi;
   rlm_t radiolink_monitoring;
 } fapi_nr_l1_measurements_t;

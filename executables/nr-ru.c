@@ -395,8 +395,47 @@ int tx_rf_symbols(RU_t *ru, int frame, int slot, uint64_t timestamp, int start_s
   return transmitted_symbols;
 }
 
+// Pushes the per-antenna analog beam IDs assigned to this slot's symbols (ru->common.beam_id,
+// filled in from the gNB's precoding step) down to the RF device, one trx_set_beams() call per
+// symbol at which the beam vector changes. Only relevant for devices that need to be told about
+// beams explicitly (e.g. rfsimulator); USRP GPIO-controlled beam switching is handled separately
+// via get_gpio_flags(), embedded directly in the TX burst flags.
+//
+// Must run after nr_feptx_tp()/nr_feptx_prec() have copied this slot's beam_id from the gNB's
+// common_vars (done from ru_tx_func(), called below in tx_rf()) -- calling this any earlier reads
+// last frame's leftover beam_id instead of the one the MAC scheduler just picked for this slot.
+//
+// Only calls trx_set_beams() when the beam vector actually changes between symbols, to avoid
+// issuing redundant beam-switch commands to real hardware.
+static void ctrl_rf(RU_t *ru, int frame, int slot, uint64_t timestamp)
+{
+  if (!ru->rfdevice.trx_set_beams || !ru->gNB_list[0]->common_vars.analog_bf)
+    return;
+
+  NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
+  int nb_tx = ru->nb_tx;
+  uint16_t **beam_id = ru->common.beam_id;
+
+  uint16_t last_beams[nb_tx];
+  memcpy(last_beams, beam_id[slot * fp->symbols_per_slot], nb_tx * sizeof(uint16_t));
+  uint64_t event_ts = timestamp + ru->ts_offset;
+  LOG_D(NR_PHY, "RU Control [%d.%d]: set beams at symbol 0, ts %lu\n", frame, slot, event_ts);
+  ru->rfdevice.trx_set_beams(&ru->rfdevice, last_beams, nb_tx, event_ts);
+
+  for (int j = 1; j < fp->symbols_per_slot; j++) {
+    uint16_t *cur_beams = beam_id[slot * fp->symbols_per_slot + j];
+    if (memcmp(cur_beams, last_beams, nb_tx * sizeof(uint16_t)) == 0)
+      continue;
+    memcpy(last_beams, cur_beams, nb_tx * sizeof(uint16_t));
+    event_ts = timestamp + ru->ts_offset + get_samples_symbol_duration(fp, slot, 0, j);
+    LOG_D(NR_PHY, "RU Control [%d.%d]: beam switch at symbol %d, ts %lu\n", frame, slot, j, event_ts);
+    ru->rfdevice.trx_set_beams(&ru->rfdevice, last_beams, nb_tx, event_ts);
+  }
+}
+
 void tx_rf(RU_t *ru, int frame, int slot, uint64_t timestamp)
 {
+  ctrl_rf(ru, frame, slot, timestamp);
   tx_rf_symbols(ru, frame, slot, timestamp, 0, 14);
 }
 

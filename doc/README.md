@@ -54,6 +54,7 @@ There is some general information in the [OpenAirInterface Gitlab Wiki](https://
 - [How to run the physical simulators](./physical-simulators.md)
 - [How to setup OAI with Nvidia Aerial and Foxconn](./Aerial_FAPI_Split_Tutorial.md)
 - [How to setup OAI with LDPC accelerators (Xilinx T2/Intel ACCs)](./LDPC_OFFLOAD_SETUP.md)
+- [How to run the UE with LDPC CUDA accelerator](./NR_SA_Tutorial_OAI_nrUE_GPU_offload.md)
 - [How to setup OAI with the XDMA FPGA LDPC accelerator](./LDPC_XDMA_offload_setup.md)
 - [How to do a handover](./handover-tutorial.md)
 - [How to setup gNB frequency](./gNB_frequency_setup.md)

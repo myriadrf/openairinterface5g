@@ -13,5 +13,6 @@ void free_nrppa_measurement_request(nrppa_measurement_req_t *msg);
 int nrppa_gNB_measurement_response(instance_t instance, MessageDef *msg_p);
 NRPPA_TRP_MeasurementResponseList_t encode_trp_measurement_reponse_list(nrppa_measurement_response_list_t *in_list);
 void free_nrppa_measurement_resp(nrppa_measurement_resp_t *msg);
+int nrppa_gNB_measurement_failure(instance_t instance, MessageDef *msg_p);
 
 #endif /* NRPPA_GNB_MEASUREMENT_INFORMATION_TRANSFER_H_ */

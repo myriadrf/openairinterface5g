@@ -1235,11 +1235,9 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
   }
 
   uint16_t start_rb = pusch_pdu->rb_start;
-  uint16_t start_sc = frame_parms->first_carrier_offset + (start_rb + pusch_pdu->bwp_start) * NR_NB_SC_PER_RB;
-
-  if (start_sc >= frame_parms->ofdm_symbol_size)
-    start_sc -= frame_parms->ofdm_symbol_size;
-
+  int start_sc = CIRCULAR_INC(frame_parms->first_carrier_offset,
+                              (start_rb + pusch_pdu->bwp_start) * NR_NB_SC_PER_RB,
+                              frame_parms->ofdm_symbol_size);
   ulsch_ue->Nid_cell = frame_parms->Nid_cell;
 
   LOG_D(PHY,
@@ -1441,7 +1439,7 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
   // The Precoding matrix:
   for (int ap = 0; ap < frame_parms->nb_antennas_tx; ap++) {
     for (int l = start_symbol; l < start_symbol + number_of_symbols; l++) {
-      uint16_t k = start_sc;
+      int k = start_sc;
 
       for (int rb = 0; rb < nb_rb; rb++) {
         // get pmi info
@@ -1470,10 +1468,7 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
               memset(&txdataF[ap][l * frame_parms->ofdm_symbol_size], 0, pos_length * sizeof(int32_t));
             }
           }
-          k += NR_NB_SC_PER_RB;
-          if (k >= frame_parms->ofdm_symbol_size) {
-            k -= frame_parms->ofdm_symbol_size;
-          }
+          k = CIRCULAR_INC(k, NR_NB_SC_PER_RB, frame_parms->ofdm_symbol_size);
         } else {
           // get the precoding matrix weights:
           const char *W_prec;
@@ -1506,9 +1501,7 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
           for (int i = 0; i < NR_NB_SC_PER_RB; i++) {
             int32_t re_offset = l * frame_parms->ofdm_symbol_size + k;
             txdataF[ap][re_offset] = nr_layer_precoder(slot_sz, tx_precoding, W_prec, pusch_pdu->nrOfLayers, re_offset);
-            if (++k >= frame_parms->ofdm_symbol_size) {
-              k -= frame_parms->ofdm_symbol_size;
-            }
+            k = CIRCULAR_INC(k, 1, frame_parms->ofdm_symbol_size);
           }
         }
       } // RB loop

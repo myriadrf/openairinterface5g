@@ -59,7 +59,7 @@ void print_ue_mac_stats(const module_id_t mod, const int frame_rx, const int slo
                   mac->mib_ssb,
                   ssb->ssb_sinr_dB,
                   ssb->ssb_rsrp_dBm,
-                  csi->ri);
+                  csi->ri + 1);
   if (csi->rsrp_dBm != 0)
     cur += snprintf(cur, end - cur, "CQI %d CSI-RS RSRP %d dBm\n", csi->cqi, csi->rsrp_dBm);
   else

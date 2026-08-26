@@ -241,23 +241,44 @@ int main(int argc, char **argv)
   AssertFatal(rc == 0, "pthread_cond_init() failed: %d, %s\n", rc, strerror(rc));
   oru.tx_write.initialized = false;
 
-  AssertFatal(ru->num_tpcores > 0, "RU %u: num_tp_cores must be > 0\n", ru->idx);
-  char pool[80];
-  int s_offset = sprintf(pool, "%d", ru->tpcores[0]);
-  for (int icpu = 1; icpu < ru->num_tpcores; icpu++) {
-    s_offset += sprintf(pool + s_offset, ",%d", ru->tpcores[icpu]);
+  /* Prefer fronthaul.ul_worker_cores when set so north/south pins stay exclusive of the UL Tpool. */
+  int num_pool_cores;
+  const int *pool_cores;
+  if (oru.num_ul_worker_cores > 0) {
+    num_pool_cores = oru.num_ul_worker_cores;
+    pool_cores = oru.ul_worker_cores;
+  } else {
+    AssertFatal(ru->num_tpcores > 0, "RU %u: num_tp_cores must be > 0 (or set fronthaul.ul_worker_cores)\n", ru->idx);
+    num_pool_cores = ru->num_tpcores;
+    pool_cores = ru->tpcores;
   }
-  LOG_I(PHY, "O-RU thread-pool core string %s (size %d)\n", pool, ru->num_tpcores);
+  char pool[80];
+  int s_offset = sprintf(pool, "%d", pool_cores[0]);
+  for (int icpu = 1; icpu < num_pool_cores; icpu++) {
+    s_offset += sprintf(pool + s_offset, ",%d", pool_cores[icpu]);
+  }
+  LOG_I(PHY, "O-RU thread-pool core string %s (size %d)\n", pool, num_pool_cores);
   ru->threadPool = malloc(sizeof(tpool_t));
   initNamedTpool(pool, ru->threadPool, false, "ul_worker");
 
+  /* Create south before north so TX/RX start even if a north reader stalls. */
+  threadCreate(&oru.south_read_thread,
+               oru_south_read_thread,
+               (void *)&oru,
+               "south_read_thread",
+               oru.south_core,
+               OAI_PRIORITY_RT_MAX);
+  threadCreate(&oru.south_write_thread,
+               oru_south_write_thread,
+               (void *)&oru,
+               "south_write_thread",
+               oru.tx_write.core,
+               OAI_PRIORITY_RT_MAX);
   for (int i = 0; i < oru.num_dl_read_threads; i++) {
     char thread_name[32];
     snprintf(thread_name, sizeof(thread_name), "north_read_%d", i);
-    threadCreate(&oru.dl_read_threads[i], oru_north_read_worker, (void *)&oru, thread_name, -1, OAI_PRIORITY_RT_MAX);
+    threadCreate(&oru.dl_read_threads[i], oru_north_read_worker, (void *)&oru, thread_name, oru.north_cores[i], OAI_PRIORITY_RT_MAX);
   }
-  threadCreate(&oru.south_read_thread, oru_south_read_thread, (void *)&oru, "south_read_thread", -1, OAI_PRIORITY_RT_MAX);
-  threadCreate(&oru.south_write_thread, oru_south_write_thread, (void *)&oru, "south_write_thread", oru.tx_write.core, OAI_PRIORITY_RT_MAX);
 
   while (oai_exit == 0) {
     oru_fh_print_stats(oru.fronthaul);

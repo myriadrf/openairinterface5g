@@ -16,6 +16,7 @@
 #include "common/platform_types.h"
 #include "commonDef.h"
 #include "common/platform_constants.h"
+#include "common/utils/LOG/log.h"
 
 #include "NR_asn_constant.h"
 #include "NR_MeasConfig.h"
@@ -265,4 +266,9 @@ typedef struct NR_UE_RRC_INST_s {
   as_nas_info_t pending_initial_nas;
 } NR_UE_RRC_INST_t;
 
+#define RRCLOG_D(f, ...) LOG_D(NR_RRC, "[UE %ld] RNTI 0x%04x " f, rrc->ue_id, rrc->rnti __VA_OPT__(, ) __VA_ARGS__)
+#define RRCLOG_I(f, ...) LOG_I(NR_RRC, "[UE %ld] RNTI 0x%04x " f, rrc->ue_id, rrc->rnti __VA_OPT__(, ) __VA_ARGS__)
+#define RRCLOG_W(f, ...) LOG_W(NR_RRC, "[UE %ld] RNTI 0x%04x " f, rrc->ue_id, rrc->rnti __VA_OPT__(, ) __VA_ARGS__)
+#define RRCLOG_E(f, ...) LOG_E(NR_RRC, "[UE %ld] RNTI 0x%04x " f, rrc->ue_id, rrc->rnti __VA_OPT__(, ) __VA_ARGS__)
+#define RRCLOG_A(f, ...) LOG_A(NR_RRC, "[UE %ld] RNTI 0x%04x " f, rrc->ue_id, rrc->rnti __VA_OPT__(, ) __VA_ARGS__)
 #endif

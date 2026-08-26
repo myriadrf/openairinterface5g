@@ -1440,17 +1440,29 @@ void rrc_gNB_send_NGAP_HANDOVER_FAILURE(gNB_RRC_INST *rrc, ngap_handover_failure
 /** @brief Process NG Handover Request message (8.4.2.2 3GPP TS 38.413) */
 int rrc_gNB_process_Handover_Request(gNB_RRC_INST *rrc, ngap_handover_request_t *msg)
 {
-  // Check if UE context already exists for this AMF UE NGAP ID
   rrc_gNB_ue_context_t *existing_ue_context = rrc_gNB_get_ue_context_by_amf_ue_ngap_id(rrc, msg->amf_ue_ngap_id);
   if (existing_ue_context != NULL) {
-    LOG_E(RRC, "UE context already exists for AMF UE NGAP ID %ld, cannot process handover request\n", msg->amf_ue_ngap_id);
-    ngap_handover_failure_t fail = {
-        .amf_ue_ngap_id = msg->amf_ue_ngap_id,
-        .cause.type = NGAP_CAUSE_RADIO_NETWORK,
-        .cause.value = NGAP_CAUSE_RADIO_NETWORK_HO_FAILURE_IN_TARGET_5GC_NGRAN_NODE_OR_TARGET_SYSTEM,
-    };
-    rrc_gNB_send_NGAP_HANDOVER_FAILURE(rrc, &fail);
-    return -1;
+    gNB_RRC_UE_t *ue = &existing_ue_context->ue_context;
+    /* A UE with this AMF-UE-NGAP-ID is already present on this node as an N2
+     * source. This can happen when source and target NG-RAN node are the same or
+     * when the UE is already in a N2 HO procedure. Allow the request only while that
+     * UE is still in N2 source preparation (target not yet allocated), otherwise reject
+     * to prevent duplicate target contexts. */
+    const bool n2_source_only = ue->ho_context && ue->ho_context->source && !ue->ho_context->target;
+    if (!n2_source_only) {
+      LOG_E(NR_RRC,
+            "Reject Handover Request: ongoing procedure for UE %u (AMF UE NGAP ID %ld)\n",
+            ue->rrc_ue_id,
+            msg->amf_ue_ngap_id);
+      ngap_handover_failure_t fail = {
+          .amf_ue_ngap_id = msg->amf_ue_ngap_id,
+          .cause.type = NGAP_CAUSE_RADIO_NETWORK,
+          .cause.value = NGAP_CAUSE_RADIO_NETWORK_INTERACTION_WITH_OTHER_PROCEDURE,
+      };
+      rrc_gNB_send_NGAP_HANDOVER_FAILURE(rrc, &fail);
+      return -1;
+    }
+    LOG_I(NR_RRC, "N2 HO to self (AMF UE NGAP ID %ld): creating target context for UE %u\n", msg->amf_ue_ngap_id, ue->rrc_ue_id);
   }
 
   // Get cell by cell_id
@@ -1492,13 +1504,22 @@ int rrc_gNB_process_Handover_Request(gNB_RRC_INST *rrc, ngap_handover_request_t 
     return -1;
   }
 
+  // Create UE context
+  rrc_gNB_ue_context_t *ue_context_p = rrc_gNB_create_ue_context(du->assoc_id, UINT16_MAX, rrc, UINT64_MAX, UINT32_MAX);
+  if (!ue_context_p) {
+    ngap_handover_failure_t fail = {
+        .amf_ue_ngap_id = msg->amf_ue_ngap_id,
+        .cause.type = NGAP_CAUSE_RADIO_NETWORK,
+        .cause.value = NGAP_CAUSE_RADIO_NETWORK_HO_FAILURE_IN_TARGET_5GC_NGRAN_NODE_OR_TARGET_SYSTEM,
+    };
+    rrc_gNB_send_NGAP_HANDOVER_FAILURE(rrc, &fail);
+    return -1;
+  }
+
   uint16_t pci = cell->info.pci;
   LOG_I(NR_RRC, "Received Handover Request (on NR Cell ID=%lu, PCI=%u) \n", msg->nr_cell_id, pci);
 
-  // Create UE context
-  rrc_gNB_ue_context_t *ue_context_p = rrc_gNB_create_ue_context(du->assoc_id, UINT16_MAX, rrc, UINT64_MAX, UINT32_MAX);
   gNB_RRC_UE_t *UE = &ue_context_p->ue_context;
-
   // allocate context for target
   UE->ho_context = alloc_ho_ctx(HO_CTX_TARGET);
   UE->ho_context->target->cell = cell;

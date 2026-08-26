@@ -92,14 +92,12 @@ void generate_pss_nr_time(int ofdm_symbol_size,
   unsigned int subcarrier_start = get_softmodem_params()->sl_mode == 0 ? PSS_SSS_SUB_CARRIER_START : PSS_SSS_SUB_CARRIER_START_SL;
   c16_t synchroF_tmp[ofdm_symbol_size] __attribute__((aligned(32)));
   memset(synchroF_tmp, 0, sizeof(synchroF_tmp));
-  unsigned int k = first_carrier_offset + ssbFirstSCS + subcarrier_start;
+  unsigned int k = CIRCULAR_INC(first_carrier_offset, ssbFirstSCS + subcarrier_start, ofdm_symbol_size);
   int16_t pss[LENGTH_PSS_NR];
   generate_pss_nr(N_ID_2, pss);
-  for (int i=0; i < LENGTH_PSS_NR; i++) {
-    if (k >= ofdm_symbol_size)
-      k -= ofdm_symbol_size;
+  for (int i = 0; i < LENGTH_PSS_NR; i++) {
     synchroF_tmp[k] = (c16_t){.r = pss[i] * ((1U << SCALING_PSS_NR) - 1)};
-    k++;
+    k = CIRCULAR_INC(k, 1, ofdm_symbol_size);
   }
 
   /* IFFT will give temporal signal of Pss */
@@ -338,18 +336,14 @@ void sl_generate_pss_ifft_samples(sl_nr_ue_phy_params_t *sl_ue_params, SL_NR_UE_
   int16_t scaling_factor = AMP;
 
   int32_t *pss_T = NULL;
-
-  uint16_t k = 0;
-
   c16_t pss_F[sl_fp->ofdm_symbol_size]; // IQ samples in freq domain
 
   LOG_I(PHY, "SIDELINK INIT: Generation of PSS time domain samples. scaling_factor:%d\n", scaling_factor);
 
   for (id2 = 0; id2 < SL_NR_NUM_IDs_IN_PSS; id2++) {
-    k = sl_fp->first_carrier_offset + sl_fp->ssb_start_subcarrier + 2; // PSS in from REs 2-129
-    if (k >= sl_fp->ofdm_symbol_size)
-      k -= sl_fp->ofdm_symbol_size;
-
+    int k = CIRCULAR_INC(sl_fp->first_carrier_offset,
+                         sl_fp->ssb_start_subcarrier + 2,
+                         sl_fp->ofdm_symbol_size); // PSS in from REs 2-129
     pss_T = &sl_init_params->sl_pss_for_correlation[id2][0];
     sl_pss = sl_init_params->sl_pss[id2];
 
@@ -364,10 +358,7 @@ void sl_generate_pss_ifft_samples(sl_nr_ue_phy_params_t *sl_ue_params, SL_NR_UE_
 #ifdef SL_DEBUG_INIT_DATA
       printf("id:%d, k:%d, pss_F[%d]:%d, sl_pss[%d]:%d\n", id2, k, 2 * k, pss_F[2 * k], i, sl_pss[i]);
 #endif
-
-      k++;
-      if (k == sl_fp->ofdm_symbol_size)
-        k = 0;
+      k = CIRCULAR_INC(k, 1, sl_fp->ofdm_symbol_size);
     }
 
     idft((int16_t)get_idft(sl_fp->ofdm_symbol_size),

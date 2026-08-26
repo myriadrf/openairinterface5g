@@ -17,5 +17,7 @@ void rrc_gNB_process_positioning_activation_request(gNB_RRC_INST *rrc, const nrp
 void rrc_CU_process_positioning_activation_response(f1ap_positioning_activation_resp_t *f1ap_msg);
 void rrc_gNB_process_positioning_measurement_request(gNB_RRC_INST *rrc, const nrppa_measurement_req_t *msg);
 void rrc_CU_process_positioning_measurement_response(f1ap_positioning_measurement_resp_t *f1ap_msg);
+void rrc_CU_process_trp_information_failure(f1ap_trp_information_failure_t *f1ap_msg);
+void rrc_CU_process_positioning_measurement_failure(f1ap_positioning_measurement_failure_t *f1ap_msg);
 
 #endif /* RRC_GNB_NRPPA_H_ */

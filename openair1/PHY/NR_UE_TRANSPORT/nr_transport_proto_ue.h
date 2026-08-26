@@ -32,7 +32,6 @@ typedef struct pdsch_scope_req_s {
 /** \brief This function initialises structures for DLSCH at UE
 */
 void nr_ue_dlsch_init(NR_UE_DLSCH_t *dlsch_list, int num_dlsch, uint8_t max_ldpc_iterations);
-void nr_conjch0_mult_ch1(c16_t *ch0, c16_t *ch1, c16_t *ch0conj_ch1, unsigned short nb_rb, unsigned char output_shift0);
 
 void set_first_last_pdcch_symb(const NR_UE_PDCCH_CONFIG *phy_pdcch_config, int symb_slot, int *first_symb, int *last_symb);
 

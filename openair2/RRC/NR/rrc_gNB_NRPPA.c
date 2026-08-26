@@ -1277,3 +1277,48 @@ void rrc_CU_process_positioning_measurement_response(f1ap_positioning_measuremen
   LOG_I(NR_RRC, "Sending NRPPA_MEASUREMENT_RESP to TASK_NRPPA\n");
   itti_send_msg_to_task(TASK_NRPPA, 0, msg_resp);
 }
+
+static nrppa_cause_t f1ap2nrppa_encode_cause(f1ap_Cause_t cause, long cause_value)
+{
+  nrppa_cause_t nrppa_cause = {0};
+  switch (cause) {
+    case F1AP_CAUSE_NOTHING:
+      nrppa_cause.type = NRPPA_CAUSE_NOTHING;
+      break;
+    case F1AP_CAUSE_RADIO_NETWORK:
+      nrppa_cause.type = NRPPA_CAUSE_RADIO_NETWORK;
+      break;
+    case F1AP_CAUSE_PROTOCOL:
+      nrppa_cause.type = NRPPA_CAUSE_PROTOCOL;
+      break;
+    case F1AP_CAUSE_MISC:
+      nrppa_cause.type = NRPPA_CAUSE_MISC;
+      break;
+    default:
+      AssertFatal(false, "Illegal Cause\n");
+      break;
+  }
+  nrppa_cause.value = cause_value;
+  return nrppa_cause;
+}
+
+void rrc_CU_process_trp_information_failure(f1ap_trp_information_failure_t *f1ap_msg)
+{
+  MessageDef *msg_fail = itti_alloc_new_message(TASK_RRC_GNB, 0, NRPPA_TRP_INFORMATION_FAILURE);
+  nrppa_trp_information_failure_t *nrppa_msg = &NRPPA_TRP_INFORMATION_FAILURE(msg_fail);
+  nrppa_msg->transaction_id = f1ap_msg->transaction_id;
+  nrppa_msg->cause = f1ap2nrppa_encode_cause(f1ap_msg->cause, f1ap_msg->cause_value);
+  LOG_I(NR_RRC, "Sending NRPPA_TRP_INFORMATION_FAILURE to TASK_NRPPA\n");
+  itti_send_msg_to_task(TASK_NRPPA, 0, msg_fail);
+}
+
+void rrc_CU_process_positioning_measurement_failure(f1ap_positioning_measurement_failure_t *f1ap_msg)
+{
+  MessageDef *msg_fail = itti_alloc_new_message(TASK_RRC_GNB, 0, NRPPA_MEASUREMENT_FAILURE);
+  nrppa_measurement_failure_t *nrppa_msg = &NRPPA_MEASUREMENT_FAILURE(msg_fail);
+  nrppa_msg->transaction_id = f1ap_msg->transaction_id;
+  nrppa_msg->lmf_measurement_id = f1ap_msg->lmf_measurement_id;
+  nrppa_msg->cause = f1ap2nrppa_encode_cause(f1ap_msg->cause, f1ap_msg->cause_value);
+  LOG_I(NR_RRC, "Sending NRPPA_MEASUREMENT_FAILURE to TASK_NRPPA\n");
+  itti_send_msg_to_task(TASK_NRPPA, 0, msg_fail);
+}

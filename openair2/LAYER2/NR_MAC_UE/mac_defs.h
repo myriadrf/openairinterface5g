@@ -416,8 +416,10 @@ typedef struct {
 typedef struct {
   int rsrp_dBm;
   uint8_t ri;
-  uint16_t i1;
-  uint8_t i2;
+  uint8_t i_1_1;
+  uint8_t i_1_2;
+  uint8_t i_1_3;
+  uint8_t i_2;
   uint8_t cqi;
 } NR_CSIRS_meas_t;
 

@@ -359,6 +359,7 @@ void mac_top_destroy_gNB(gNB_MAC_INST *mac)
   if (mac->f1_config.setup_resp)
     free_f1ap_setup_response(mac->f1_config.setup_resp);
   free(mac->f1_config.setup_resp);
+  free(mac->positioning_config);
 }
 
 void nr_mac_send_f1_setup_req(void)

@@ -117,6 +117,14 @@ static void trp_information_response_direct(const f1ap_trp_information_resp_t *r
   itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
 }
 
+static void trp_information_failure_direct(const f1ap_trp_information_failure_t *fail)
+{
+  MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_TRP_INFORMATION_FAILURE);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
+  F1AP_TRP_INFORMATION_FAILURE(msg) = cp_trp_information_failure(fail);
+  itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
+}
+
 static void positioning_information_response_direct(const f1ap_positioning_information_resp_t *resp)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_POSITIONING_INFORMATION_RESP);
@@ -141,6 +149,14 @@ static void positioning_measurement_response_direct(const f1ap_positioning_measu
   itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
 }
 
+static void positioning_measurement_failure_direct(const f1ap_positioning_measurement_failure_t *fail)
+{
+  MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_POSITIONING_MEASUREMENT_FAILURE);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
+  F1AP_POSITIONING_MEASUREMENT_FAILURE(msg) = cp_positioning_measurement_failure(fail);
+  itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
+}
+
 void mac_rrc_ul_direct_init(struct nr_mac_rrc_ul_if_s *mac_rrc)
 {
   mac_rrc->f1_reset = f1_reset_du_initiated_direct;
@@ -154,7 +170,9 @@ void mac_rrc_ul_direct_init(struct nr_mac_rrc_ul_if_s *mac_rrc)
   mac_rrc->ue_context_release_complete = ue_context_release_complete_direct;
   mac_rrc->initial_ul_rrc_message_transfer = initial_ul_rrc_message_transfer_direct;
   mac_rrc->trp_information_response = trp_information_response_direct;
+  mac_rrc->trp_information_failure = trp_information_failure_direct;
   mac_rrc->positioning_information_response = positioning_information_response_direct;
   mac_rrc->positioning_activation_response = positioning_activation_response_direct;
   mac_rrc->positioning_measurement_response = positioning_measurement_response_direct;
+  mac_rrc->positioning_measurement_failure = positioning_measurement_failure_direct;
 }

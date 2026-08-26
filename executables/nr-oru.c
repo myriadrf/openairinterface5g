@@ -32,7 +32,6 @@
 #define CONFIG_STRING_ORU_NUM_DL_SYMBOLS "num_dl_symbols"
 #define CONFIG_STRING_ORU_NUM_UL_SYMBOLS "num_ul_symbols"
 #define CONFIG_STRING_ORU_TX_CORE "tx_core"
-#define CONFIG_STRING_ORU_NUM_DL_THREADS "num_dl_threads"
 
 #define HLP_ORU_TX_BW "set the TX bandwidth list per component carrier"
 #define HLP_ORU_RX_BW "set the RX bandwidth list per component carrier"
@@ -66,7 +65,6 @@
   {CONFIG_STRING_ORU_NUM_DL_SYMBOLS,            HLP_ORU_NUM_DL_SYMBOLS,             0,    .uptr=NULL,       .defintval=7,                 TYPE_UINT,         0}, \
   {CONFIG_STRING_ORU_NUM_UL_SYMBOLS,            HLP_ORU_NUM_UL_SYMBOLS,             0,    .uptr=NULL,       .defintval=3,                 TYPE_UINT,         0}, \
   {CONFIG_STRING_ORU_TX_CORE,                   "The CPU core to be used to deploy south write thread for O-RU.", 0, .iptr=NULL, .defintval=-1, TYPE_INT, 0}, \
-  {CONFIG_STRING_ORU_NUM_DL_THREADS,            "Number of parallel DL reader threads for O-RU.", 0, .iptr=NULL, .defintval=1, TYPE_INT, 0}, \
 }
 
 #define CMDLINE_PARAMS_DESC_ORU_COMMON \
@@ -79,6 +77,9 @@
 
 #define CONFIG_STRING_ORU_DPDK_DEVICES "dpdk_devices"
 #define CONFIG_STRING_RX_CORE "rx_core"
+#define CONFIG_STRING_NORTH_CORES "north_cores"
+#define CONFIG_STRING_SOUTH_CORE "south_core"
+#define CONFIG_STRING_UL_WORKER_CORES "ul_worker_cores"
 #define CONFIG_STRING_EXTRA_EAL_ARGS "extra_eal_args"
 #define CONFIG_STRING_DU_MAC_ADDRESSES "du_mac_addr"
 #define CONFIG_STRING_MTU "mtu"
@@ -91,6 +92,12 @@
 
 #define HLP_DPDK_DEVICES "DPDK devices to use for the O-RU."
 #define HLP_RX_CORE "The CPU core to be used to deploy dpdk RX worker for O-RU."
+/* North/south/UL workers are RT-max; pin them or they roam into vrtsim cores. */
+#define HLP_NORTH_CORES                                                                                                       \
+  "CPU cores for O-RU north reader threads (one entry per thread, -1 = unpinned). List length sets the number of DL readers " \
+  "(default [-1] = one unpinned reader)."
+#define HLP_SOUTH_CORE "CPU core for the O-RU south (UL) reader thread; -1 for no pinning."
+#define HLP_UL_WORKER_CORES "CPU cores for the UL Tpool workers; empty falls back to RUs.tp_cores."
 #define HLP_EXTRA_EAL_ARGS "Extra arguments passed to RTE_EAL_INIT."
 #define HLP_DU_MAC_ADDRESSES "DU MAC addreses, used to prepare Ethernet headers."
 #define HLP_MTU "MTU for RX and TX."
@@ -117,6 +124,9 @@
 { \
   {CONFIG_STRING_ORU_DPDK_DEVICES,           HLP_DPDK_DEVICES,      PARAMFLAG_MANDATORY,    .strptr=NULL,     .defstrval=NULL,              TYPE_STRINGLIST,   0}, \
   {CONFIG_STRING_RX_CORE,                    HLP_RX_CORE,           PARAMFLAG_MANDATORY,    .iptr=NULL,       .defintval=-1,                TYPE_INT,          0}, \
+  {CONFIG_STRING_NORTH_CORES,                HLP_NORTH_CORES,       0,                      .iptr=NULL,       .defintarrayval=NULL,         TYPE_INTARRAY,     0}, \
+  {CONFIG_STRING_SOUTH_CORE,                 HLP_SOUTH_CORE,        0,                      .iptr=NULL,       .defintval=-1,                TYPE_INT,          0}, \
+  {CONFIG_STRING_UL_WORKER_CORES,            HLP_UL_WORKER_CORES,   0,                      .iptr=NULL,       .defintarrayval=NULL,         TYPE_INTARRAY,     0}, \
   {CONFIG_STRING_EXTRA_EAL_ARGS,             HLP_EXTRA_EAL_ARGS,    0,                      .strptr=NULL,     .defstrval=NULL,              TYPE_STRINGLIST,   0}, \
   {CONFIG_STRING_DU_MAC_ADDRESSES,           HLP_DU_MAC_ADDRESSES,  PARAMFLAG_MANDATORY,    .strptr=NULL,     .defstrval=NULL,              TYPE_STRINGLIST,   0}, \
   {CONFIG_STRING_MTU,                        HLP_MTU,               0,                      .iptr=NULL,       .defintval=9600,              TYPE_INT,          0}, \
@@ -240,11 +250,6 @@ int get_oru_options(ORU_t *oru)
   oru->num_DL_symbols = *gpd(param, nump, CONFIG_STRING_ORU_NUM_DL_SYMBOLS)->iptr;
   oru->num_UL_symbols = *gpd(param, nump, CONFIG_STRING_ORU_NUM_UL_SYMBOLS)->iptr;
   oru->tx_write.core = *gpd(param, nump, CONFIG_STRING_ORU_TX_CORE)->iptr;
-  oru->num_dl_read_threads = *gpd(param, nump, CONFIG_STRING_ORU_NUM_DL_THREADS)->iptr;
-  AssertFatal(oru->num_dl_read_threads > 0 && oru->num_dl_read_threads <= MAX_DL_READ_THREADS,
-              "Invalid number of DL read threads (%d), must be in [1, %d]\n",
-              oru->num_dl_read_threads,
-              MAX_DL_READ_THREADS);
 
   paramdef_t fh_param[] = CMDLINE_PARAMS_DESC_ORU_FH;
   nump = sizeofArray(fh_param);
@@ -279,6 +284,28 @@ int get_oru_options(ORU_t *oru)
   AssertFatal(clock_tb_idx >= 0, "Index for %s config option not found!\n", CONFIG_STRING_CLOCK_TIMEBASE);
   fh_cfg->clock_timebase = (fh_clock_timebase_t)config_get_processedint(config_get_if(), &fh_param[clock_tb_idx]);
   fh_cfg->rx_core = *gpd(fh_param, nump, CONFIG_STRING_RX_CORE)->iptr;
+  oru->num_dl_read_threads = gpd(fh_param, nump, CONFIG_STRING_NORTH_CORES)->numelt;
+  if (oru->num_dl_read_threads == 0) {
+    oru->num_dl_read_threads = 1;
+    oru->north_cores[0] = -1;
+  } else {
+    AssertFatal(oru->num_dl_read_threads <= MAX_DL_READ_THREADS,
+                "%s has %d entries; need [1, %d] (one core per DL reader, -1 to leave unpinned)\n",
+                CONFIG_STRING_NORTH_CORES,
+                oru->num_dl_read_threads,
+                MAX_DL_READ_THREADS);
+    for (int i = 0; i < oru->num_dl_read_threads; i++)
+      oru->north_cores[i] = gpd(fh_param, nump, CONFIG_STRING_NORTH_CORES)->iptr[i];
+  }
+  oru->south_core = *gpd(fh_param, nump, CONFIG_STRING_SOUTH_CORE)->iptr;
+  oru->num_ul_worker_cores = gpd(fh_param, nump, CONFIG_STRING_UL_WORKER_CORES)->numelt;
+  AssertFatal(oru->num_ul_worker_cores <= MAX_ORU_UL_WORKERS,
+              "%s has %d entries, at most %d supported\n",
+              CONFIG_STRING_UL_WORKER_CORES,
+              oru->num_ul_worker_cores,
+              MAX_ORU_UL_WORKERS);
+  for (int i = 0; i < oru->num_ul_worker_cores; i++)
+    oru->ul_worker_cores[i] = gpd(fh_param, nump, CONFIG_STRING_UL_WORKER_CORES)->iptr[i];
   fh_cfg->mtu = *gpd(fh_param, nump, CONFIG_STRING_MTU)->iptr;
   fh_cfg->num_prbs = oru->bw_tx[0];
   fh_cfg->numerology = oru->numerology;
@@ -504,11 +531,7 @@ void wait_for_south_read(uint64_t *hyper_frame, uint32_t *start_frame, uint32_t 
   pthread_mutex_unlock(&south_read_mutex);
 }
 
-// Runs concurrently as several DL reader threads (see oru.num_dl_read_threads). Each thread
-// independently derives the same start_timestamp/start_hyper_frame/start_symbol_index from the
-// deterministic HW UTC anchor (or the shared wait_for_south_read() notification), then only the
-// first thread to arrive actually publishes them to ORU_t and creates the shared dl_reorder -
-// later threads see tx_write.initialized already set and just use their own local values below.
+// Parallel DL readers share one TX timing anchor under tx_write.mutex.
 void *oru_north_read_worker(void *arg)
 {
   ORU_t *oru = (ORU_t *)arg;
@@ -525,31 +548,46 @@ void *oru_north_read_worker(void *arg)
   uint32_t start_frame, start_slot;
   uint64_t start_hyper_frame;
   int64_t start_timestamp;
-  if (ru->rfdevice.get_timestamp) {
-    struct timespec utc_anchor_point;
-    oru_fh_get_utc_anchor_point(oru->fronthaul, &start_hyper_frame, &start_frame, &start_slot, &utc_anchor_point);
-    start_timestamp = ru->rfdevice.get_timestamp(&ru->rfdevice, &utc_anchor_point);
-  } else {
-    wait_for_south_read(&start_hyper_frame, &start_frame, &start_slot, &start_timestamp);
-  }
-    // subtract the start_frame and start_slot from the timestamp simplify calculation below.
-  start_timestamp -= (start_frame * fp->samples_per_frame + get_samples_slot_timestamp(fp, start_slot));
-  // Now start_timestamp points to the start sample of the frame 0 slot 0 symbol 0 of hyperframe 0
-  LOG_A(PHY, "DL thread started: start_timestamp %ld, start_frame %d, start_slot %d\n", start_timestamp, start_frame, start_slot);
 
   pthread_mutex_lock(&oru->tx_write.mutex);
   if (!oru->tx_write.initialized) {
+    if (ru->rfdevice.get_timestamp) {
+      struct timespec utc_anchor_point;
+      oru_fh_get_utc_anchor_point(oru->fronthaul, &start_hyper_frame, &start_frame, &start_slot, &utc_anchor_point);
+      start_timestamp = ru->rfdevice.get_timestamp(&ru->rfdevice, &utc_anchor_point);
+    } else {
+      pthread_mutex_unlock(&oru->tx_write.mutex);
+      wait_for_south_read(&start_hyper_frame, &start_frame, &start_slot, &start_timestamp);
+      pthread_mutex_lock(&oru->tx_write.mutex);
+      if (oru->tx_write.initialized) {
+        start_timestamp = oru->tx_write.start_timestamp;
+        start_hyper_frame = oru->tx_write.start_hyper_frame;
+        goto anchor_ready;
+      }
+    }
+    start_timestamp -= (start_frame * fp->samples_per_frame + get_samples_slot_timestamp(fp, start_slot));
     oru->tx_write.start_timestamp = start_timestamp;
     oru->tx_write.start_hyper_frame = start_hyper_frame;
-    oru->tx_write.start_symbol_index = start_frame * (fp->slots_per_frame * fp->symbols_per_slot) + start_slot * fp->symbols_per_slot;
+    oru->tx_write.start_symbol_index =
+        start_frame * (fp->slots_per_frame * fp->symbols_per_slot) + start_slot * fp->symbols_per_slot;
     const uint8_t *dl_symbol_bitmask;
     uint16_t bitmask_bit_length;
     oru_fh_get_dl_symbol_bitmask(oru->fronthaul, &dl_symbol_bitmask, &bitmask_bit_length);
     oru->dl_reorder = symbol_reorder_create(oru->tx_write.start_symbol_index, dl_symbol_bitmask, bitmask_bit_length);
     oru->tx_write.initialized = true;
     pthread_cond_broadcast(&oru->tx_write.cond);
+  } else {
+    start_timestamp = oru->tx_write.start_timestamp;
+    start_hyper_frame = oru->tx_write.start_hyper_frame;
   }
+anchor_ready:
   pthread_mutex_unlock(&oru->tx_write.mutex);
+
+  LOG_A(PHY,
+        "DL thread started: start_timestamp %ld, start_hyper_frame %lu, start_symbol_index %lu\n",
+        start_timestamp,
+        (unsigned long)start_hyper_frame,
+        (unsigned long)oru->tx_write.start_symbol_index);
 
   while (!oai_exit) {
     int frame = -1, slot = -1, symbol = -1;

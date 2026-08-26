@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdbool.h>
 #include "PHY/sse_intrin.h"
 
 // #define SRS_DEBUG
@@ -52,6 +53,54 @@ int most_frequent_ri(const int *arr, int n)
     }
   }
   return element_having_max_freq;
+}
+
+static bool is_zero_c16(c16_t sample)
+{
+  return sample.r == 0 && sample.i == 0;
+}
+
+static bool complex_2x2_minor_nonzero(c16_t a0, c16_t a1, c16_t b0, c16_t b1)
+{
+  const int64_t a0b1_r = (int64_t)a0.r * b1.r - (int64_t)a0.i * b1.i;
+  const int64_t a0b1_i = (int64_t)a0.r * b1.i + (int64_t)a0.i * b1.r;
+  const int64_t a1b0_r = (int64_t)a1.r * b0.r - (int64_t)a1.i * b0.i;
+  const int64_t a1b0_i = (int64_t)a1.r * b0.i + (int64_t)a1.i * b0.r;
+
+  return a0b1_r != a1b0_r || a0b1_i != a1b0_i;
+}
+
+static uint8_t estimate_col2_matrix_rank_per_prg(const c16_t *ch,
+                                                 uint16_t num_gnb_antenna_elements,
+                                                 uint16_t num_prgs,
+                                                 uint16_t pI)
+{
+  int first_nonzero_row = -1;
+
+  for (int gI = 0; gI < num_gnb_antenna_elements; gI++) {
+    const uint16_t base0_idx = 0 * num_gnb_antenna_elements * num_prgs + gI * num_prgs;
+    const uint16_t base1_idx = 1 * num_gnb_antenna_elements * num_prgs + gI * num_prgs;
+    const c16_t h0 = ch[base0_idx + pI];
+    const c16_t h1 = ch[base1_idx + pI];
+
+    if (is_zero_c16(h0) && is_zero_c16(h1))
+      continue;
+
+    if (first_nonzero_row < 0) {
+      first_nonzero_row = gI;
+      continue;
+    }
+
+    const uint16_t ref_base0_idx = 0 * num_gnb_antenna_elements * num_prgs + first_nonzero_row * num_prgs;
+    const uint16_t ref_base1_idx = 1 * num_gnb_antenna_elements * num_prgs + first_nonzero_row * num_prgs;
+    const c16_t ref0 = ch[ref_base0_idx + pI];
+    const c16_t ref1 = ch[ref_base1_idx + pI];
+
+    if (complex_2x2_minor_nonzero(ref0, ref1, h0, h1))
+      return 2;
+  }
+
+  return first_nonzero_row < 0 ? 0 : 1;
 }
 
 void matrix_rank_128bits(int row, int col, simde__m128i mat[4])
@@ -383,6 +432,17 @@ void nr_srs_ri_computation(const nfapi_nr_srs_normalized_channel_iq_matrix_t *nr
       count++;
     }
     *ul_ri = most_frequent_ri(antenna_rank, num_prgs) - 1;
+
+  } else if (row == 8 && col == 2) {
+
+    int antenna_rank[num_prgs];
+
+    for (int pI = 0; pI < num_prgs; pI++) {
+      const uint8_t rank = estimate_col2_matrix_rank_per_prg(ch, num_gnb_antenna_elements, num_prgs, pI);
+      antenna_rank[pI] = rank > 1 ? 1 : 0;
+    }
+
+    *ul_ri = most_frequent_ri(antenna_rank, num_prgs);
 
   } else {
     AssertFatal(1 == 0, "nr_srs_ri_computation() function is not implemented for row = %i and col = %i\n", row, col);

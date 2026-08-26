@@ -67,7 +67,6 @@ An example configuration file can be found at
 | `num_dl_symbols` | Integer | Number of DL symbols in the mixed slot | `7` |
 | `num_ul_symbols` | Integer | Number of UL symbols in the mixed slot | `3` |
 | `tx_core` | Integer | CPU core for the South (Split 8) write thread | `-1` |
-| `num_dl_threads` | Integer | Number of parallel DL reader threads (max `8`) | `1` |
 
 ### `ORUs.[0].fronthaul` parameters
 
@@ -75,6 +74,9 @@ An example configuration file can be found at
 | :--- | :--- | :--- | :--- |
 | `dpdk_devices` | String List | PCIe address list of DPDK interfaces | **Mandatory** |
 | `rx_core` | Integer | CPU core for the DPDK RX worker thread | **Mandatory** |
+| `north_cores` | Integer Array | CPU affinity per DL north reader (`-1` = unpinned). **List length is the number of DL readers** (max `8`) | `[-1]` (one unpinned reader) |
+| `south_core` | Integer | CPU core for the south (UL) reader thread (`-1` = unpinned) | `-1` |
+| `ul_worker_cores` | Integer Array | CPU cores for UL Tpool workers; empty falls back to `RUs.tp_cores` | `[]` |
 | `du_mac_addr` | String List | Destination MAC addresses of the DU | **Mandatory** |
 | `T2a_up` | Int Array (2) | Timing window bounds `(T2a_up_min, T2a_up_max)` | **Mandatory** |
 | `T2a_cp` | Int Array (2) | Timing window bounds `(T2a_cp_min, T2a_cp_max)` | **Mandatory** |
@@ -164,9 +166,10 @@ rotation), and contiguous format packing.
 For transmitted DL symbols, the O-RU must perform phase rotation, an
 FFT-shift, and cyclic prefix (CP) insertion before handing samples to the
 South (Split 8) write thread.
-* Instead of a single DL reader thread, `num_dl_threads` independent
-  `oru_north_read_worker` threads run concurrently, each executing the
-  full read/process/publish loop for a symbol.
+* One `oru_north_read_worker` runs per `north_cores` entry, each executing
+  the full read/process/publish loop for a symbol (e.g. `north_cores =
+  [-1, -1, -1, -1]` starts four unpinned readers; `north_cores = [21, 22]`
+  starts two pinned ones).
 * Because several threads complete symbols concurrently, completions can
   arrive out of order. A generic reorder buffer
   (`common/utils/symbol_reorder`) tracks completions by absolute symbol
@@ -199,7 +202,7 @@ The report includes, per direction (DL/UL):
 * Number of symbols (or antenna-symbols) processed in the window.
 * Per-thread processing time (Avg/Max).
 * **Effective** processing time — the per-thread time scaled by how many
-  worker threads (`num_dl_threads` for DL, `num_tp_cores` for UL) actually
+  worker threads (`north_cores` length for DL, `num_tp_cores` for UL) actually
   run concurrently on the available CPU cores.
 * A safety margin relative to the physical symbol duration, with a
   `PASS` / `WARNING` (margin < 20%) / `CRITICAL` (budget exceeded)

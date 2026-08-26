@@ -315,7 +315,17 @@ static void enqueue_pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
   while (pq.length == PDCP_DATA_IND_QUEUE_SIZE) {
     if (!logged) {
       logged = 1;
-      LOG_W(PDCP, "%s: pdcp_data_ind queue is full\n", __FUNCTION__);
+      static unsigned int queue_full_count = 0;
+      static uint64_t t_log_queue_full = 0;
+      uint64_t now = nr_pdcp_current_time();
+
+      /* 1280 ms = 128 frames @ 10 ms, to match MAC cadence */
+      if (queue_full_count != 0 && now > t_log_queue_full + 1280) {
+        LOG_W(PDCP, "%s: pdcp_data_ind queue is full (%u times)\n", __FUNCTION__, queue_full_count);
+        queue_full_count = 0;
+        t_log_queue_full = now;
+      }
+      queue_full_count++;
     }
     if (pthread_cond_wait(&pq.c, &pq.m) != 0) abort();
   }
