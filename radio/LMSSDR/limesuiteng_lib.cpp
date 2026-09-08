@@ -153,8 +153,8 @@ static int trx_lms7002m_write(openair0_device *device, openair0_timestamp_t time
   LimePluginContext* context = static_cast<LimePluginContext*>(device->priv);
 
   // OAI stores samples as 16bit I + 16bit Q, but actually uses only 12bit LSB
-  lime::complex12_t** samples = reinterpret_cast<lime::complex12_t**>(buff);
-  return LimePlugin_Write_complex12(context, samples, nsamps, DEFAULT_PORT, meta);
+  lime::complex16_t** samples = reinterpret_cast<lime::complex16_t**>(buff);
+  return LimePlugin_Write_complex16(context, samples, nsamps, DEFAULT_PORT, meta);
 }
 
 static int trx_lms7002m_read(openair0_device *device, openair0_timestamp_t *ptimestamp,
@@ -163,11 +163,11 @@ static int trx_lms7002m_read(openair0_device *device, openair0_timestamp_t *ptim
   LimePluginContext *context = (LimePluginContext*)device->priv;
 
   // OAI stores samples as 16bit I + 16bit Q, but actually uses only 12bit LSB
-  lime::complex12_t** samples = reinterpret_cast<lime::complex12_t**>(buff);
+  lime::complex16_t** samples = reinterpret_cast<lime::complex16_t**>(buff);
 
   StreamRxMeta meta;
 
-  int samplesGot = LimePlugin_Read_complex12(context, samples, nsamps, DEFAULT_PORT, meta);
+  int samplesGot = LimePlugin_Read_complex16(context, samples, nsamps, DEFAULT_PORT, meta);
   if (samplesGot <= 0)
     return samplesGot;
 
@@ -243,7 +243,7 @@ int device_init(openair0_device *device,
 
   LimePluginContext* context = new LimePluginContext();
   context->currentWorkingDirectory = cwd;
-  context->samplesFormat = DataFormat::I12;
+  context->samplesFormat = DataFormat::I16;
 
   int status = LimePlugin_Init(context, LogCallback, &configProvider);
   if (status != 0)
